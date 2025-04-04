@@ -1,6 +1,12 @@
-# KATch-LTL
+# KATch2
 
-A reimplementation of KATch that supports LTL queries. Fundamental changes in the internals are necessary to support LTL.
+A next-gen version of KATch that:
+- Is written in Rust
+- Supports a reversible version of NetKAT
+- Supports negation
+- Will support LTL queries
+
+For now, KATch2 only supports binary fields.
 
 ## Project Structure
 
