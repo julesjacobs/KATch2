@@ -9,30 +9,30 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 enum AExpr {
     SPP(spp::SPP), // We keep field tests and mutations and combinations thereof in SPP form
-    Union(AExp, AExp),      // e1 + e2
-    Intersect(AExp, AExp),  // e1 & e2
-    Xor(AExp, AExp),        // e1 ^ e2
-    Difference(AExp, AExp), // e1 - e2
-    Complement(AExp),      // !e1
-    Sequence(AExp, AExp),   // e1; e2
-    Star(AExp),            // e*
+    Union(State, State),      // e1 + e2
+    Intersect(State, State),  // e1 & e2
+    Xor(State, State),        // e1 ^ e2
+    Difference(State, State), // e1 - e2
+    Complement(State),      // !e1
+    Sequence(State, State),   // e1; e2
+    Star(State),            // e*
     Dup,                  // dup
-    LtlNext(AExp),         // X e
-    LtlUntil(AExp, AExp),   // e1 U e2
+    LtlNext(State),         // X e
+    LtlUntil(State, State),   // e1 U e2
     End,                    // represents the singleton set containing the empty string
 }
 
 // AExp is an index into the Aut's expression table.
-type AExp = usize;
+type State = usize;
  
 struct Aut {
     aexprs: Vec<AExpr>,
-    aexpr_map: HashMap<AExpr, AExp>,
+    aexpr_map: HashMap<AExpr, State>,
     spp: spp::SPPstore,
     sp: sp::SPstore,
 }
 
-impl ST<AExp> {
+impl ST<State> {
     fn union(st1: Self, st2: Self) -> Self {
         todo!()
     }
@@ -53,7 +53,7 @@ impl ST<AExp> {
         todo!()
     }
 
-    fn postcompose(st: Self, expr: AExp) -> Self {
+    fn postcompose(st: Self, expr: State) -> Self {
         todo!()
     }
 }
@@ -70,7 +70,7 @@ impl Aut {
     }
 
     // Internal function to hash-cons an expression
-    fn intern(&mut self, expr: AExpr) -> AExp {
+    fn intern(&mut self, expr: AExpr) -> State {
         if let Some(&id) = self.aexpr_map.get(&expr) {
             return id;
         }
@@ -82,12 +82,12 @@ impl Aut {
 
     // Smart Constructors with Simplifications
 
-    fn mk_spp(&mut self, spp: spp::SPP) -> AExp {
+    fn mk_spp(&mut self, spp: spp::SPP) -> State {
         // TODO: Add simplification for SPP constants (0, 1) if not handled by SPPstore itself
         self.intern(AExpr::SPP(spp))
     }
 
-    fn mk_union(&mut self, e1: AExp, e2: AExp) -> AExp {
+    fn mk_union(&mut self, e1: State, e2: State) -> State {
         if e1 == e2 { return e1; }
         
         // SPP Simplification: s1 + s2
@@ -102,7 +102,7 @@ impl Aut {
         self.intern(AExpr::Union(e1, e2))
     }
 
-    fn mk_intersect(&mut self, e1: AExp, e2: AExp) -> AExp {
+    fn mk_intersect(&mut self, e1: State, e2: State) -> State {
         if e1 == e2 { return e1; }
 
         // SPP Simplification: s1 & s2
@@ -117,7 +117,7 @@ impl Aut {
         self.intern(AExpr::Intersect(e1, e2))
     }
 
-    fn mk_xor(&mut self, e1: AExp, e2: AExp) -> AExp {
+    fn mk_xor(&mut self, e1: State, e2: State) -> State {
         if e1 == e2 { return self.mk_spp(self.spp.zero); } // e ^ e = 0
 
         // SPP Simplification: s1 ^ s2
@@ -131,7 +131,7 @@ impl Aut {
         self.intern(AExpr::Xor(e1, e2))
     }
 
-    fn mk_difference(&mut self, e1: AExp, e2: AExp) -> AExp {
+    fn mk_difference(&mut self, e1: State, e2: State) -> State {
         if e1 == e2 { return self.mk_spp(self.spp.zero); } // e - e = 0
 
         // SPP Simplification: s1 - s2
@@ -144,7 +144,7 @@ impl Aut {
         self.intern(AExpr::Difference(e1, e2))
     }
 
-    fn mk_complement(&mut self, e: AExp) -> AExp {
+    fn mk_complement(&mut self, e: State) -> State {
         // Simplify !!e = e
         if let AExpr::Complement(inner_e) = self.get_expr(e) {
             return inner_e;
@@ -159,7 +159,7 @@ impl Aut {
         self.intern(AExpr::Complement(e))
     }
 
-    fn mk_sequence(&mut self, e1: AExp, e2: AExp) -> AExp {
+    fn mk_sequence(&mut self, e1: State, e2: State) -> State {
         // Simplify e ; End = e
         let end_id = self.intern(AExpr::End); // Ensure End is interned if not already
         if e2 == end_id { return e1; }
@@ -176,7 +176,7 @@ impl Aut {
         self.intern(AExpr::Sequence(e1, e2))
     }
 
-    fn mk_star(&mut self, e: AExp) -> AExp {
+    fn mk_star(&mut self, e: State) -> State {
         // Simplify End* = End
         let end_id = self.intern(AExpr::End);
         if e == end_id { return end_id; }
@@ -187,21 +187,21 @@ impl Aut {
         self.intern(AExpr::Star(e))
     }
 
-    fn mk_dup(&mut self) -> AExp {
+    fn mk_dup(&mut self) -> State {
         self.intern(AExpr::Dup)
     }
 
-    fn mk_end(&mut self) -> AExp {
+    fn mk_end(&mut self) -> State {
         self.intern(AExpr::End)
     }
 
     // Helper to get the actual expression from an index
-    fn get_expr(&self, id: AExp) -> AExpr {
+    fn get_expr(&self, id: State) -> AExpr {
         self.aexprs[id]
     }
 
     // Function to convert an external Expr to an internal AExp index
-    pub fn expr_to_aexp(&mut self, expr: &Expr) -> AExp {
+    pub fn expr_to_state(&mut self, expr: &Expr) -> State {
         match expr {
             Expr::Zero => self.mk_spp(self.spp.zero),
             Expr::One => self.mk_end(), // Map Expr::One to AExpr::End
@@ -215,52 +215,52 @@ impl Aut {
                 self.mk_spp(spp)
             }
             Expr::Union(e1, e2) => {
-                let aexp1 = self.expr_to_aexp(e1); // e1 is Box<Expr>, dereferences automatically
-                let aexp2 = self.expr_to_aexp(e2);
+                let aexp1 = self.expr_to_state(e1); // e1 is Box<Expr>, dereferences automatically
+                let aexp2 = self.expr_to_state(e2);
                 self.mk_union(aexp1, aexp2)
             }
             Expr::Intersect(e1, e2) => {
-                let aexp1 = self.expr_to_aexp(e1);
-                let aexp2 = self.expr_to_aexp(e2);
+                let aexp1 = self.expr_to_state(e1);
+                let aexp2 = self.expr_to_state(e2);
                 self.mk_intersect(aexp1, aexp2)
             }
             Expr::Xor(e1, e2) => {
-                let aexp1 = self.expr_to_aexp(e1);
-                let aexp2 = self.expr_to_aexp(e2);
+                let aexp1 = self.expr_to_state(e1);
+                let aexp2 = self.expr_to_state(e2);
                 self.mk_xor(aexp1, aexp2)
             }
             Expr::Difference(e1, e2) => {
-                let aexp1 = self.expr_to_aexp(e1);
-                let aexp2 = self.expr_to_aexp(e2);
+                let aexp1 = self.expr_to_state(e1);
+                let aexp2 = self.expr_to_state(e2);
                 self.mk_difference(aexp1, aexp2)
             }
             Expr::Complement(e) => {
-                let aexp = self.expr_to_aexp(e);
+                let aexp = self.expr_to_state(e);
                 self.mk_complement(aexp)
             }
             Expr::Sequence(e1, e2) => {
-                let aexp1 = self.expr_to_aexp(e1);
-                let aexp2 = self.expr_to_aexp(e2);
+                let aexp1 = self.expr_to_state(e1);
+                let aexp2 = self.expr_to_state(e2);
                 self.mk_sequence(aexp1, aexp2)
             }
             Expr::Star(e) => {
-                let aexp = self.expr_to_aexp(e);
+                let aexp = self.expr_to_state(e);
                 self.mk_star(aexp)
             }
             Expr::Dup => self.mk_dup(),
             Expr::LtlNext(e) => {
-                let aexp = self.expr_to_aexp(e);
+                let aexp = self.expr_to_state(e);
                 self.intern(AExpr::LtlNext(aexp))
             }
             Expr::LtlUntil(e1, e2) => {
-                let aexp1 = self.expr_to_aexp(e1);
-                let aexp2 = self.expr_to_aexp(e2);
+                let aexp1 = self.expr_to_state(e1);
+                let aexp2 = self.expr_to_state(e2);
                 self.intern(AExpr::LtlUntil(aexp1, aexp2))
             }
         }
     }
 
-    pub fn delta(&mut self, expr_id: AExp) -> ST<AExp> {
+    pub fn delta(&mut self, expr_id: State) -> ST<State> {
         match self.get_expr(expr_id) {
             AExpr::SPP(spp) => ST::singleton(spp, self.mk_end()),
             AExpr::Union(e1, e2) => ST::union(self.delta(e1), self.delta(e2)),
@@ -296,7 +296,7 @@ impl Aut {
         }
     }
 
-    pub fn epsilon(&self, state_id: AExp) -> bool {
+    pub fn epsilon(&self, state_id: State) -> bool {
         match self.get_expr(state_id) {
             AExpr::SPP(_) => false,
             AExpr::Union(e1, e2) => self.epsilon(e1) || self.epsilon(e2),
