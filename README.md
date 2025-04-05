@@ -21,7 +21,6 @@ The project consists of several key components:
   - Represents a relation between packets
   - Operations: zero, one, top, union, intersect, complement, sequence, star, reverse, ifelse, test, assign
   - Note: May need additional operations like forward, backward
-- `src/st.rs`: Symbolic transitions
 - `src/aut.rs`: Symbolic NetKAT automata
 - `src/expr_to_aut.rs`: Converts expressions to automata using derivatives
 - `src/elim.rs`: Performs dup elimination on automata, converting to spp using Kleene's algorithm

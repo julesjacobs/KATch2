@@ -1,9 +1,8 @@
 use crate::expr::Expr;
 use crate::spp;
 use crate::sp;
-use crate::st::ST;
 use std::collections::HashMap;
-
+use std::hash::Hash;
 // An AExpr represents an automaton state.
 // This is essentially a compressed and hash-consed form of a NetKAT expression.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
@@ -22,17 +21,32 @@ enum AExpr {
     End,                    // represents the singleton set containing the empty string
 }
 
-// AExp is an index into the Aut's expression table.
+// A State is an index into the Aut's expression table.
 type State = usize;
- 
-struct Aut {
-    aexprs: Vec<AExpr>,
-    aexpr_map: HashMap<AExpr, State>,
-    spp: spp::SPPstore,
-    sp: sp::SPstore,
-}
 
-impl ST<State> {
+
+// Symbolic transitions ST<T>
+// Symbolic transitions represent, for each T, a set of packet pairs that can transition to T. These are represented as a finite map from T to SPP's. 
+// A symbolic transition can be deterministic or nondeterministic, depending on whether the SPPs associated with different T's are disjoint. We typically keep ST's in deterministic form.
+
+pub struct ST<T>(HashMap<T, spp::SPP>);
+
+impl<T: Hash + Eq> ST<T> {
+    pub fn empty() -> Self {
+        ST(HashMap::new())
+    }
+
+    pub fn singleton(spp: spp::SPP, t: T) -> Self {
+        ST(HashMap::from([(t, spp)]))
+    }
+
+    pub fn op1<R>(&self, op: fn(T) -> R) -> ST<R> {
+        todo!();
+    }
+    pub fn op2<R>(&self, other: &ST<T>, op: fn(T, T) -> R) -> ST<R>{
+        todo!();
+    }
+
     fn union(st1: Self, st2: Self) -> Self {
         todo!()
     }
@@ -56,6 +70,13 @@ impl ST<State> {
     fn postcompose(st: Self, expr: State) -> Self {
         todo!()
     }
+}
+ 
+struct Aut {
+    aexprs: Vec<AExpr>,
+    aexpr_map: HashMap<AExpr, State>,
+    spp: spp::SPPstore,
+    sp: sp::SPstore,
 }
 
 impl Aut {
