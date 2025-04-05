@@ -18,9 +18,9 @@ pub struct SPPstore {
     num_vars: Var, // Idea: it's ok to pick this larger than you need. Hash consing & memoization will handle it
     nodes: Vec<SPPnode>,
     hc: HashMap<SPPnode, SPP>,
-    zero: SPP,
-    one: SPP,
-    top: SPP,
+    pub zero: SPP,
+    pub one: SPP,
+    pub top: SPP,
 
     // Memo tables for the operations
     union_memo: HashMap<(SPP, SPP), SPP>,

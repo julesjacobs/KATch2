@@ -8,7 +8,15 @@ use crate::spp;
 
 pub struct ST<T>(HashMap<T, spp::SPP>);
 
-impl<T: Hash> ST<T> {
+impl<T: Hash + Eq> ST<T> {
+    pub fn empty() -> Self {
+        ST(HashMap::new())
+    }
+
+    pub fn singleton(spp: spp::SPP, t: T) -> Self {
+        ST(HashMap::from([(t, spp)]))
+    }
+
     pub fn op1<R>(&self, op: fn(T) -> R) -> ST<R> {
         todo!();
     }
