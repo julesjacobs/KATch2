@@ -1,6 +1,6 @@
 use crate::expr::Expr;
-use crate::spp;
 use crate::sp;
+use crate::spp;
 use std::collections::HashMap;
 use std::hash::Hash;
 // An AExpr represents an automaton state.
@@ -8,26 +8,25 @@ use std::hash::Hash;
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 enum AExpr {
     SPP(spp::SPP), // We keep field tests and mutations and combinations thereof in SPP form
-    Union(State, State),      // e1 + e2
-    Intersect(State, State),  // e1 & e2
-    Xor(State, State),        // e1 ^ e2
+    Union(State, State), // e1 + e2
+    Intersect(State, State), // e1 & e2
+    Xor(State, State), // e1 ^ e2
     Difference(State, State), // e1 - e2
-    Complement(State),      // !e1
-    Sequence(State, State),   // e1; e2
-    Star(State),            // e*
-    Dup,                  // dup
-    LtlNext(State),         // X e
-    LtlUntil(State, State),   // e1 U e2
-    End,                    // represents the singleton set containing the empty string
-    Top,                    // represents the set of all strings
+    Complement(State), // !e1
+    Sequence(State, State), // e1; e2
+    Star(State),   // e*
+    Dup,           // dup
+    LtlNext(State), // X e
+    LtlUntil(State, State), // e1 U e2
+    End,           // represents the singleton set containing the empty string
+    Top,           // represents the set of all strings
 }
 
 // A State is an index into the Aut's expression table.
 type State = usize;
 
-
 // Symbolic transitions ST<T>
-// Symbolic transitions represent, for each T, a set of packet pairs that can transition to T. These are represented as a finite map from T to SPP's. 
+// Symbolic transitions represent, for each T, a set of packet pairs that can transition to T. These are represented as a finite map from T to SPP's.
 // A symbolic transition can be deterministic or nondeterministic, depending on whether the SPPs associated with different T's are disjoint. We typically keep ST's in deterministic form.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ST {
@@ -39,10 +38,12 @@ impl ST {
         ST { transitions }
     }
     pub fn empty() -> Self {
-        ST { transitions: HashMap::new() }
+        ST {
+            transitions: HashMap::new(),
+        }
     }
 }
- 
+
 struct Aut {
     aexprs: Vec<AExpr>,
     aexpr_map: HashMap<AExpr, State>,
@@ -82,14 +83,16 @@ impl Aut {
     }
 
     fn mk_union(&mut self, e1: State, e2: State) -> State {
-        if e1 == e2 { return e1; }
-        
+        if e1 == e2 {
+            return e1;
+        }
+
         // SPP Simplification: s1 + s2
         if let (AExpr::SPP(s1), AExpr::SPP(s2)) = (self.get_expr(e1), self.get_expr(e2)) {
-            let result_spp = self.spp.union(s1, s2); 
+            let result_spp = self.spp.union(s1, s2);
             return self.mk_spp(result_spp);
         }
-        
+
         // TODO: Add check for SPP zero/one (e + 0 = e, e + 1 = 1)
         // Canonical ordering: Ensure smaller index comes first for commutative ops
         let (e1, e2) = if e1 < e2 { (e1, e2) } else { (e2, e1) };
@@ -97,11 +100,13 @@ impl Aut {
     }
 
     fn mk_intersect(&mut self, e1: State, e2: State) -> State {
-        if e1 == e2 { return e1; }
+        if e1 == e2 {
+            return e1;
+        }
 
         // SPP Simplification: s1 & s2
         if let (AExpr::SPP(s1), AExpr::SPP(s2)) = (self.get_expr(e1), self.get_expr(e2)) {
-            let result_spp = self.spp.intersect(s1, s2); 
+            let result_spp = self.spp.intersect(s1, s2);
             return self.mk_spp(result_spp);
         }
 
@@ -112,11 +117,13 @@ impl Aut {
     }
 
     fn mk_xor(&mut self, e1: State, e2: State) -> State {
-        if e1 == e2 { return self.mk_spp(self.spp.zero); } // e ^ e = 0
+        if e1 == e2 {
+            return self.mk_spp(self.spp.zero);
+        } // e ^ e = 0
 
         // SPP Simplification: s1 ^ s2
         if let (AExpr::SPP(s1), AExpr::SPP(s2)) = (self.get_expr(e1), self.get_expr(e2)) {
-            let result_spp = self.spp.xor(s1, s2); 
+            let result_spp = self.spp.xor(s1, s2);
             return self.mk_spp(result_spp);
         }
 
@@ -126,7 +133,9 @@ impl Aut {
     }
 
     fn mk_difference(&mut self, e1: State, e2: State) -> State {
-        if e1 == e2 { return self.mk_spp(self.spp.zero); } // e - e = 0
+        if e1 == e2 {
+            return self.mk_spp(self.spp.zero);
+        } // e - e = 0
 
         // SPP Simplification: s1 - s2
         if let (AExpr::SPP(s1), AExpr::SPP(s2)) = (self.get_expr(e1), self.get_expr(e2)) {
@@ -143,19 +152,23 @@ impl Aut {
         if let AExpr::Complement(inner_e) = self.get_expr(e) {
             return inner_e;
         }
-        
+
         // SPP Simplification is not valid here, since we are complementing a set of strings!
-        
+
         self.intern(AExpr::Complement(e))
     }
 
     fn mk_sequence(&mut self, e1: State, e2: State) -> State {
         // Simplify e ; End = e
         let end_id = self.intern(AExpr::End); // Ensure End is interned if not already
-        if e2 == end_id { return e1; }
+        if e2 == end_id {
+            return e1;
+        }
         // Simplify End ; e = e
-        if e1 == end_id { return e2; }
-        
+        if e1 == end_id {
+            return e2;
+        }
+
         // SPP Simplification: s1 ; s2
         if let (AExpr::SPP(s1), AExpr::SPP(s2)) = (self.get_expr(e1), self.get_expr(e2)) {
             let result_spp = self.spp.sequence(s1, s2);
@@ -169,9 +182,12 @@ impl Aut {
     fn mk_star(&mut self, e: State) -> State {
         // Simplify End* = End
         let end_id = self.intern(AExpr::End);
-        if e == end_id { return end_id; }
+        if e == end_id {
+            return end_id;
+        }
         // Simplify (e*)* = e*
-        if let AExpr::Star(_) = self.get_expr(e) { // Check the type without getting inner_e
+        if let AExpr::Star(_) = self.get_expr(e) {
+            // Check the type without getting inner_e
             return e; // Return the existing e* index
         }
         self.intern(AExpr::Star(e))
@@ -200,7 +216,7 @@ impl Aut {
             Expr::Zero => self.mk_spp(self.spp.zero),
             Expr::One => self.mk_end(), // Map Expr::One to AExpr::End
             Expr::Top => self.mk_spp(self.spp.top), // Map Expr::Top to SPP Top
-            Expr::Assign(field, value) => { 
+            Expr::Assign(field, value) => {
                 let spp = self.spp.assign(*field, *value);
                 self.mk_spp(spp)
             }
@@ -342,36 +358,36 @@ impl Aut {
             AExpr::SPP(spp) => {
                 let end = self.mk_end();
                 self.st_singleton(spp, end)
-            },
+            }
             AExpr::Union(e1, e2) => {
                 let delta1 = self.delta(e1);
                 let delta2 = self.delta(e2);
                 self.st_union(delta1, delta2)
-            },
+            }
             AExpr::Intersect(e1, e2) => {
                 let delta1 = self.delta(e1);
                 let delta2 = self.delta(e2);
                 self.st_intersect(delta1, delta2)
-            },
+            }
             AExpr::Xor(e1, e2) => {
                 let delta1 = self.delta(e1);
                 let delta2 = self.delta(e2);
                 self.st_xor(delta1, delta2)
-            },
+            }
             AExpr::Difference(e1, e2) => {
                 let delta1 = self.delta(e1);
                 let delta2 = self.delta(e2);
                 self.st_difference(delta1, delta2)
-            },
+            }
             AExpr::Complement(e) => {
                 let delta_e = self.delta(e);
                 self.st_complement(delta_e)
-            },
+            }
             AExpr::Sequence(e1, e2) => {
                 // delta(e1 ; e2) = delta(e1) ; e2 + epsilon(e1) delta(e2)
                 let delta_e1 = self.delta(e1);
                 let delta_e1_seq_e2 = self.st_postcompose(delta_e1, e2);
-                
+
                 // BUG: this is wrong, we need epsilon to compute the transformation like in KATch1.
                 // This seems to be fundamental to symbolic / weighted automata...
                 if self.epsilon(e1) {
@@ -388,7 +404,7 @@ impl Aut {
                 let star_e = self.mk_star(e); // Get the index for e*
                 let delta_e = self.delta(e);
                 self.st_postcompose(delta_e, star_e) // Pass index star_e
-            }   
+            }
             AExpr::Dup => {
                 // delta(dup) = 1 ; SPP(1)  (Assuming SPP(1) means the identity mutation)
                 // Need to create SPP(1) via smart constructor

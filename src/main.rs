@@ -1,10 +1,10 @@
-#[allow(unused, non_snake_case)]
-mod pre;
+mod aut;
 mod expr;
 mod parser;
+#[allow(unused, non_snake_case)]
+mod pre;
 mod sp;
 mod spp;
-mod aut;
 
 fn main() {
     println!("Hello, world!");

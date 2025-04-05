@@ -1,5 +1,5 @@
-use crate::pre::{Field, Value};
 use crate::expr::{Exp, Expr};
+use crate::pre::{Field, Value};
 use std::iter::Peekable;
 use std::str::Chars;
 
@@ -7,25 +7,25 @@ use std::str::Chars;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
-    Zero,         // 0
-    One,          // 1
-    Top,          // T
-    Assign,       // :=
-    Eq,           // ==
-    Plus,         // +
-    And,          // &
-    Xor,          // ^
-    Minus,        // -
-    Not,          // !
-    Semicolon,    // ;
-    Star,         // *
-    Dup,          // dup
-    LtlX,         // X
-    LtlU,         // U
-    LParen,       // (
-    RParen,       // )
+    Zero,       // 0
+    One,        // 1
+    Top,        // T
+    Assign,     // :=
+    Eq,         // ==
+    Plus,       // +
+    And,        // &
+    Xor,        // ^
+    Minus,      // -
+    Not,        // !
+    Semicolon,  // ;
+    Star,       // *
+    Dup,        // dup
+    LtlX,       // X
+    LtlU,       // U
+    LParen,     // (
+    RParen,     // )
     Field(u32), // x followed by digits
-    Eof,          // End of input
+    Eof,        // End of input
 }
 
 pub struct Lexer<'a> {
@@ -380,10 +380,7 @@ mod tests {
     fn test_simple_binary_ops() {
         assert_eq!(
             parse("x0==0 + x1==1"),
-            Ok(Expr::union(
-                Expr::test(0, false),
-                Expr::test(1, true)
-            ))
+            Ok(Expr::union(Expr::test(0, false), Expr::test(1, true)))
         );
         assert_eq!(
             parse("x0==0 ; T"),
@@ -391,38 +388,23 @@ mod tests {
         );
         assert_eq!(
             parse("x0==0 & x1==1"),
-            Ok(Expr::intersect(
-                Expr::test(0, false),
-                Expr::test(1, true)
-            ))
+            Ok(Expr::intersect(Expr::test(0, false), Expr::test(1, true)))
         );
         assert_eq!(
             parse("x0==0 ^ x1==1"),
-            Ok(Expr::xor(
-                Expr::test(0, false),
-                Expr::test(1, true)
-            ))
+            Ok(Expr::xor(Expr::test(0, false), Expr::test(1, true)))
         );
         assert_eq!(
             parse("x0==0 - x1==1"),
-            Ok(Expr::difference(
-                Expr::test(0, false),
-                Expr::test(1, true)
-            ))
+            Ok(Expr::difference(Expr::test(0, false), Expr::test(1, true)))
         );
     }
 
     #[test]
     fn test_unary_ops() {
-        assert_eq!(
-            parse("!x0==0"),
-            Ok(Expr::complement(Expr::test(0, false)))
-        );
+        assert_eq!(parse("!x0==0"), Ok(Expr::complement(Expr::test(0, false))));
         assert_eq!(parse("X T"), Ok(Expr::ltl_next(Expr::top())));
-        assert_eq!(
-            parse("(x0==0)*"),
-            Ok(Expr::star(Expr::test(0, false)))
-        );
+        assert_eq!(parse("(x0==0)*"), Ok(Expr::star(Expr::test(0, false))));
         assert_eq!(
             parse("!(x0==0)*"), // ! has higher precedence than postfix *
             Ok(Expr::complement(Expr::star(Expr::test(0, false))))
@@ -446,19 +428,13 @@ mod tests {
             // ; is lower than +
             Ok(Expr::sequence(
                 Expr::test(0, false),
-                Expr::union(
-                    Expr::test(1, true),
-                    Expr::test(2, false)
-                )
+                Expr::union(Expr::test(1, true), Expr::test(2, false))
             ))
         );
         assert_eq!(
             parse("(x0==0 ; x1==1) + x2==0"),
             Ok(Expr::union(
-                Expr::sequence(
-                    Expr::test(0, false),
-                    Expr::test(1, true)
-                ),
+                Expr::sequence(Expr::test(0, false), Expr::test(1, true)),
                 Expr::test(2, false)
             ))
         );
@@ -468,10 +444,7 @@ mod tests {
             parse("x0==0 & x1==1 + x2==0"),
             // + higher than &
             Ok(Expr::union(
-                Expr::intersect(
-                    Expr::test(0, false),
-                    Expr::test(1, true)
-                ),
+                Expr::intersect(Expr::test(0, false), Expr::test(1, true)),
                 Expr::test(2, false)
             ))
         );
@@ -479,54 +452,36 @@ mod tests {
             parse("x0==0 & (x1==1 + x2==0)"),
             Ok(Expr::intersect(
                 Expr::test(0, false),
-                Expr::union(
-                    Expr::test(1, true),
-                    Expr::test(2, false)
-                )
+                Expr::union(Expr::test(1, true), Expr::test(2, false))
             ))
         );
     }
 
     #[test]
     fn test_ltl_ops() {
-        assert_eq!(
-            parse("X x0==0"),
-            Ok(Expr::ltl_next(Expr::test(0, false)))
-        );
+        assert_eq!(parse("X x0==0"), Ok(Expr::ltl_next(Expr::test(0, false))));
         assert_eq!(
             parse("x0==0 U x1==1"),
-            Ok(Expr::ltl_until(
-                Expr::test(0, false),
-                Expr::test(1, true)
-            ))
+            Ok(Expr::ltl_until(Expr::test(0, false), Expr::test(1, true)))
         );
         assert_eq!(
             parse("x0==0 U x1==1 U x2==0"), // Right associative: x0 U (x1 U x2)
             Ok(Expr::ltl_until(
                 Expr::test(0, false),
-                Expr::ltl_until(
-                    Expr::test(1, true),
-                    Expr::test(2, false)
-                )
+                Expr::ltl_until(Expr::test(1, true), Expr::test(2, false))
             ))
         );
         assert_eq!(
             parse("x0==0 ; x1==1 U x2==0"), // ; lower than U
             Ok(Expr::ltl_until(
-                Expr::sequence(
-                    Expr::test(0, false),
-                    Expr::test(1, true)
-                ),
+                Expr::sequence(Expr::test(0, false), Expr::test(1, true)),
                 Expr::test(2, false)
             ))
         );
         assert_eq!(
             parse("(x0==0 ; x1==1) U x2==0"),
             Ok(Expr::ltl_until(
-                Expr::sequence(
-                    Expr::test(0, false),
-                    Expr::test(1, true)
-                ),
+                Expr::sequence(Expr::test(0, false), Expr::test(1, true)),
                 Expr::test(2, false)
             ))
         );

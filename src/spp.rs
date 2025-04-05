@@ -302,10 +302,34 @@ impl SPPstore {
             x10 = x10_node.x10;
             x11 = x11_node.x11;
         } else {
-            x00 = self.branch(var - 1, x00_node.x00, x01_node.x00, x10_node.x00, x11_node.x00);
-            x01 = self.branch(var - 1, x00_node.x01, x01_node.x01, x10_node.x01, x11_node.x01);
-            x10 = self.branch(var - 1, x00_node.x10, x01_node.x10, x10_node.x10, x11_node.x10);
-            x11 = self.branch(var - 1, x00_node.x11, x01_node.x11, x10_node.x11, x11_node.x11);
+            x00 = self.branch(
+                var - 1,
+                x00_node.x00,
+                x01_node.x00,
+                x10_node.x00,
+                x11_node.x00,
+            );
+            x01 = self.branch(
+                var - 1,
+                x00_node.x01,
+                x01_node.x01,
+                x10_node.x01,
+                x11_node.x01,
+            );
+            x10 = self.branch(
+                var - 1,
+                x00_node.x10,
+                x01_node.x10,
+                x10_node.x10,
+                x11_node.x10,
+            );
+            x11 = self.branch(
+                var - 1,
+                x00_node.x11,
+                x01_node.x11,
+                x10_node.x11,
+                x11_node.x11,
+            );
         }
         let res = self.mk(x00, x01, x10, x11);
         self.branch_memo.insert(key, res);
