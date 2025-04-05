@@ -144,11 +144,7 @@ impl Aut {
             return inner_e;
         }
         
-        // SPP Simplification: !s
-        if let AExpr::SPP(s) = self.get_expr(e) {
-            let result_spp = self.spp.complement(s); 
-            return self.mk_spp(result_spp);
-        }
+        // SPP Simplification is not valid here, since we are complementing a set of strings!
         
         self.intern(AExpr::Complement(e))
     }
