@@ -29,6 +29,8 @@ pub struct SPPstore {
     star_memo: HashMap<SPP, SPP>,
     complement_memo: HashMap<SPP, SPP>,
     ifelse_memo: HashMap<(Var, SPP, SPP), SPP>,
+    xor_memo: HashMap<(SPP, SPP), SPP>,
+    difference_memo: HashMap<(SPP, SPP), SPP>,
 }
 
 /// A node in the SPP store. Has four children, one for each combination of the two variables.
@@ -57,6 +59,8 @@ impl SPPstore {
             star_memo: HashMap::from([(0, 1), (1, 1)]),
             complement_memo: HashMap::from([(0, 1), (1, 0)]),
             ifelse_memo: HashMap::new(),
+            xor_memo: HashMap::from([((0, 0), 0), ((0, 1), 1), ((1, 0), 1), ((1, 1), 0)]),
+            difference_memo: HashMap::from([((0, 0), 0), ((0, 1), 0), ((1, 0), 1), ((1, 1), 0)]),
         };
         store.zero = store.zero();
         store.one = store.one();
@@ -297,6 +301,44 @@ impl SPPstore {
             }
         }
         result
+    }
+
+    pub fn xor(&mut self, a: SPP, b: SPP) -> SPP {
+        // First, check the memo table
+        if let Some(&result) = self.xor_memo.get(&(a, b)) {
+            return result;
+        }
+        // Because we prefilled the memo with base cases,
+        // we now know that we've got a real node, so we don't need to handle 0 or 1 cases here.
+        let a_node = self.get(a);
+        let b_node = self.get(b);
+        let x00 = self.xor(a_node.x00, b_node.x00);
+        let x01 = self.xor(a_node.x01, b_node.x01);
+        let x10 = self.xor(a_node.x10, b_node.x10);
+        let x11 = self.xor(a_node.x11, b_node.x11);
+        let res = self.mk(x00, x01, x10, x11);
+        self.xor_memo.insert((a, b), res);
+        res
+    }
+
+    pub fn difference(&mut self, a: SPP, b: SPP) -> SPP {
+        // First, check the memo table
+        if let Some(&result) = self.difference_memo.get(&(a, b)) {
+            return result;
+        }
+        // Because we prefilled the memo with base cases,
+        // we now know that we've got a real node, so we don't need to handle 0 or 1 cases here.
+        // Difference a - b is defined as a & !b.
+        // We could implement it that way, but recursive definition is simpler here.
+        let a_node = self.get(a);
+        let b_node = self.get(b);
+        let x00 = self.difference(a_node.x00, b_node.x00);
+        let x01 = self.difference(a_node.x01, b_node.x01);
+        let x10 = self.difference(a_node.x10, b_node.x10);
+        let x11 = self.difference(a_node.x11, b_node.x11);
+        let res = self.mk(x00, x01, x10, x11);
+        self.difference_memo.insert((a, b), res); // Insert result into memo table
+        res
     }
 }
 
