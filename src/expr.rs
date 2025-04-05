@@ -1,12 +1,5 @@
 use crate::spp;
-
-/// Represents a field identifier, e.g., x0, x1, ... xk
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Field(pub usize);
-
-/// Represents a value (0 or 1)
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Value(pub u8); // Assuming 0 or 1
+use crate::pre::{Field, Value};
 
 /// Represents NetKAT expressions with LTL extensions
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -1,3 +1,4 @@
+use crate::expr::Expr;
 use crate::spp;
 use crate::sp;
 use crate::st::ST;
@@ -197,6 +198,66 @@ impl Aut {
     // Helper to get the actual expression from an index
     fn get_expr(&self, id: AExp) -> AExpr {
         self.aexprs[id]
+    }
+
+    // Function to convert an external Expr to an internal AExp index
+    pub fn expr_to_aexp(&mut self, expr: &Expr) -> AExp {
+        match expr {
+            Expr::Zero => self.mk_spp(self.spp.zero),
+            Expr::One => self.mk_end(), // Map Expr::One to AExpr::End
+            Expr::Top => self.mk_spp(self.spp.top), // Map Expr::Top to SPP Top
+            Expr::Assign(field, value) => { 
+                let spp = self.spp.assign(*field, *value);
+                self.mk_spp(spp)
+            }
+            Expr::Test(field, value) => {
+                let spp = self.spp.test(*field, *value);
+                self.mk_spp(spp)
+            }
+            Expr::Union(e1, e2) => {
+                let aexp1 = self.expr_to_aexp(e1); // e1 is Box<Expr>, dereferences automatically
+                let aexp2 = self.expr_to_aexp(e2);
+                self.mk_union(aexp1, aexp2)
+            }
+            Expr::Intersect(e1, e2) => {
+                let aexp1 = self.expr_to_aexp(e1);
+                let aexp2 = self.expr_to_aexp(e2);
+                self.mk_intersect(aexp1, aexp2)
+            }
+            Expr::Xor(e1, e2) => {
+                let aexp1 = self.expr_to_aexp(e1);
+                let aexp2 = self.expr_to_aexp(e2);
+                self.mk_xor(aexp1, aexp2)
+            }
+            Expr::Difference(e1, e2) => {
+                let aexp1 = self.expr_to_aexp(e1);
+                let aexp2 = self.expr_to_aexp(e2);
+                self.mk_difference(aexp1, aexp2)
+            }
+            Expr::Complement(e) => {
+                let aexp = self.expr_to_aexp(e);
+                self.mk_complement(aexp)
+            }
+            Expr::Sequence(e1, e2) => {
+                let aexp1 = self.expr_to_aexp(e1);
+                let aexp2 = self.expr_to_aexp(e2);
+                self.mk_sequence(aexp1, aexp2)
+            }
+            Expr::Star(e) => {
+                let aexp = self.expr_to_aexp(e);
+                self.mk_star(aexp)
+            }
+            Expr::Dup => self.mk_dup(),
+            Expr::LtlNext(e) => {
+                let aexp = self.expr_to_aexp(e);
+                self.intern(AExpr::LtlNext(aexp))
+            }
+            Expr::LtlUntil(e1, e2) => {
+                let aexp1 = self.expr_to_aexp(e1);
+                let aexp2 = self.expr_to_aexp(e2);
+                self.intern(AExpr::LtlUntil(aexp1, aexp2))
+            }
+        }
     }
 
     pub fn delta(&mut self, expr_id: AExp) -> ST<AExp> {

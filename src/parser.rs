@@ -1,4 +1,5 @@
-use crate::expr::{Exp, Expr, Field, Value};
+use crate::pre::{Field, Value};
+use crate::expr::{Exp, Expr};
 use std::iter::Peekable;
 use std::str::Chars;
 
@@ -23,17 +24,17 @@ pub enum Token {
     LtlU,         // U
     LParen,       // (
     RParen,       // )
-    Field(usize), // x followed by digits
+    Field(u32), // x followed by digits
     Eof,          // End of input
 }
 
 pub struct Lexer<'a> {
     iter: Peekable<Chars<'a>>,
-    num_fields: usize, // Number of fields, max field index is k-1
+    num_fields: u32, // Number of fields, max field index is k-1
 }
 
 impl<'a> Lexer<'a> {
-    pub fn new(input: &'a str, num_fields: usize) -> Self {
+    pub fn new(input: &'a str, num_fields: u32) -> Self {
         Lexer {
             iter: input.chars().peekable(),
             num_fields,
@@ -105,7 +106,7 @@ impl<'a> Lexer<'a> {
                     if num_str.is_empty() {
                         Err("Expected digits after 'x' for field".to_string())
                     } else {
-                        match num_str.parse::<usize>() {
+                        match num_str.parse::<u32>() {
                             Ok(index) => {
                                 if index < self.num_fields {
                                     Ok(Token::Field(index))
@@ -155,11 +156,11 @@ impl<'a> Iterator for Lexer<'a> {
 
 pub struct Parser<'a> {
     lexer: Peekable<Lexer<'a>>,
-    num_fields: usize,
+    num_fields: u32,
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(input: &'a str, num_fields: usize) -> Self {
+    pub fn new(input: &'a str, num_fields: u32) -> Self {
         Parser {
             lexer: Lexer::new(input, num_fields).peekable(),
             num_fields,
@@ -298,16 +299,16 @@ impl<'a> Parser<'a> {
                     Token::Eq => {
                         self.next_token()?; // Consume '=='
                         match self.next_token()? {
-                            Token::Zero => Ok(Expr::test(Field(idx), Value(0))),
-                            Token::One => Ok(Expr::test(Field(idx), Value(1))),
+                            Token::Zero => Ok(Expr::test(idx, false)),
+                            Token::One => Ok(Expr::test(idx, true)),
                             other => Err(format!("Expected 0 or 1 after '==', found {:?}", other)),
                         }
                     }
                     Token::Assign => {
                         self.next_token()?; // Consume ':='
                         match self.next_token()? {
-                            Token::Zero => Ok(Expr::assign(Field(idx), Value(0))),
-                            Token::One => Ok(Expr::assign(Field(idx), Value(1))),
+                            Token::Zero => Ok(Expr::assign(idx, false)),
+                            Token::One => Ok(Expr::assign(idx, true)),
                             other => Err(format!("Expected 0 or 1 after ':=', found {:?}", other)),
                         }
                     }
@@ -337,7 +338,7 @@ impl<'a> Parser<'a> {
 
 /// Parses a NetKAT expression string into an Exp AST.
 /// `num_fields` specifies the maximum allowed fields (e.g., if num_fields=2, fields x0, x1 are allowed).
-pub fn parse_expr(input: &str, num_fields: usize) -> Result<Exp, String> {
+pub fn parse_expr(input: &str, num_fields: u32) -> Result<Exp, String> {
     let mut parser = Parser::new(input, num_fields);
     let expr = parser.parse()?;
     // Check if there are any remaining tokens - should be EOF
@@ -366,9 +367,9 @@ mod tests {
 
     #[test]
     fn test_field_ops() {
-        assert_eq!(parse("x1 := 0"), Ok(Expr::assign(Field(1), Value(0))));
-        assert_eq!(parse("x0 == 1"), Ok(Expr::test(Field(0), Value(1))));
-        assert_eq!(parse("x2 := 1"), Ok(Expr::assign(Field(2), Value(1))));
+        assert_eq!(parse("x1 := 0"), Ok(Expr::assign(1, false)));
+        assert_eq!(parse("x0 == 1"), Ok(Expr::test(0, true)));
+        assert_eq!(parse("x2 := 1"), Ok(Expr::assign(2, true)));
         assert!(parse("x3 == 0").is_err(), "Field index > k");
         assert!(parse("x1 = 0").is_err(), "Single equals");
         assert!(parse("x1 := 2").is_err(), "Invalid value");
@@ -380,33 +381,33 @@ mod tests {
         assert_eq!(
             parse("x0==0 + x1==1"),
             Ok(Expr::union(
-                Expr::test(Field(0), Value(0)),
-                Expr::test(Field(1), Value(1))
+                Expr::test(0, false),
+                Expr::test(1, true)
             ))
         );
         assert_eq!(
             parse("x0==0 ; T"),
-            Ok(Expr::sequence(Expr::test(Field(0), Value(0)), Expr::top()))
+            Ok(Expr::sequence(Expr::test(0, false), Expr::top()))
         );
         assert_eq!(
             parse("x0==0 & x1==1"),
             Ok(Expr::intersect(
-                Expr::test(Field(0), Value(0)),
-                Expr::test(Field(1), Value(1))
+                Expr::test(0, false),
+                Expr::test(1, true)
             ))
         );
         assert_eq!(
             parse("x0==0 ^ x1==1"),
             Ok(Expr::xor(
-                Expr::test(Field(0), Value(0)),
-                Expr::test(Field(1), Value(1))
+                Expr::test(0, false),
+                Expr::test(1, true)
             ))
         );
         assert_eq!(
             parse("x0==0 - x1==1"),
             Ok(Expr::difference(
-                Expr::test(Field(0), Value(0)),
-                Expr::test(Field(1), Value(1))
+                Expr::test(0, false),
+                Expr::test(1, true)
             ))
         );
     }
@@ -415,24 +416,24 @@ mod tests {
     fn test_unary_ops() {
         assert_eq!(
             parse("!x0==0"),
-            Ok(Expr::complement(Expr::test(Field(0), Value(0))))
+            Ok(Expr::complement(Expr::test(0, false)))
         );
         assert_eq!(parse("X T"), Ok(Expr::ltl_next(Expr::top())));
         assert_eq!(
             parse("(x0==0)*"),
-            Ok(Expr::star(Expr::test(Field(0), Value(0))))
+            Ok(Expr::star(Expr::test(0, false)))
         );
         assert_eq!(
             parse("!(x0==0)*"), // ! has higher precedence than postfix *
-            Ok(Expr::complement(Expr::star(Expr::test(Field(0), Value(0)))))
+            Ok(Expr::complement(Expr::star(Expr::test(0, false))))
         );
         assert_eq!(
             parse("(!x0==0)*"),
-            Ok(Expr::star(Expr::complement(Expr::test(Field(0), Value(0)))))
+            Ok(Expr::star(Expr::complement(Expr::test(0, false))))
         );
         assert_eq!(
             parse("(x0==0)**"), // Multiple stars
-            Ok(Expr::star(Expr::star(Expr::test(Field(0), Value(0)))))
+            Ok(Expr::star(Expr::star(Expr::test(0, false))))
         );
     }
 
@@ -444,10 +445,10 @@ mod tests {
             // Precedence: +,^,- > & > ; > U
             // ; is lower than +
             Ok(Expr::sequence(
-                Expr::test(Field(0), Value(0)),
+                Expr::test(0, false),
                 Expr::union(
-                    Expr::test(Field(1), Value(1)),
-                    Expr::test(Field(2), Value(0))
+                    Expr::test(1, true),
+                    Expr::test(2, false)
                 )
             ))
         );
@@ -455,10 +456,10 @@ mod tests {
             parse("(x0==0 ; x1==1) + x2==0"),
             Ok(Expr::union(
                 Expr::sequence(
-                    Expr::test(Field(0), Value(0)),
-                    Expr::test(Field(1), Value(1))
+                    Expr::test(0, false),
+                    Expr::test(1, true)
                 ),
-                Expr::test(Field(2), Value(0))
+                Expr::test(2, false)
             ))
         );
 
@@ -468,19 +469,19 @@ mod tests {
             // + higher than &
             Ok(Expr::union(
                 Expr::intersect(
-                    Expr::test(Field(0), Value(0)),
-                    Expr::test(Field(1), Value(1))
+                    Expr::test(0, false),
+                    Expr::test(1, true)
                 ),
-                Expr::test(Field(2), Value(0))
+                Expr::test(2, false)
             ))
         );
         assert_eq!(
             parse("x0==0 & (x1==1 + x2==0)"),
             Ok(Expr::intersect(
-                Expr::test(Field(0), Value(0)),
+                Expr::test(0, false),
                 Expr::union(
-                    Expr::test(Field(1), Value(1)),
-                    Expr::test(Field(2), Value(0))
+                    Expr::test(1, true),
+                    Expr::test(2, false)
                 )
             ))
         );
@@ -490,22 +491,22 @@ mod tests {
     fn test_ltl_ops() {
         assert_eq!(
             parse("X x0==0"),
-            Ok(Expr::ltl_next(Expr::test(Field(0), Value(0))))
+            Ok(Expr::ltl_next(Expr::test(0, false)))
         );
         assert_eq!(
             parse("x0==0 U x1==1"),
             Ok(Expr::ltl_until(
-                Expr::test(Field(0), Value(0)),
-                Expr::test(Field(1), Value(1))
+                Expr::test(0, false),
+                Expr::test(1, true)
             ))
         );
         assert_eq!(
             parse("x0==0 U x1==1 U x2==0"), // Right associative: x0 U (x1 U x2)
             Ok(Expr::ltl_until(
-                Expr::test(Field(0), Value(0)),
+                Expr::test(0, false),
                 Expr::ltl_until(
-                    Expr::test(Field(1), Value(1)),
-                    Expr::test(Field(2), Value(0))
+                    Expr::test(1, true),
+                    Expr::test(2, false)
                 )
             ))
         );
@@ -513,20 +514,20 @@ mod tests {
             parse("x0==0 ; x1==1 U x2==0"), // ; lower than U
             Ok(Expr::ltl_until(
                 Expr::sequence(
-                    Expr::test(Field(0), Value(0)),
-                    Expr::test(Field(1), Value(1))
+                    Expr::test(0, false),
+                    Expr::test(1, true)
                 ),
-                Expr::test(Field(2), Value(0))
+                Expr::test(2, false)
             ))
         );
         assert_eq!(
             parse("(x0==0 ; x1==1) U x2==0"),
             Ok(Expr::ltl_until(
                 Expr::sequence(
-                    Expr::test(Field(0), Value(0)),
-                    Expr::test(Field(1), Value(1))
+                    Expr::test(0, false),
+                    Expr::test(1, true)
                 ),
-                Expr::test(Field(2), Value(0))
+                Expr::test(2, false)
             ))
         );
     }
@@ -540,8 +541,8 @@ mod tests {
             Ok(Expr::ltl_until(
                 Expr::sequence(
                     Expr::complement(Expr::star(Expr::union(
-                        Expr::test(Field(0), Value(0)),
-                        Expr::assign(Field(1), Value(1))
+                        Expr::test(0, false),
+                        Expr::assign(1, true)
                     ))),
                     Expr::dup()
                 ),
