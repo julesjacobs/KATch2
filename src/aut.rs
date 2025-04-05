@@ -372,6 +372,8 @@ impl Aut {
                 let delta_e1 = self.delta(e1);
                 let delta_e1_seq_e2 = self.st_postcompose(delta_e1, e2);
                 
+                // BUG: this is wrong, we need epsilon to compute the transformation like in KATch1.
+                // This seems to be fundamental to symbolic / weighted automata...
                 if self.epsilon(e1) {
                     let delta_e2 = self.delta(e2);
                     self.st_union(delta_e1_seq_e2, delta_e2)
