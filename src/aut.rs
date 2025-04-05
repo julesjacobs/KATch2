@@ -28,49 +28,7 @@ type State = usize;
 // Symbolic transitions ST<T>
 // Symbolic transitions represent, for each T, a set of packet pairs that can transition to T. These are represented as a finite map from T to SPP's. 
 // A symbolic transition can be deterministic or nondeterministic, depending on whether the SPPs associated with different T's are disjoint. We typically keep ST's in deterministic form.
-
-pub struct ST<T>(HashMap<T, spp::SPP>);
-
-impl<T: Hash + Eq> ST<T> {
-    pub fn empty() -> Self {
-        ST(HashMap::new())
-    }
-
-    pub fn singleton(spp: spp::SPP, t: T) -> Self {
-        ST(HashMap::from([(t, spp)]))
-    }
-
-    pub fn op1<R>(&self, op: fn(T) -> R) -> ST<R> {
-        todo!();
-    }
-    pub fn op2<R>(&self, other: &ST<T>, op: fn(T, T) -> R) -> ST<R>{
-        todo!();
-    }
-
-    fn union(st1: Self, st2: Self) -> Self {
-        todo!()
-    }
-
-    fn intersect(st1: Self, st2: Self) -> Self {
-        todo!()
-    }
-
-    fn xor(st1: Self, st2: Self) -> Self {
-        todo!()
-    }
-
-    fn difference(st1: Self, st2: Self) -> Self {
-        todo!()
-    }
-
-    fn complement(st: Self) -> Self {
-        todo!()
-    }
-
-    fn postcompose(st: Self, expr: State) -> Self {
-        todo!()
-    }
-}
+pub struct ST(HashMap<State, spp::SPP>);
  
 struct Aut {
     aexprs: Vec<AExpr>,
@@ -81,7 +39,7 @@ struct Aut {
 
 impl Aut {
     pub fn new(num_vars: u32) -> Self {
-        let mut aut = Aut {
+        let aut = Aut {
             aexprs: vec![],
             aexpr_map: HashMap::new(),
             spp: spp::SPPstore::new(num_vars),
@@ -89,6 +47,8 @@ impl Aut {
         };
         aut
     }
+
+    // --- States ---
 
     // Internal function to hash-cons an expression
     fn intern(&mut self, expr: AExpr) -> State {
@@ -281,19 +241,80 @@ impl Aut {
         }
     }
 
-    pub fn delta(&mut self, expr_id: State) -> ST<State> {
+    // --- Symbolic transitions: ST ---
+
+    pub fn st_empty(&mut self) -> ST {
+        ST(HashMap::new())
+    }
+
+    pub fn st_singleton(&mut self, spp: spp::SPP, state: State) -> ST {
+        ST(HashMap::from([(state, spp)]))
+    }
+
+    fn st_union(&mut self, st1: ST, st2: ST) -> ST {
+        todo!()
+    }
+
+    fn st_intersect(&mut self, st1: ST, st2: ST) -> ST {
+        todo!()
+    }
+
+    fn st_xor(&mut self, st1: ST, st2: ST) -> ST {
+        todo!()
+    }
+
+    fn st_difference(&mut self, st1: ST, st2: ST) -> ST {
+        todo!()
+    }
+
+    fn st_complement(&mut self, st: ST) -> ST {
+        todo!()
+    }
+
+    fn st_postcompose(&mut self, st: ST, expr: State) -> ST {
+        todo!()
+    }
+
+    // --- Automaton construction: delta, epsilon ---
+
+    pub fn delta(&mut self, expr_id: State) -> ST {
         match self.get_expr(expr_id) {
-            AExpr::SPP(spp) => ST::singleton(spp, self.mk_end()),
-            AExpr::Union(e1, e2) => ST::union(self.delta(e1), self.delta(e2)),
-            AExpr::Intersect(e1, e2) => ST::intersect(self.delta(e1), self.delta(e2)),
-            AExpr::Xor(e1, e2) => ST::xor(self.delta(e1), self.delta(e2)),
-            AExpr::Difference(e1, e2) => ST::difference(self.delta(e1), self.delta(e2)),
-            AExpr::Complement(e) => ST::complement(self.delta(e)),
+            AExpr::SPP(spp) => {
+                let end = self.mk_end();
+                self.st_singleton(spp, end)
+            },
+            AExpr::Union(e1, e2) => {
+                let delta1 = self.delta(e1);
+                let delta2 = self.delta(e2);
+                self.st_union(delta1, delta2)
+            },
+            AExpr::Intersect(e1, e2) => {
+                let delta1 = self.delta(e1);
+                let delta2 = self.delta(e2);
+                self.st_intersect(delta1, delta2)
+            },
+            AExpr::Xor(e1, e2) => {
+                let delta1 = self.delta(e1);
+                let delta2 = self.delta(e2);
+                self.st_xor(delta1, delta2)
+            },
+            AExpr::Difference(e1, e2) => {
+                let delta1 = self.delta(e1);
+                let delta2 = self.delta(e2);
+                self.st_difference(delta1, delta2)
+            },
+            AExpr::Complement(e) => {
+                let delta_e = self.delta(e);
+                self.st_complement(delta_e)
+            },
             AExpr::Sequence(e1, e2) => {
                 // delta(e1 ; e2) = delta(e1) ; e2 + epsilon(e1) delta(e2)
-                let delta_e1_seq_e2 = ST::postcompose(self.delta(e1), e2); // Pass index e2
+                let delta_e1 = self.delta(e1);
+                let delta_e1_seq_e2 = self.st_postcompose(delta_e1, e2);
+                
                 if self.epsilon(e1) {
-                    ST::union(delta_e1_seq_e2, self.delta(e2))
+                    let delta_e2 = self.delta(e2);
+                    self.st_union(delta_e1_seq_e2, delta_e2)
                 } else {
                     delta_e1_seq_e2
                 }
@@ -303,17 +324,18 @@ impl Aut {
                 // Note: epsilon(e*) is always true, handled implicitly by the definition of Star.
                 // We need to create the AExp for e* first.
                 let star_e = self.mk_star(e); // Get the index for e*
-                ST::postcompose(self.delta(e), star_e) // Pass index star_e
-            }
+                let delta_e = self.delta(e);
+                self.st_postcompose(delta_e, star_e) // Pass index star_e
+            }   
             AExpr::Dup => {
                 // delta(dup) = 1 ; SPP(1)  (Assuming SPP(1) means the identity mutation)
                 // Need to create SPP(1) via smart constructor
                 let spp_one = self.mk_spp(self.spp.one);
-                ST::singleton(self.spp.one, spp_one)
+                self.st_singleton(self.spp.one, spp_one)
             }
-            AExpr::LtlNext(_) => todo!(),
-            AExpr::LtlUntil(_, _) => todo!(),
-            AExpr::End => ST::empty(),
+            AExpr::LtlNext(_) => todo!("Implement delta for LTL Next"),
+            AExpr::LtlUntil(_, _) => todo!("Implement delta for LTL Until"),
+            AExpr::End => self.st_empty(),
         }
     }
 
@@ -328,8 +350,8 @@ impl Aut {
             AExpr::Sequence(e1, e2) => self.epsilon(e1) && self.epsilon(e2),
             AExpr::Star(_) => true,
             AExpr::Dup => false,
-            AExpr::LtlNext(_) => todo!(), // Epsilon of LTL Next should likely be false
-            AExpr::LtlUntil(_, _) => todo!(), // Epsilon of LTL Until depends on the first argument
+            AExpr::LtlNext(_) => todo!("Implement epsilon for LTL Next"),
+            AExpr::LtlUntil(_, _) => todo!("Implement epsilon for LTL Until"),
             AExpr::End => true,
         }
     }
