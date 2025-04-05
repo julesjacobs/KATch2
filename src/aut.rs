@@ -19,6 +19,7 @@ enum AExpr {
     LtlNext(State),         // X e
     LtlUntil(State, State),   // e1 U e2
     End,                    // represents the singleton set containing the empty string
+    Top,                    // represents the set of all strings
 }
 
 // A State is an index into the Aut's expression table.
@@ -28,7 +29,19 @@ type State = usize;
 // Symbolic transitions ST<T>
 // Symbolic transitions represent, for each T, a set of packet pairs that can transition to T. These are represented as a finite map from T to SPP's. 
 // A symbolic transition can be deterministic or nondeterministic, depending on whether the SPPs associated with different T's are disjoint. We typically keep ST's in deterministic form.
-pub struct ST(HashMap<State, spp::SPP>);
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ST {
+    transitions: HashMap<State, spp::SPP>,
+}
+
+impl ST {
+    pub fn new(transitions: HashMap<State, spp::SPP>) -> Self {
+        ST { transitions }
+    }
+    pub fn empty() -> Self {
+        ST { transitions: HashMap::new() }
+    }
+}
  
 struct Aut {
     aexprs: Vec<AExpr>,
@@ -172,6 +185,10 @@ impl Aut {
         self.intern(AExpr::Dup)
     }
 
+    fn mk_top(&mut self) -> State {
+        self.intern(AExpr::Top)
+    }
+
     fn mk_end(&mut self) -> State {
         self.intern(AExpr::End)
     }
@@ -244,35 +261,82 @@ impl Aut {
     // --- Symbolic transitions: ST ---
 
     pub fn st_empty(&mut self) -> ST {
-        ST(HashMap::new())
+        ST::new(HashMap::new())
     }
 
     pub fn st_singleton(&mut self, spp: spp::SPP, state: State) -> ST {
-        ST(HashMap::from([(state, spp)]))
+        ST::new(HashMap::from([(state, spp)]))
     }
 
-    fn st_union(&mut self, st1: ST, st2: ST) -> ST {
-        todo!()
+    pub fn st_insert(&mut self, st: &mut ST, state: State, spp: spp::SPP) {
+        // Check if the state already exists, if so union the spp's
+        if let Some(existing_spp) = st.transitions.get_mut(&state) {
+            *existing_spp = self.spp.union(*existing_spp, spp);
+        } else {
+            // Check if the spp is 0, if so don't insert
+            if spp != self.spp.zero {
+                st.transitions.insert(state, spp);
+            }
+        }
     }
 
     fn st_intersect(&mut self, st1: ST, st2: ST) -> ST {
-        todo!()
+        let mut result = ST::empty();
+        for (state1, spp1) in &st1.transitions {
+            for (state2, spp2) in &st2.transitions {
+                let intersect_state = self.mk_intersect(*state1, *state2);
+                let spp = self.spp.intersect(*spp1, *spp2);
+                self.st_insert(&mut result, intersect_state, spp);
+            }
+        }
+        result
     }
 
-    fn st_xor(&mut self, st1: ST, st2: ST) -> ST {
-        todo!()
+    pub fn st_union(&mut self, st1: ST, st2: ST) -> ST {
+        let st1_complement = self.st_complement(st1);
+        let st2_complement = self.st_complement(st2);
+        let st = self.st_intersect(st1_complement, st2_complement);
+        self.st_complement(st)
     }
 
     fn st_difference(&mut self, st1: ST, st2: ST) -> ST {
-        todo!()
+        // (st1 - st2) = st1 & !st2
+        let st2_complement = self.st_complement(st2);
+        self.st_intersect(st1, st2_complement)
+    }
+
+    fn st_xor(&mut self, st1: ST, st2: ST) -> ST {
+        // (st1 ^ st2) = (st1 - st2) + (st2 - st1)
+        let st1_minus_st2 = self.st_difference(st1.clone(), st2.clone());
+        let st2_minus_st1 = self.st_difference(st2, st1);
+        self.st_union(st1_minus_st2, st2_minus_st1)
     }
 
     fn st_complement(&mut self, st: ST) -> ST {
-        todo!()
+        let mut result = ST::empty();
+        for (&state, &spp) in &st.transitions {
+            let new_state = self.mk_complement(state);
+            self.st_insert(&mut result, new_state, spp);
+        }
+        // Find the union of all the spp's in the transitions
+        let mut union_spp = self.spp.zero;
+        for (_, &spp) in &st.transitions {
+            union_spp = self.spp.union(union_spp, spp);
+        }
+        // Add a transition from the complement of the union to the Top state
+        let complement_spp = self.spp.complement(union_spp);
+        let top = self.mk_top();
+        self.st_insert(&mut result, top, complement_spp);
+        result
     }
 
     fn st_postcompose(&mut self, st: ST, expr: State) -> ST {
-        todo!()
+        let mut result = ST::empty();
+        for (state, spp) in st.transitions {
+            let new_state = self.mk_sequence(state, expr);
+            self.st_insert(&mut result, new_state, spp);
+        }
+        result
     }
 
     // --- Automaton construction: delta, epsilon ---
@@ -336,6 +400,10 @@ impl Aut {
             AExpr::LtlNext(_) => todo!("Implement delta for LTL Next"),
             AExpr::LtlUntil(_, _) => todo!("Implement delta for LTL Until"),
             AExpr::End => self.st_empty(),
+            AExpr::Top => {
+                let top = self.mk_top();
+                self.st_singleton(self.spp.top, top)
+            }
         }
     }
 
@@ -353,6 +421,7 @@ impl Aut {
             AExpr::LtlNext(_) => todo!("Implement epsilon for LTL Next"),
             AExpr::LtlUntil(_, _) => todo!("Implement epsilon for LTL Until"),
             AExpr::End => true,
+            AExpr::Top => true,
         }
     }
 }
