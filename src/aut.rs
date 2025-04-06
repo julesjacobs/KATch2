@@ -374,12 +374,12 @@ impl Aut {
                 self.st_union(delta_e1_seq_e2, epsilon_e1_seq_e2)
             }
             AExpr::Star(e) => {
-                // delta(e*) = delta(e) ; e*
-                // Note: epsilon(e*) is always true, handled implicitly by the definition of Star.
-                // We need to create the AExp for e* first.
-                let star_e = self.mk_star(e); // Get the index for e*
+                // delta(e*) = epsilon(e) delta(e) e*
+                let epsilon_e = self.epsilon(e);
                 let delta_e = self.delta(e);
-                self.st_postcompose(delta_e, star_e) // Pass index star_e
+                let star_e = expr_id;
+                let delta_e_star_e = self.st_postcompose(delta_e, star_e);
+                self.st_precompose(epsilon_e, delta_e_star_e)
             }
             AExpr::Dup => {
                 // delta(dup) = 1 ; SPP(1)  (Assuming SPP(1) means the identity mutation)
