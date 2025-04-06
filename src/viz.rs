@@ -10,6 +10,15 @@ use std::io::Write;
 use crate::expr::Expr;
 use regex;
 
+/// Helper function to escape HTML special characters in a string
+fn html_escape(s: &str) -> String {
+    s.replace("&", "&amp;")
+     .replace("<", "&lt;")
+     .replace(">", "&gt;")
+     .replace("\"", "&quot;")
+     .replace("'", "&#39;")
+}
+
 /// Computes which nodes in the SPP DAG reachable from `root_index` can reach the `1` node.
 /// Uses memoization via the `liveness_map` to handle the DAG structure efficiently.
 /// Returns true if `root_index` is alive, false otherwise.
@@ -290,15 +299,17 @@ pub fn render_aut(root_state: usize, aut: &mut Aut, output_dir: &Path) -> Result
         // Format the expression to include HTML-like labels
         // This will make SPP references clickable in the SVG
         let spp_pattern = regex::Regex::new(r"SPP\((\d+)\)").unwrap();
-        let expr_with_links = spp_pattern.replace_all(expr, |caps: &regex::Captures| {
+        
+        // First, escape the entire expression for HTML
+        let html_safe_expr = html_escape(expr);
+        
+        // Then replace the SPP references with properly formatted HTML
+        let expr_with_links = spp_pattern.replace_all(&html_safe_expr, |caps: &regex::Captures| {
             let spp_id = &caps[1];
             format!("<FONT COLOR=\"#3498db\"><U>SPP({})</U></FONT>", spp_id)
         });
         
-        // Escape other characters in the expression
-        let escaped_expr = expr_with_links.replace("\"", "\\\"");
-        
-        let node_label = format!("{} ε:{}\n{}", state, epsilon_spp, escaped_expr);
+        // Create the node with HTML-like label
         dot_content.push_str(&format!(
             "  node{} [label=<{} ε:{}<BR/>{}>; shape=box; style=rounded];\n",
             state, state, epsilon_spp, expr_with_links
@@ -1022,10 +1033,13 @@ pub fn render_aut(root_state: usize, aut: &mut Aut, output_dir: &Path) -> Result
 
 /// Helper function to make SPP references in expressions clickable
 fn make_spp_clickable(expr: &str) -> String {
+    // First HTML escape the expression
+    let escaped_expr = html_escape(expr);
+    
     // Use regex to find all instances of SPP(number)
     let spp_pattern = regex::Regex::new(r"SPP\((\d+)\)").unwrap();
     
-    let result = spp_pattern.replace_all(expr, |caps: &regex::Captures| {
+    let result = spp_pattern.replace_all(&escaped_expr, |caps: &regex::Captures| {
         let spp_id = &caps[1];
         format!("<span class=\"expr-spp\" data-spp=\"{}\">{}</span>", spp_id, &caps[0])
     });

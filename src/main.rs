@@ -49,11 +49,6 @@ async fn main() {
     match &cli.command {
         Commands::WebUI { port } => {
             println!("Starting web UI server on port {}", port);
-            if let Err(e) = ui::create_static_files() {
-                eprintln!("Error creating static files: {}", e);
-                std::process::exit(1);
-            }
-            
             if let Err(e) = ui::start_ui(*port).await {
                 eprintln!("Error running web server: {}", e);
                 std::process::exit(1);

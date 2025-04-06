@@ -101,6 +101,17 @@ impl Aut {
             let result_spp = self.spp.union(s1, s2);
             return self.mk_spp(result_spp);
         }
+        // SPP Zero Simplification: e + 0 = e
+        if let AExpr::SPP(s) = self.get_expr(e1) {
+            if s == self.spp.zero {
+                return e2;
+            }
+        }
+        if let AExpr::SPP(s) = self.get_expr(e2) {
+            if s == self.spp.zero {
+                return e1;
+            }
+        }
 
         // TODO: Add check for SPP zero/one (e + 0 = e, e + 1 = 1)
         // Canonical ordering: Ensure smaller index comes first for commutative ops
@@ -161,6 +172,33 @@ impl Aut {
         if let AExpr::Complement(inner_e) = self.get_expr(e) {
             return inner_e;
         }
+        // De Morgan's laws and complement simplifications
+        match self.get_expr(e) {
+            AExpr::Union(e1, e2) => {
+                // !(e1 + e2) = !e1 & !e2
+                let c1 = self.mk_complement(e1);
+                let c2 = self.mk_complement(e2);
+                return self.mk_intersect(c1, c2);
+            }
+            AExpr::Intersect(e1, e2) => {
+                let c1 = self.mk_complement(e1);
+                let c2 = self.mk_complement(e2);
+                return self.mk_union(c1, c2);
+            }
+            AExpr::Difference(e1, e2) => {
+                let c1 = self.mk_complement(e1);
+                return self.mk_union(c1, e2);
+            }
+            AExpr::Xor(e1, e2) => {
+                let c1 = self.mk_complement(e1);
+                return self.mk_xor(c1, e2);
+            }
+            _ => {}
+        }
+        // Simplify !⊤ = 0
+        if let AExpr::Top = self.get_expr(e) {
+            return self.mk_spp(self.spp.zero);
+        }
 
         // SPP Simplification is not valid here, since we are complementing a set of strings!
 
@@ -172,6 +210,29 @@ impl Aut {
         if let (AExpr::SPP(s1), AExpr::SPP(s2)) = (self.get_expr(e1), self.get_expr(e2)) {
             let result_spp = self.spp.sequence(s1, s2);
             return self.mk_spp(result_spp);
+        }
+        // Simplify SPP.one ; e = e and e ; SPP.one = e and SPP.zero ; e = SPP.zero and e ; SPP.zero = SPP.zero
+        match self.get_expr(e1) {
+            AExpr::SPP(s1) => {
+                if s1 == self.spp.one {
+                    return e2;
+                }
+                if s1 == self.spp.zero {
+                    return self.mk_spp(self.spp.zero);
+                }
+            }
+            _ => {}
+        }
+        match self.get_expr(e2) {
+            AExpr::SPP(s2) => {
+                if s2 == self.spp.one {
+                    return e1;
+                }
+                if s2 == self.spp.zero {
+                    return self.mk_spp(self.spp.zero);
+                }
+            }
+            _ => {}
         }
 
         // TODO: Add check for SPP zero (0 ; e = 0, e ; 0 = 0)
@@ -185,11 +246,11 @@ impl Aut {
             return e; // Return the existing e* index
         }
 
-        // // SPP Simplification: s*
-        // if let AExpr::SPP(s) = self.get_expr(e) {
-        //     let result_spp = self.spp.star(s);
-        //     return self.mk_spp(result_spp);
-        // }
+        // SPP Simplification: s*
+        if let AExpr::SPP(s) = self.get_expr(e) {
+            let result_spp = self.spp.star(s);
+            return self.mk_spp(result_spp);
+        }
 
         self.intern(AExpr::Star(e))
     }
