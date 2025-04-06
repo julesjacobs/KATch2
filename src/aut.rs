@@ -2,6 +2,7 @@ use crate::expr::Expr;
 use crate::sp;
 use crate::spp;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::hash::Hash;
 // An AExpr represents an automaton state.
 // This is essentially a compressed and hash-consed form of a NetKAT expression.
@@ -488,5 +489,43 @@ impl Aut {
     /// Returns a reference to the internal SPPstore
     pub fn spp_store(&self) -> &spp::SPPstore {
         &self.spp
+    }
+    
+    /// Returns a string representation of the AExpr for the given state
+    pub fn state_to_string(&self, state: State) -> String {
+        match self.get_expr(state) {
+            AExpr::SPP(spp) => format!("SPP({})", spp),
+            AExpr::Union(e1, e2) => format!("({} + {})", self.state_to_string(e1), self.state_to_string(e2)),
+            AExpr::Intersect(e1, e2) => format!("({} & {})", self.state_to_string(e1), self.state_to_string(e2)),
+            AExpr::Xor(e1, e2) => format!("({} ^ {})", self.state_to_string(e1), self.state_to_string(e2)),
+            AExpr::Difference(e1, e2) => format!("({} - {})", self.state_to_string(e1), self.state_to_string(e2)),
+            AExpr::Complement(e) => format!("!{}", self.state_to_string(e)),
+            AExpr::Sequence(e1, e2) => format!("({} ; {})", self.state_to_string(e1), self.state_to_string(e2)),
+            AExpr::Star(e) => format!("({})*", self.state_to_string(e)),
+            AExpr::Dup => "dup".to_string(),
+            AExpr::LtlNext(e) => format!("X({})", self.state_to_string(e)),
+            AExpr::LtlUntil(e1, e2) => format!("({} U {})", self.state_to_string(e1), self.state_to_string(e2)),
+            AExpr::Top => "⊤".to_string(),
+        }
+    }
+    
+    /// Collects all SPP indices from the expression at the given state
+    pub fn collect_spps(&self, state: State, spps: &mut HashSet<spp::SPP>) {
+        match self.get_expr(state) {
+            AExpr::SPP(spp) => {
+                spps.insert(spp);
+            },
+            AExpr::Union(e1, e2) | AExpr::Intersect(e1, e2) | AExpr::Xor(e1, e2) | 
+            AExpr::Difference(e1, e2) | AExpr::Sequence(e1, e2) | AExpr::LtlUntil(e1, e2) => {
+                self.collect_spps(e1, spps);
+                self.collect_spps(e2, spps);
+            },
+            AExpr::Complement(e) | AExpr::Star(e) | AExpr::LtlNext(e) => {
+                self.collect_spps(e, spps);
+            },
+            AExpr::Dup | AExpr::Top => {
+                // No SPP to collect
+            },
+        }
     }
 }

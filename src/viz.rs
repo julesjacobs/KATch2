@@ -8,6 +8,7 @@ use crate::aut::Aut;
 use std::fs::File;
 use std::io::Write;
 use crate::expr::Expr;
+use regex;
 
 /// Computes which nodes in the SPP DAG reachable from `root_index` can reach the `1` node.
 /// Uses memoization via the `liveness_map` to handle the DAG structure efficiently.
@@ -237,6 +238,7 @@ pub fn render_aut(root_state: usize, aut: &mut Aut, output_dir: &Path) -> Result
     let mut states_to_process = vec![root_state];
     let mut transitions = Vec::new();
     let mut spp_ids = HashSet::new();
+    let mut state_expressions = HashMap::new();
     
     // Explore the automaton
     while let Some(state) = states_to_process.pop() {
@@ -244,9 +246,16 @@ pub fn render_aut(root_state: usize, aut: &mut Aut, output_dir: &Path) -> Result
             continue; // Skip if already visited
         }
         
+        // Get expression string for this state
+        let expr_string = aut.state_to_string(state);
+        state_expressions.insert(state, expr_string);
+        
         // Get epsilon for this state
         let epsilon_spp = aut.epsilon(state);
         spp_ids.insert(epsilon_spp);
+        
+        // Collect SPPs from the expression
+        aut.collect_spps(state, &mut spp_ids);
         
         // Get transitions (delta) for this state
         let delta = aut.delta(state);
@@ -272,20 +281,36 @@ pub fn render_aut(root_state: usize, aut: &mut Aut, output_dir: &Path) -> Result
     
     let mut dot_content = String::from("digraph Automaton {\n  rankdir=LR;\n");
     
-    // Add nodes
+    // Add nodes with clickable SPP references
     for state in &visited_states {
         let epsilon_spp = aut.epsilon(*state);
+        let unknown = String::from("Unknown");
+        let expr = state_expressions.get(state).unwrap_or(&unknown);
+        
+        // Format the expression to include HTML-like labels
+        // This will make SPP references clickable in the SVG
+        let spp_pattern = regex::Regex::new(r"SPP\((\d+)\)").unwrap();
+        let expr_with_links = spp_pattern.replace_all(expr, |caps: &regex::Captures| {
+            let spp_id = &caps[1];
+            format!("<FONT COLOR=\"#3498db\"><U>SPP({})</U></FONT>", spp_id)
+        });
+        
+        // Escape other characters in the expression
+        let escaped_expr = expr_with_links.replace("\"", "\\\"");
+        
+        let node_label = format!("{} ε:{}\n{}", state, epsilon_spp, escaped_expr);
         dot_content.push_str(&format!(
-            "  node{} [label=\"{} ε:{}\", shape=circle];\n",
-            state, state, epsilon_spp
+            "  node{} [label=<{} ε:{}<BR/>{}>; shape=box; style=rounded];\n",
+            state, state, epsilon_spp, expr_with_links
         ));
     }
     
     // Add edges
     for (src, dst, spp) in &transitions {
+        let edge_label = format!("{}", spp);
         dot_content.push_str(&format!(
             "  node{} -> node{} [label=\"{}\"];\n",
-            src, dst, spp
+            src, dst, edge_label
         ));
     }
     
@@ -314,69 +339,329 @@ pub fn render_aut(root_state: usize, aut: &mut Aut, output_dir: &Path) -> Result
     let html_path = output_dir.join("report.html");
     let mut html_content = String::from(
         r#"<!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Automaton Visualization Report</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Automaton Visualization</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
-        h1, h2 { color: #333; }
-        .section { margin-bottom: 30px; }
-        .flex-container { display: flex; flex-wrap: wrap; gap: 20px; }
-        .visualization { 
-            border: 1px solid #ddd; 
-            padding: 10px; 
-            border-radius: 5px;
-            margin-bottom: 15px;
+        :root {
+            --primary-color: #2c3e50;
+            --secondary-color: #34495e;
+            --accent-color: #3498db;
+            --background-color: #f8f9fa;
+            --card-color: #ffffff;
+            --hover-color: #eef7fc;
+            --border-color: #e0e0e0;
+            --text-color: #333333;
         }
-        table { border-collapse: collapse; width: 100%; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-        th { background-color: #f2f2f2; }
-        img { max-width: 100%; }
+        body {
+            font-family: 'Linux Libertine', 'Times New Roman', Times, serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--background-color);
+            color: var(--text-color);
+            line-height: 1.5;
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 10px;
+        }
+        header {
+            margin-bottom: 0.75rem;
+        }
+        h1, h2, h3 {
+            color: var(--primary-color);
+            font-weight: normal;
+            margin-top: 0.25rem;
+            margin-bottom: 0.25rem;
+        }
+        h1 {
+            font-size: 1.6rem;
+        }
+        h2 {
+            font-size: 1.3rem;
+            margin-top: 1rem;
+        }
+        .section {
+            background-color: var(--card-color);
+            border: 1px solid var(--border-color);
+            padding: 10px;
+            margin-bottom: 12px;
+        }
+        .visualization {
+            max-width: 100%;
+            height: auto;
+            display: block;
+            margin: 0 auto;
+        }
+        .flex-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: flex-start;
+            align-items: stretch;
+        }
+        .spp-row {
+            display: flex;
+            flex-wrap: wrap;
+            width: 100%;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .spp-card {
+            display: flex;
+            flex-direction: column;
+            background-color: var(--card-color);
+            border: 1px solid var(--border-color);
+            padding: 5px;
+            flex: 0 1 auto;
+            max-width: 200px;
+        }
+        .spp-title {
+            font-size: 1rem;
+            font-weight: bold;
+            margin-bottom: 3px;
+            color: var(--primary-color);
+            padding-bottom: 2px;
+        }
+        .spp-img-container {
+            flex-grow: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+        .spp-img {
+            max-width: 100%;
+            transform: scale(0.5);
+            transform-origin: center;
+        }
+        .tooltip {
+            position: absolute;
+            visibility: hidden;
+            background-color: white;
+            border-radius: 2px;
+            border: 1px solid #ddd;
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.1);
+            padding: 8px;
+            z-index: 1000;
+            max-width: 300px;
+            transition: opacity 0.3s;
+            opacity: 0;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 0.5rem 0;
+            font-size: 0.9rem;
+        }
+        th, td {
+            padding: 6px 8px;
+            text-align: left;
+            border: 1px solid var(--border-color);
+        }
+        th {
+            background-color: var(--secondary-color);
+            color: white;
+            font-weight: normal;
+        }
+        tr:nth-child(even) {
+            background-color: var(--hover-color);
+        }
+        a {
+            color: var(--accent-color);
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            overflow: auto;
+        }
+        .modal-content {
+            background-color: white;
+            margin: 5% auto;
+            padding: 15px;
+            border: 1px solid var(--border-color);
+            max-width: 700px;
+            width: 80%;
+            position: relative;
+        }
+        .close-button {
+            color: #aaa;
+            float: right;
+            font-size: 22px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close-button:hover {
+            color: black;
+        }
+        .svg-container {
+            position: relative;
+            width: 100%;
+            overflow: auto;
+            max-height: 70vh;
+            border: 1px solid var(--border-color);
+            margin-bottom: 10px;
+        }
+        /* Highlight effect for edges and nodes */
+        .node-highlight {
+            filter: drop-shadow(0 0 5px var(--accent-color));
+        }
+        .edge-highlight {
+            stroke-width: 2;
+            stroke: var(--accent-color);
+        }
+        .tooltip-content img {
+            max-width: 100%;
+            height: auto;
+        }
+        .state-link, .spp-link {
+            cursor: pointer;
+            color: var(--accent-color);
+            text-decoration: underline;
+            display: inline-block;
+        }
+        .spp-reference {
+            display: inline-block;
+            color: var(--accent-color);
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .expr-text {
+            max-width: 500px;
+            overflow-wrap: break-word;
+            word-wrap: break-word;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            padding: 3px;
+            background-color: #f5f5f5;
+            border: 1px solid #eee;
+        }
+        .expr-spp {
+            color: var(--accent-color);
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .expr-spp:hover {
+            text-decoration: underline;
+        }
+        footer {
+            font-size: 0.8rem;
+            color: #666;
+            text-align: center;
+            margin-top: 15px;
+            padding-top: 5px;
+            border-top: 1px solid var(--border-color);
+        }
     </style>
 </head>
 <body>
-    <h1>Automaton Visualization Report</h1>
+    <header>
+        <h1>Automaton Visualization</h1>
+    </header>
     
     <div class="section">
         <h2>Automaton Structure</h2>
-        <div class="visualization">
-            <img src="automaton.svg" alt="Automaton Graph">
+        <div class="svg-container" id="automaton-container">
+            <object id="automaton-svg" data="automaton.svg" type="image/svg+xml" class="visualization"></object>
+            <div id="tooltip" class="tooltip"></div>
         </div>
     </div>
     
     <div class="section">
-        <h2>State Information</h2>
-        <table>
-            <tr>
-                <th>State</th>
-                <th>Epsilon SPP</th>
-            </tr>
+        <h2>SPP Visualizations</h2>
+        <div class="flex-container" id="spp-container">
 "#,
     );
     
-    // Add state information rows
+    // Add SPP visualizations
+    let mut sorted_spps: Vec<_> = spp_ids.iter().collect();
+    sorted_spps.sort();
+    
+    // Group SPPs in rows of 4 for even height distribution
+    const CARDS_PER_ROW: usize = 4;
+    let rows = (sorted_spps.len() + CARDS_PER_ROW - 1) / CARDS_PER_ROW; // Ceiling division
+    
+    for row in 0..rows {
+        html_content.push_str("            <div class=\"spp-row\">\n");
+        
+        let start_idx = row * CARDS_PER_ROW;
+        let end_idx = std::cmp::min((row + 1) * CARDS_PER_ROW, sorted_spps.len());
+        
+        for i in start_idx..end_idx {
+            let spp = sorted_spps[i];
+            html_content.push_str(&format!(
+                "                <div class=\"spp-card\" id=\"spp-{}-card\">\n                    <div class=\"spp-title\">SPP {}</div>\n                    <div class=\"spp-img-container\"><img class=\"spp-img\" src=\"spp_{}.svg\" alt=\"SPP {}\" loading=\"lazy\"></div>\n                </div>\n",
+                spp, spp, spp, spp
+            ));
+        }
+        
+        html_content.push_str("            </div>\n");
+    }
+    
+    html_content.push_str(
+        r#"        </div>
+    </div>
+    
+    <div class="section">
+        <h2>State Information</h2>
+        <table id="state-table">
+            <thead>
+                <tr>
+                    <th>State</th>
+                    <th>Expression</th>
+                    <th>Epsilon SPP</th>
+                </tr>
+            </thead>
+            <tbody>
+"#,
+    );
+    
+    // Add state information rows with clickable SPP references
     let mut state_vec: Vec<_> = visited_states.iter().collect();
     state_vec.sort();
     for state in state_vec {
         let epsilon_spp = aut.epsilon(*state);
+        let unknown = String::from("Unknown");
+        let expr_string = state_expressions.get(state).unwrap_or(&unknown);
+        
+        // Replace SPP(n) with clickable spans
+        let expr_with_links = make_spp_clickable(expr_string);
+        
         html_content.push_str(&format!(
-            "            <tr>\n                <td>{}</td>\n                <td>{} <a href=\"spp_{}.svg\">[View]</a></td>\n            </tr>\n",
-            state, epsilon_spp, epsilon_spp
+            "                <tr>\n                    <td>{}</td>\n                    <td><div class=\"expr-text\">{}</div></td>\n                    <td><span class=\"spp-reference\" data-spp=\"{}\">{}</span></td>\n                </tr>\n",
+            state, expr_with_links, epsilon_spp, epsilon_spp
         ));
     }
     
     html_content.push_str(
-        r#"        </table>
+        r#"            </tbody>
+        </table>
     </div>
     
     <div class="section">
         <h2>Transitions</h2>
-        <table>
-            <tr>
-                <th>From</th>
-                <th>To</th>
-                <th>SPP</th>
-            </tr>
+        <table id="transitions-table">
+            <thead>
+                <tr>
+                    <th>From</th>
+                    <th>To</th>
+                    <th>SPP</th>
+                </tr>
+            </thead>
+            <tbody>
 "#,
     );
     
@@ -385,34 +670,342 @@ pub fn render_aut(root_state: usize, aut: &mut Aut, output_dir: &Path) -> Result
     sorted_transitions.sort_by_key(|(src, dst, _)| (*src, *dst));
     for (src, dst, spp) in sorted_transitions {
         html_content.push_str(&format!(
-            "            <tr>\n                <td>{}</td>\n                <td>{}</td>\n                <td>{} <a href=\"spp_{}.svg\">[View]</a></td>\n            </tr>\n",
+            "                <tr>\n                    <td>{}</td>\n                    <td>{}</td>\n                    <td><span class=\"spp-reference\" data-spp=\"{}\">{}</span></td>\n                </tr>\n",
             src, dst, spp, spp
         ));
     }
     
     html_content.push_str(
-        r#"        </table>
+        r#"            </tbody>
+        </table>
     </div>
     
-    <div class="section">
-        <h2>SPP Visualizations</h2>
-        <div class="flex-container">
-"#,
-    );
+    <footer>
+        Automaton Visualization Report - Generated on <span id="generation-date"></span>
+    </footer>
     
-    // Add SPP visualizations
-    let mut sorted_spps: Vec<_> = spp_ids.iter().collect();
-    sorted_spps.sort();
-    for spp in sorted_spps {
-        html_content.push_str(&format!(
-            "            <div class=\"visualization\">\n                <h3>SPP {}</h3>\n                <img src=\"spp_{}.svg\" alt=\"SPP {}\">\n            </div>\n",
-            spp, spp, spp
-        ));
-    }
-    
-    html_content.push_str(
-        r#"        </div>
+    <!-- SPP Modal Dialog -->
+    <div id="spp-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-button">&times;</span>
+            <h2 id="modal-title">SPP Visualization</h2>
+            <div id="modal-content"></div>
+        </div>
     </div>
+
+    <script>
+        // Set the generation date
+        document.getElementById('generation-date').textContent = new Date().toLocaleDateString();
+        
+        // Initialize when the document is fully loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            // SVG manipulation variables
+            const svgContainer = document.getElementById('automaton-container');
+            const svgObject = document.getElementById('automaton-svg');
+            const tooltip = document.getElementById('tooltip');
+            let svgDoc = null;
+            
+            // Modal handling
+            const modal = document.getElementById('spp-modal');
+            const modalTitle = document.getElementById('modal-title');
+            const modalContent = document.getElementById('modal-content');
+            const closeButton = document.querySelector('.close-button');
+            
+            // Close the modal when clicking the close button or outside
+            closeButton.onclick = function() {
+                modal.style.display = 'none';
+            };
+            
+            window.onclick = function(event) {
+                if (event.target === modal) {
+                    modal.style.display = 'none';
+                }
+            };
+            
+            // SPP reference click handlers
+            document.querySelectorAll('.spp-reference, .expr-spp').forEach(ref => {
+                ref.addEventListener('click', function() {
+                    const sppId = this.getAttribute('data-spp');
+                    showSPPModal(sppId);
+                });
+            });
+            
+            // Function to show SPP in a modal
+            function showSPPModal(sppId) {
+                modalTitle.textContent = `SPP ${sppId} Visualization`;
+                modalContent.innerHTML = `<img src="spp_${sppId}.svg" alt="SPP ${sppId}" style="max-width: 100%;">`;
+                modal.style.display = 'block';
+            }
+            
+            // Wait for SVG to load
+            svgObject.addEventListener('load', function() {
+                // Get access to the SVG document
+                svgDoc = svgObject.contentDocument;
+                
+                // Process all nodes in the SVG
+                const nodes = svgDoc.querySelectorAll('[id^="node"]');
+                nodes.forEach(node => {
+                    setupNodeInteraction(node);
+                });
+                
+                // Process all edges (paths) in the SVG
+                const edges = svgDoc.querySelectorAll('path, polygon');
+                edges.forEach(edge => {
+                    if (edge.parentElement && edge.parentElement.tagName === 'g' && 
+                        edge.parentElement.getAttribute('class') === 'edge') {
+                        setupEdgeInteraction(edge);
+                    }
+                });
+                
+                // Make SPP references in SVG node labels clickable
+                makeNodeLabelSPPsClickable(svgDoc);
+            });
+            
+            // Make SPP references in SVG node labels clickable
+            function makeNodeLabelSPPsClickable(svgDoc) {
+                // Find all text elements that might contain SPP references
+                const textElements = svgDoc.querySelectorAll('text');
+                
+                textElements.forEach(textEl => {
+                    // Check if this is a text element that contains SPP reference
+                    const tspans = textEl.querySelectorAll('tspan');
+                    
+                    tspans.forEach(tspan => {
+                        // Check if this tspan contains an underlined SPP reference
+                        if (tspan.innerHTML && tspan.innerHTML.includes('SPP(')) {
+                            // Look for colored text which indicates our SPP references
+                            const sppMatch = tspan.innerHTML.match(/SPP\((\d+)\)/);
+                            if (sppMatch) {
+                                const sppId = sppMatch[1];
+                                
+                                // Make tspan clickable
+                                tspan.style.cursor = 'pointer';
+                                tspan.style.textDecoration = 'underline';
+                                
+                                // Remove any existing click listeners on the parent node
+                                const parentNode = findParentNode(tspan);
+                                if (parentNode) {
+                                    // Store the original click handler
+                                    const originalClickHandler = parentNode.onclick;
+                                    parentNode.onclick = null;
+                                    
+                                    // Create a new click handler for the node that checks the target
+                                    parentNode.addEventListener('click', function(e) {
+                                        // If click was on a tspan containing SPP, don't show epsilon
+                                        if (e.target.tagName === 'tspan' && 
+                                            e.target.innerHTML && 
+                                            e.target.innerHTML.includes('SPP(')) {
+                                            return;
+                                        }
+                                        
+                                        // Extract epsilon SPP from the label
+                                        const labelContent = parentNode.textContent;
+                                        const epsilonMatch = labelContent.match(/ε:(\d+)/);
+                                        if (epsilonMatch) {
+                                            const epsilonSpp = epsilonMatch[1];
+                                            showSPPModal(epsilonSpp);
+                                        }
+                                    });
+                                }
+                                
+                                // Add click handler to the tspan
+                                tspan.addEventListener('click', function(e) {
+                                    showSPPModal(sppId);
+                                    e.stopPropagation();
+                                });
+                            }
+                        }
+                    });
+                });
+            }
+            
+            // Helper function to find the parent node element
+            function findParentNode(element) {
+                let current = element;
+                while (current) {
+                    // Move up the DOM tree
+                    current = current.parentElement;
+                    
+                    // Check if we've found a node element
+                    if (current && current.id && current.id.startsWith('node')) {
+                        return current;
+                    }
+                    
+                    // If we hit the svg element, stop searching
+                    if (current && current.tagName === 'svg') {
+                        break;
+                    }
+                }
+                return null;
+            }
+            
+            // Setup node interaction (hover, click)
+            function setupNodeInteraction(node) {
+                // Extract state ID and epsilon SPP from the node's title or label
+                const nodeId = node.id;
+                const stateId = nodeId.replace('node', '');
+                
+                // Find the node's label element
+                const labelText = node.querySelector('text');
+                
+                if (labelText) {
+                    // We'll now handle node clicks differently to accommodate SPP references
+                    // The click handler is added in makeNodeLabelSPPsClickable
+                    
+                    // Setup hover effects
+                    node.addEventListener('mouseover', function(e) {
+                        this.classList.add('node-highlight');
+                        // Extract epsilon SPP from the label
+                        const labelContent = labelText.textContent;
+                        const epsilonMatch = labelContent.match(/ε:(\d+)/);
+                        const epsilonSpp = epsilonMatch ? epsilonMatch[1] : null;
+                        
+                        showTooltip(e, 
+                            `<div class="tooltip-content">
+                                <strong>State ${stateId}</strong>
+                                ${epsilonSpp ? `<br>Epsilon SPP: <span class=\"spp-link\" data-spp=\"${epsilonSpp}\">${epsilonSpp}</span>` : ''}
+                                <br><br>
+                                ${epsilonSpp ? `<img src="spp_${epsilonSpp}.svg" alt="SPP ${epsilonSpp}" width="200">` : ''}
+                            </div>`
+                        );
+                        e.stopPropagation();
+                    });
+                    
+                    node.addEventListener('mousemove', function(e) {
+                        updateTooltipPosition(e);
+                        e.stopPropagation();
+                    });
+                    
+                    node.addEventListener('mouseout', function(e) {
+                        this.classList.remove('node-highlight');
+                        hideTooltip();
+                        e.stopPropagation();
+                    });
+                }
+            }
+            
+            // Setup edge interaction
+            function setupEdgeInteraction(edge) {
+                const parentG = edge.parentElement;
+                if (!parentG) return;
+                
+                const titleEl = parentG.querySelector('title');
+                if (!titleEl) return;
+                
+                // Extract edge information from the title element (format is usually "node1->node2")
+                const title = titleEl.textContent;
+                const edgeMatch = title.match(/node(\d+)->node(\d+)/);
+                if (!edgeMatch) return;
+                
+                const fromState = edgeMatch[1];
+                const toState = edgeMatch[2];
+                
+                // Find the label text for this edge
+                const edgeLabel = parentG.querySelector('text');
+                let sppId = null;
+                
+                if (edgeLabel) {
+                    sppId = edgeLabel.textContent;
+                    
+                    // Make the edge label itself clickable
+                    edgeLabel.style.cursor = 'pointer';
+                    edgeLabel.addEventListener('click', function(e) {
+                        if (sppId) {
+                            showSPPModal(sppId);
+                            e.stopPropagation();
+                        }
+                    });
+                }
+                
+                // Set up hover effects for the whole edge
+                parentG.addEventListener('mouseover', function(e) {
+                    parentG.querySelectorAll('path, polygon').forEach(el => {
+                        el.classList.add('edge-highlight');
+                    });
+                    
+                    if (sppId) {
+                        showTooltip(e, 
+                            `<div class="tooltip-content">
+                                <strong>Transition</strong><br>
+                                From: ${fromState} → To: ${toState}<br>
+                                SPP: <span class="spp-link" data-spp="${sppId}">${sppId}</span>
+                                <br><br>
+                                <img src="spp_${sppId}.svg" alt="SPP ${sppId}" width="200">
+                            </div>`
+                        );
+                    }
+                    e.stopPropagation();
+                });
+                
+                parentG.addEventListener('mousemove', function(e) {
+                    updateTooltipPosition(e);
+                    e.stopPropagation();
+                });
+                
+                parentG.addEventListener('mouseout', function(e) {
+                    parentG.querySelectorAll('path, polygon').forEach(el => {
+                        el.classList.remove('edge-highlight');
+                    });
+                    hideTooltip();
+                    e.stopPropagation();
+                });
+                
+                // Click to show detailed SPP for the whole edge
+                parentG.addEventListener('click', function(e) {
+                    if (sppId) {
+                        showSPPModal(sppId);
+                        e.stopPropagation();
+                    }
+                });
+            }
+            
+            // Show tooltip at the event position
+            function showTooltip(event, html) {
+                tooltip.innerHTML = html;
+                updateTooltipPosition(event);
+                tooltip.style.visibility = 'visible';
+                tooltip.style.opacity = '1';
+                
+                // Add click handlers to any SPP links in the tooltip
+                tooltip.querySelectorAll('.spp-link').forEach(link => {
+                    link.addEventListener('click', function(e) {
+                        const sppId = this.getAttribute('data-spp');
+                        showSPPModal(sppId);
+                        e.stopPropagation();
+                    });
+                });
+            }
+            
+            // Update tooltip position based on mouse coordinates
+            function updateTooltipPosition(event) {
+                const rect = svgContainer.getBoundingClientRect();
+                
+                // Adjust position to keep tooltip within visible area
+                let left = event.clientX - rect.left + 10;
+                let top = event.clientY - rect.top + 10;
+                
+                // Ensure the tooltip stays within the container bounds
+                const tooltipRect = tooltip.getBoundingClientRect();
+                if (left + tooltipRect.width > rect.width) {
+                    left = event.clientX - rect.left - tooltipRect.width - 10;
+                }
+                if (top + tooltipRect.height > rect.height) {
+                    top = event.clientY - rect.top - tooltipRect.height - 10;
+                }
+                
+                tooltip.style.left = `${left}px`;
+                tooltip.style.top = `${top}px`;
+            }
+            
+            // Hide the tooltip
+            function hideTooltip() {
+                tooltip.style.opacity = '0';
+                setTimeout(() => {
+                    tooltip.style.visibility = 'hidden';
+                }, 300);
+            }
+        });
+    </script>
 </body>
 </html>
 "#,
@@ -425,6 +1018,19 @@ pub fn render_aut(root_state: usize, aut: &mut Aut, output_dir: &Path) -> Result
     println!("Successfully generated automaton visualization report at: {:?}", output_dir.join("report.html"));
     
     Ok(())
+}
+
+/// Helper function to make SPP references in expressions clickable
+fn make_spp_clickable(expr: &str) -> String {
+    // Use regex to find all instances of SPP(number)
+    let spp_pattern = regex::Regex::new(r"SPP\((\d+)\)").unwrap();
+    
+    let result = spp_pattern.replace_all(expr, |caps: &regex::Captures| {
+        let spp_id = &caps[1];
+        format!("<span class=\"expr-spp\" data-spp=\"{}\">{}</span>", spp_id, &caps[0])
+    });
+    
+    result.to_string()
 }
 
 #[cfg(test)]
