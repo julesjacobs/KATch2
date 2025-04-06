@@ -405,7 +405,7 @@ impl Aut {
                 self.st_complement(delta_e)
             }
             AExpr::Sequence(e1, e2) => {
-                // delta(e1 ; e2) = delta(e1) ; e2 + epsilon(e1) delta(e2)
+                // delta(e1 e2) = delta(e1) e2 + epsilon(e1) delta(e2)
                 let epsilon_e1 = self.epsilon(e1);
                 let delta_e1 = self.delta(e1);
                 let delta_e1_seq_e2 = self.st_postcompose(delta_e1, e2);
@@ -422,8 +422,6 @@ impl Aut {
                 self.st_precompose(epsilon_e, delta_e_star_e)
             }
             AExpr::Dup => {
-                // delta(dup) = 1 ; SPP(1)  (Assuming SPP(1) means the identity mutation)
-                // Need to create SPP(1) via smart constructor
                 let spp_one = self.mk_spp(self.spp.one);
                 self.st_singleton(self.spp.one, spp_one)
             }

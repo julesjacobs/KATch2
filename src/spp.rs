@@ -127,9 +127,11 @@ impl SPPstore {
         spp_one
     }
 
+    #[cfg(test)]
     pub fn rand(&mut self) -> SPP {
         self.rand_helper(self.num_vars)
     }
+    #[cfg(test)]
     fn rand_helper(&mut self, depth: Var) -> SPP {
         if depth == 0 {
             return if rand::random::<f64>() < 0.75 { 0 } else { 1 };
@@ -369,10 +371,12 @@ impl SPPstore {
         }
     }
 
+    #[cfg(test)]
     pub fn all(&mut self) -> Vec<SPP> {
         return self.all_helper(self.num_vars);
     }
-    pub fn all_helper(&mut self, depth: Var) -> Vec<SPP> {
+    #[cfg(test)]
+    fn all_helper(&mut self, depth: Var) -> Vec<SPP> {
         if depth == 0 {
             return vec![0, 1];
         }

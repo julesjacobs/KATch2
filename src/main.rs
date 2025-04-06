@@ -1,3 +1,5 @@
+#[allow(unused, non_snake_case)]
+
 use clap::Parser;
 use expr::Expr;
 use std::fs;
@@ -7,10 +9,10 @@ use walkdir::WalkDir;
 mod aut;
 mod expr;
 mod parser;
-#[allow(unused, non_snake_case)]
 mod pre;
 mod sp;
 mod spp;
+mod viz;
 
 /// A simple parser for K2 expressions, operating on files or directories.
 #[derive(Parser, Debug)]
