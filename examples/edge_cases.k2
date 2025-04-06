@@ -1,0 +1,41 @@
+// File containing edge cases for the K2 parser
+
+// Empty lines and comments only at start
+
+
+// Leading whitespace and comments
+  // comment
+  0 // zero
+
+// Trailing whitespace and comments
+1 // one
+  // comment
+
+// Complex nesting and parentheses
+(((x0==1))) ; (!(x1:=0 + x2==1)*)
+
+// All operators mixed (check precedence and associativity)
+x0==1 ; x1:=0 + x2==1 & x3:=0 ^ T - dup * U X 1
+
+// Multiple stars
+(x0==0)**
+
+// Deeply nested LTL
+X (X (X (x0==0 U x1==1)))
+
+// Assignments and tests with different fields
+x0 := 0 ; x1 == 1 ; x2 := 1 ; x3 == 0
+
+// Combination of sequence and other ops
+(x0 == 1 ; x1 == 0) + (x2 := 0 ; x3 := 1)
+
+// Nothing but Top
+T
+
+// Comment interspersed
+x0 == 1 // Test
+ + // Union
+ x1 == 0 // Test
+
+// End with a comment
+dup // final dup 

@@ -1,0 +1,38 @@
+// Basic Literals
+0
+1
+T
+
+// Simple Tests and Assignments (Assuming k=4, fields x0, x1, x2, x3)
+x0 == 1
+x1 := 0
+
+// Basic Binary Operations
+x0 == 1 + x1 == 1
+x0 == 0 & x1 == 1
+x0 := 1 ; x1 := 0
+
+// Kleene Star
+(x0 == 1)*
+
+// Unary Operations
+!(x0 == 1)
+X (x0 == 1)
+
+// LTL Until
+(x0 == 0) U (x1 == 1)
+
+// Dup Operation
+dup
+x0 == 1 ; dup ; x1 := 0
+
+// Precedence and Parentheses
+(x0 == 1 + x1 == 0) & x2 == 1
+x0 == 1 + x1 == 0 & x2 == 1 // Equivalent to x0 == 1 + (x1 == 0 & x2 == 1)
+
+// More Complex Combinations
+!((x0 == 1 ; x1 := 0) + (x1 == 1 ; x0 := 0))
+(x0 := 1 ; x1 := 0)* ; x0 == 1
+x0 == 1 ^ x1 == 0
+(x0 == 1 + x1 == 1) - (x0 == 1 & x1 == 1)
+X (x0 == 1 U (x1 == 0 ; x2 == 1)) 
