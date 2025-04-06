@@ -5,6 +5,7 @@
 
 #[allow(non_snake_case)]
 use std::collections::HashMap;
+use std::path::Path;
 
 /// We use indices into the SPP store to represent SPPs.
 /// The zero SPP is represented by 0 and the one SPP is represented by 1.
@@ -35,11 +36,11 @@ pub struct SPPstore {
 
 /// A node in the SPP store. Has four children, one for each combination of the two variables.
 #[derive(Debug, Eq, Hash, PartialEq, Clone, Copy)]
-struct SPPnode {
-    x00: SPP,
-    x01: SPP,
-    x10: SPP,
-    x11: SPP,
+pub struct SPPnode {
+    pub x00: SPP,
+    pub x01: SPP,
+    pub x10: SPP,
+    pub x11: SPP,
 }
 
 impl SPPstore {
@@ -68,8 +69,15 @@ impl SPPstore {
         store
     }
 
-    fn get(&self, spp: SPP) -> SPPnode {
-        self.nodes[spp as usize - 2]
+    /// Retrieves the SPPnode corresponding to a given SPP index.
+    /// Panics if the index is 0, 1, or out of bounds.
+    /// Assumes the caller ensures the index represents an internal node.
+    pub fn get(&self, spp: SPP) -> SPPnode {
+        assert!(spp >= 2, "Cannot call get on SPP 0 or 1");
+        let node_index = (spp - 2) as usize;
+        // Use the variable to make the assertion clearer
+        assert!(node_index < self.nodes.len(), "SPP index out of bounds: index {}, len {}", node_index, self.nodes.len());
+        self.nodes[node_index]
     }
 
     fn mk(&mut self, x00: SPP, x01: SPP, x10: SPP, x11: SPP) -> SPP {
