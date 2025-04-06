@@ -76,7 +76,12 @@ impl SPPstore {
         assert!(spp >= 2, "Cannot call get on SPP 0 or 1");
         let node_index = (spp - 2) as usize;
         // Use the variable to make the assertion clearer
-        assert!(node_index < self.nodes.len(), "SPP index out of bounds: index {}, len {}", node_index, self.nodes.len());
+        assert!(
+            node_index < self.nodes.len(),
+            "SPP index out of bounds: index {}, len {}",
+            node_index,
+            self.nodes.len()
+        );
         self.nodes[node_index]
     }
 

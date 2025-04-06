@@ -8,11 +8,7 @@ use std::process::Command;
 /// Computes which nodes in the SPP DAG reachable from `root_index` can reach the `1` node.
 /// Uses memoization via the `liveness_map` to handle the DAG structure efficiently.
 /// Returns true if `root_index` is alive, false otherwise.
-fn compute_liveness(
-    index: SPP,
-    store: &SPPstore,
-    liveness_map: &mut HashMap<SPP, bool>,
-) -> bool {
+fn compute_liveness(index: SPP, store: &SPPstore, liveness_map: &mut HashMap<SPP, bool>) -> bool {
     // Check memoization table first
     if let Some(&is_alive) = liveness_map.get(&index) {
         return is_alive;
@@ -22,7 +18,8 @@ fn compute_liveness(
     let is_alive = match index {
         0 => false, // Node 0 is never considered alive (cannot reach 1)
         1 => true,  // Node 1 is always alive
-        _ => {      // Internal node
+        _ => {
+            // Internal node
             // This get might panic if index is invalid, but that indicates an issue elsewhere.
             let node = store.get(index);
             let children = [node.x00, node.x01, node.x10, node.x11];
@@ -90,8 +87,9 @@ fn generate_dot_recursive(
             ));
 
             let zero_edge_style = "style=dashed, arrowhead=none, color=red"; // Corresponds to 'f' or 0 output/input
-            let one_edge_style = "style=solid, arrowhead=none, color=green";  // Corresponds to 't' or 1 output/input
-            let intermediate_node_style = "shape=point, width=0.00, height=0.00, style=filled, fillcolor=white";
+            let one_edge_style = "style=solid, arrowhead=none, color=green"; // Corresponds to 't' or 1 output/input
+            let intermediate_node_style =
+                "shape=point, width=0.00, height=0.00, style=filled, fillcolor=white";
 
             let mut children_to_recurse = HashSet::new();
 
@@ -99,9 +97,9 @@ fn generate_dot_recursive(
             // Suffix indicates input/output pair: tt (true/true), tf (true/false), ft (false/true), ff (false/false)
             let transitions = [
                 (node.x00, "tt", one_edge_style, one_edge_style), // input=t(1), output=t(1)
-                (node.x01, "tf", one_edge_style, zero_edge_style),// input=t(1), output=f(0)
+                (node.x01, "tf", one_edge_style, zero_edge_style), // input=t(1), output=f(0)
                 (node.x10, "ft", zero_edge_style, one_edge_style), // input=f(0), output=t(1)
-                (node.x11, "ff", zero_edge_style, zero_edge_style),// input=f(0), output=f(0)
+                (node.x11, "ff", zero_edge_style, zero_edge_style), // input=f(0), output=f(0)
             ];
 
             for &(child_node, suffix, input_style, output_style) in &transitions {
@@ -111,7 +109,8 @@ fn generate_dot_recursive(
                     let inter_id = format!("inter_{}_{}", index, suffix);
 
                     // Define the unique intermediate node
-                    dot_string.push_str(&format!("  {} [{}];\n", inter_id, intermediate_node_style));
+                    dot_string
+                        .push_str(&format!("  {} [{}];\n", inter_id, intermediate_node_style));
 
                     // Edge from parent to intermediate node (style based on input var)
                     dot_string.push_str(&format!(
@@ -133,7 +132,7 @@ fn generate_dot_recursive(
 
             // Recurse for each unique child discovered that needs further expansion
             for child_index in children_to_recurse {
-                 generate_dot_recursive(child_index, store, dot_string, visited, liveness_map);
+                generate_dot_recursive(child_index, store, dot_string, visited, liveness_map);
             }
         }
     }
@@ -200,7 +199,8 @@ pub fn render_spp(index: SPP, store: &SPPstore, output_dir: &Path) -> Result<()>
             ErrorKind::Other,
             format!(
                 "Graphviz 'dot' command failed with status: {}. Stderr: {}",
-                output.status, stderr.trim()
+                output.status,
+                stderr.trim()
             ),
         ));
     }
@@ -220,8 +220,8 @@ pub fn render_spp(index: SPP, store: &SPPstore, output_dir: &Path) -> Result<()>
 mod tests {
     use super::*; // Import items from the parent module (viz.rs)
     use crate::spp::SPPstore; // Need the store to create and manage SPPs
-    use std::path::Path;
     use crate::spp::Var;
+    use std::path::Path;
 
     // Define a constant for the number of variables for test SPPs
     const TEST_NUM_VARS: Var = 3; // Adjust as needed for complexity
@@ -245,14 +245,12 @@ mod tests {
 
         // Attempt to render the SPP
         // Use expect to fail the test immediately if render_spp returns an error
-        render_spp(random_spp_index, &store, output_dir)
-            .expect("Failed to render the random SPP");
+        render_spp(random_spp_index, &store, output_dir).expect("Failed to render the random SPP");
 
         // The primary check is manual inspection of the SVG file in TEST_OUTPUT_DIR
         println!(
             "Test finished. Please check the generated SVG file for SPP {} in the '{}' directory.",
-            random_spp_index,
-            TEST_OUTPUT_DIR
+            random_spp_index, TEST_OUTPUT_DIR
         );
     }
 
@@ -263,13 +261,11 @@ mod tests {
         let output_dir = Path::new(TEST_OUTPUT_DIR);
 
         // Render SPP 0 (Zero)
-        render_spp(store.zero, &store, output_dir)
-            .expect("Failed to render SPP 0 (Zero)");
+        render_spp(store.zero, &store, output_dir).expect("Failed to render SPP 0 (Zero)");
         println!("Rendered SPP 0 (Zero) to {}", TEST_OUTPUT_DIR);
 
         // Render SPP 1 (One)
-        render_spp(store.one, &store, output_dir)
-            .expect("Failed to render SPP 1 (One)");
+        render_spp(store.one, &store, output_dir).expect("Failed to render SPP 1 (One)");
         println!("Rendered SPP 1 (One) to {}", TEST_OUTPUT_DIR);
     }
-} 
+}
