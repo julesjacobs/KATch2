@@ -260,7 +260,9 @@ impl Aut {
         ST::new(HashMap::from([(state, spp)]))
     }
 
-    pub fn st_insert(&mut self, st: &mut ST, state: State, spp: spp::SPP) {
+    /// Insert a transition into a ST.
+    /// Precondition: spp is disjoint from all other spp's in the ST
+    pub fn st_insert_unsafe(&mut self, st: &mut ST, state: State, spp: spp::SPP) {
         // Check if the state already exists, if so union the spp's
         if let Some(existing_spp) = st.transitions.get_mut(&state) {
             *existing_spp = self.spp.union(*existing_spp, spp);
@@ -272,13 +274,29 @@ impl Aut {
         }
     }
 
+    /// Insert a transition into a ST.
+    pub fn st_insert(&mut self, st: &mut ST, state: State, spp: spp::SPP) {
+        // We have to be careful here because a naive implementation would not result in a deterministic ST
+        // Strategy: intersect the spp with all other spp's in the ST, and insert an expr union for those
+        // Separately keep track of the remaining spp that is inserted separately
+        let transitions = st.transitions.clone();
+        let mut remaining_spp = spp;
+        for (state2, spp2) in transitions {
+            let intersect_spp = self.spp.intersect(remaining_spp, spp2);
+            let union_state = self.mk_union(state, state2);
+            st.transitions.insert(union_state, intersect_spp);
+            remaining_spp = self.spp.difference(remaining_spp, intersect_spp);
+        }
+        st.transitions.insert(state, remaining_spp);
+    }
+
     fn st_intersect(&mut self, st1: ST, st2: ST) -> ST {
         let mut result = ST::empty();
         for (state1, spp1) in &st1.transitions {
             for (state2, spp2) in &st2.transitions {
                 let intersect_state = self.mk_intersect(*state1, *state2);
                 let spp = self.spp.intersect(*spp1, *spp2);
-                self.st_insert(&mut result, intersect_state, spp);
+                self.st_insert_unsafe(&mut result, intersect_state, spp);
             }
         }
         result
@@ -308,7 +326,7 @@ impl Aut {
         let mut result = ST::empty();
         for (&state, &spp) in &st.transitions {
             let new_state = self.mk_complement(state);
-            self.st_insert(&mut result, new_state, spp);
+            self.st_insert_unsafe(&mut result, new_state, spp);
         }
         // Find the union of all the spp's in the transitions
         let mut union_spp = self.spp.zero;
@@ -318,7 +336,7 @@ impl Aut {
         // Add a transition from the complement of the union to the Top state
         let complement_spp = self.spp.complement(union_spp);
         let top = self.mk_top();
-        self.st_insert(&mut result, top, complement_spp);
+        self.st_insert_unsafe(&mut result, top, complement_spp);
         result
     }
 
@@ -326,13 +344,20 @@ impl Aut {
         let mut result = ST::empty();
         for (state, spp) in st.transitions {
             let new_state = self.mk_sequence(state, expr);
-            self.st_insert(&mut result, new_state, spp);
+            self.st_insert_unsafe(&mut result, new_state, spp);
         }
         result
     }
 
     fn st_precompose(&mut self, spp: spp::SPP, st: ST) -> ST {
-        todo!();
+        // Here we have to be careful because a naive implementation would not result in a deterministic ST
+        // Therefore we use st_insert and not st_insert_unsafe
+        let mut result = ST::empty();
+        for (state, spp2) in st.transitions {
+            let new_spp = self.spp.sequence(spp, spp2);
+            self.st_insert(&mut result, state, new_spp);
+        }
+        result
     }
 
     // --- Automaton construction: delta, epsilon ---
