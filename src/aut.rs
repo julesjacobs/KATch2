@@ -56,6 +56,7 @@ pub struct Aut {
     epsilon_map: HashMap<State, spp::SPP>,
     spp: spp::SPPstore,
     sp: sp::SPstore,
+    num_calls: u32,
 }
 
 impl Aut {
@@ -67,6 +68,7 @@ impl Aut {
             epsilon_map: HashMap::new(),
             spp: spp::SPPstore::new(num_vars),
             sp: sp::SPstore::new(num_vars),
+            num_calls: 0,
         };
         aut
     }
@@ -462,6 +464,11 @@ impl Aut {
     // --- Automaton construction: delta, epsilon ---
 
     pub fn delta(&mut self, state: State) -> ST {
+        self.num_calls += 1;
+        if self.num_calls > 50 {
+            println!("Delta called {} times, artificial limit reached", self.num_calls);
+            return ST::empty();
+        }
         if let Some(delta) = self.delta_map.get(&state) {
             return delta.clone();
         }
