@@ -25,20 +25,18 @@ pub enum Token {
     LParen,     // (
     RParen,     // )
     Field(u32), // x followed by digits
-    DirectiveK(u32), // #k=N
     Eof,        // End of input
+    Newline,
 }
 
 pub struct Lexer<'a> {
     iter: Peekable<Chars<'a>>,
-    num_fields: u32, // Number of fields, max field index is k-1
 }
 
 impl<'a> Lexer<'a> {
-    pub fn new(input: &'a str, num_fields: u32) -> Self {
+    pub fn new(input: &'a str) -> Self {
         Lexer {
             iter: input.chars().peekable(),
-            num_fields,
         }
     }
 
@@ -51,95 +49,40 @@ impl<'a> Lexer<'a> {
     }
 
     fn skip_whitespace(&mut self) {
-        loop { // Use loop for potentially multiple comments/whitespace blocks
-            self.skip_single_whitespace_block();
-            // Check if the next character starts a comment
-            if let Some(&'/') = self.peek_char() {
-                // Need to peek ahead two characters
-                let mut chars = self.iter.clone(); // Clone to peek without consuming
-                if chars.next() == Some('/') && chars.next() == Some('/') {
-                    // Consume the '//'
+        while let Some(&c) = self.peek_char() {
+            if c == '\n' {
+                break;
+            }
+            if c == '/' {
+                // Skip the first '/'
+                self.next_char();
+                if self.peek_char() == Some(&'/') {
+                    // Skip the second '/'
                     self.next_char();
-                    self.next_char();
-                    // Consume the rest of the line
+                    // Consume rest of line except newline
                     while let Some(&c) = self.peek_char() {
                         if c == '\n' {
-                            self.next_char(); // Consume the newline
-                            break; // End of comment line
-                        } else {
-                            self.next_char(); // Consume comment character
+                            break;
                         }
+                        self.next_char();
                     }
-                    // After consuming the comment and its newline, continue the loop
-                    // to handle potential whitespace/comments on the next line
                     continue;
-                } else {
-                    // It's just a single '/' or something else, break the loop
-                    break;
                 }
-            } else {
-                // Not a comment start, break the loop
                 break;
             }
-        }
-    }
-
-    // Helper to skip a block of whitespace characters
-    fn skip_single_whitespace_block(&mut self) {
-        while let Some(&c) = self.peek_char() {
-            if c.is_whitespace() {
-                self.next_char();
-            } else {
+            if !c.is_whitespace() {
                 break;
             }
+            self.next_char();
         }
     }
 
     pub fn next_token(&mut self) -> Result<Token, String> {
-        self.skip_whitespace(); // Skips whitespace AND comments now
-        // Special handling for #k= directive at the beginning of a token scan
-        if let Some(&'#') = self.peek_char() {
-            // Clone iterator to look ahead without consuming
-            let mut lookahead = self.iter.clone();
-            // Check for '#k='
-            if lookahead.next() == Some('#') && lookahead.next() == Some('k') && lookahead.next() == Some('=') {
-                // Consume '#k='
-                self.next_char();
-                self.next_char();
-                self.next_char();
-
-                let mut num_str = String::new();
-                while let Some(&c) = self.peek_char() {
-                    if c.is_digit(10) {
-                        num_str.push(self.next_char().unwrap());
-                    } else {
-                        break;
-                    }
-                }
-
-                if num_str.is_empty() {
-                    return Err("Expected digits after '#k=' directive".to_string());
-                }
-
-                return match num_str.parse::<u32>() {
-                    Ok(k_value) => {
-                        if k_value == 0 {
-                             return Err("Value for #k directive must be positive".to_string());
-                        }
-                        // Lexer simply returns the token after parsing number.
-                        // It does NOT consume or validate the rest of the line.
-                        Ok(Token::DirectiveK(k_value))
-                    }
-                    Err(_) => Err("Invalid number for #k directive".to_string()),
-                };
-            }
-            // If it starts with '#' but isn't '#k=', fall through to the normal error handling
-        }
-
-        // Original token matching logic
+        self.skip_whitespace(); // Skips whitespace AND comments, but not newlines
         match self.next_char() {
             None => Ok(Token::Eof),
             Some(c) => match c {
+                '\n' => Ok(Token::Newline),
                 '0' => Ok(Token::Zero),
                 '1' => Ok(Token::One),
                 '+' => Ok(Token::Plus),
@@ -183,16 +126,7 @@ impl<'a> Lexer<'a> {
                         Err("Expected digits after 'x' for field".to_string())
                     } else {
                         match num_str.parse::<u32>() {
-                            Ok(index) => {
-                                if index < self.num_fields {
-                                    Ok(Token::Field(index))
-                                } else {
-                                    Err(format!(
-                                        "Field index {} exceeds maximum k={}",
-                                        index, self.num_fields
-                                    ))
-                                }
-                            }
+                            Ok(index) => Ok(Token::Field(index)),
                             Err(_) => Err("Invalid field index number".to_string()),
                         }
                     }
@@ -212,19 +146,6 @@ impl<'a> Lexer<'a> {
                 }
                 _ => Err(format!("Unexpected character: {}", c)),
             },
-        }
-    }
-
-    /// Consumes characters until the next newline or EOF.
-    /// Used after parsing // comments.
-    fn consume_rest_of_line(&mut self) {
-         while let Some(&c) = self.peek_char() {
-            if c == '\n' {
-                self.next_char(); // Consume the newline
-                break;
-            } else {
-                self.next_char(); // Consume other character
-            }
         }
     }
 }
@@ -249,34 +170,53 @@ pub struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(lexer: Peekable<Lexer<'a>>, num_fields: u32) -> Self {
+    pub fn new(lexer: Peekable<Lexer<'a>>) -> Self {
         Parser {
             lexer,
-            num_fields,
+            num_fields: 0,
         }
     }
 
     /// Parses a single complete expression.
     pub fn parse_single_expression(&mut self) -> Result<Exp, String> {
-        if let Some(Ok(Token::DirectiveK(_))) = self.lexer.peek() {
-            return Err("#k directive is only allowed at the beginning of the file".to_string());
-        }
         let expr = self.parse_until()?; // Start with lowest precedence
         Ok(expr)
     }
 
     // Helper to get the next token
-    fn next_token(&mut self) -> Result<Token, String> {
+    fn next_token_raw(&mut self) -> Result<Token, String> {
         self.lexer.next().unwrap_or(Ok(Token::Eof))
     }
 
     // Helper to peek at the next token
-    fn peek_token(&mut self) -> Result<&Token, String> {
+    fn peek_token_raw(&mut self) -> Result<&Token, String> {
         match self.lexer.peek() {
             Some(Ok(token)) => Ok(token),
             Some(Err(e)) => Err(e.clone()),
             None => Ok(&Token::Eof),
         }
+    }
+
+    // This function gets the next token after skipping newlines
+    fn next_token(&mut self) -> Result<Token, String> {
+        loop {
+            match self.next_token_raw() {
+                Ok(Token::Newline) => continue,
+                Ok(token) => return Ok(token),
+                Err(e) => return Err(e),
+            }
+        }
+    }
+
+    // This function peeks the next token after skipping newlines
+    fn peek_token(&mut self) -> Result<&Token, String> {
+        loop {
+            match self.peek_token_raw() {
+                Ok(Token::Newline) => { self.next_token()?; }
+                _ => break,
+            }
+        }
+        self.peek_token_raw()
     }
 
     // Recursive descent parsing functions based on operator precedence:
@@ -429,77 +369,21 @@ impl<'a> Parser<'a> {
 
 // --- Main Parsing Functions ---
 
-/// Parses a single NetKAT expression string into an Exp AST.
-/// `num_fields` specifies the maximum allowed fields (e.g., if num_fields=2, fields x0, x1 are allowed).
-pub fn parse_expr(input: &str, num_fields: u32) -> Result<Exp, String> {
-    let mut lexer = Lexer::new(input, num_fields).peekable();
-    let mut parser = Parser::new(lexer, num_fields);
-    let expr = parser.parse_single_expression()?;
-    match parser.peek_token() {
-        Ok(Token::Eof) => Ok(expr),
-        Ok(tok) => Err(format!("Unexpected token after single expression: {:?}. Use parse_expressions for multiple expressions.", tok)),
-        Err(e) => Err(e),
-    }
-}
+
 
 /// Parses a string containing multiple NetKAT expressions (separated by whitespace/newlines/comments)
 /// into a Vec<Exp>.
-/// `num_fields_arg` specifies the default number of allowed fields (from command line or default).
-/// This can be overridden by a `#k=N` directive at the beginning of the input string.
-pub fn parse_expressions(input: &str, num_fields_arg: u32) -> Result<Vec<Exp>, String> {
-    let mut effective_num_fields = num_fields_arg;
-
-    let mut k_from_directive = None;
-    {
-        let mut initial_lexer = Lexer::new(input, num_fields_arg).peekable();
-        match initial_lexer.peek() {
-            Some(Ok(Token::DirectiveK(k_value))) => {
-                k_from_directive = Some(*k_value);
-            }
-            Some(Err(e)) => return Err(e.clone()),
-            _ => {}
-        }
-    }
-
-    if let Some(k) = k_from_directive {
-        effective_num_fields = k;
-    }
-
-    let mut final_lexer = Lexer::new(input, effective_num_fields).peekable();
-
-    if k_from_directive.is_some() {
-        match final_lexer.next() {
-            Some(Ok(Token::DirectiveK(_))) => {
-                match final_lexer.peek() {
-                    Some(Ok(Token::Eof)) | None => { /* Ok - EOF or empty input after directive */ },
-                    Some(Ok(tok)) => {
-                        return Err(format!("Expected newline after #k=N directive, found token {:?} on same line", tok));
-                    }
-                    Some(Err(e)) => return Err(e.clone()), // Error during the peek after directive
-                }
-            }
-            Some(Err(e)) => return Err(e), // Error consuming the directive itself (should not happen)
-            _ => return Err("Internal error: Directive peek/consume mismatch".to_string()), // Should not happen
-        }
-    }
-
-    let mut parser = Parser::new(final_lexer, effective_num_fields);
+pub fn parse_expressions(input: &str) -> Result<Vec<Exp>, String> {
+    let lexer = Lexer::new(input).peekable();
+    let mut parser = Parser::new(lexer);
     let mut expressions = Vec::new();
-
     loop {
-        match parser.peek_token() {
-            Ok(Token::Eof) => break,
-            Ok(Token::DirectiveK(_)) => {
-                return Err("#k directive is only allowed at the beginning of the file".to_string());
-            }
-            Ok(_) => {
-                let expr = parser.parse_single_expression()?;
-                expressions.push(expr);
-            }
-            Err(e) => return Err(e),
+        match parser.peek_token_raw()? {
+            Token::Eof => break,
+            Token::Newline => { parser.next_token()?; continue; }
+            _ => expressions.push(parser.parse_single_expression()?),
         }
     }
-
     Ok(expressions)
 }
 
@@ -507,69 +391,8 @@ pub fn parse_expressions(input: &str, num_fields_arg: u32) -> Result<Vec<Exp>, S
 mod tests {
     use super::*;
 
-    fn parse_with_k(s: &str, k: u32) -> Result<Vec<Exp>, String> {
-        parse_expressions(s, k)
-    }
-
-    #[test]
-    fn test_k_directive() {
-        assert_eq!(
-            parse_with_k("#k=2\nx0==1", 3),
-            Ok(vec![Expr::test(0, true)])
-        );
-        assert!(parse_with_k("#k=2\nx1==0", 1).is_ok());
-        assert!(parse_with_k("#k=2\nx2==0", 3).is_err());
-        assert_eq!(
-            parse_with_k("#k=1\nx0 == 0", 5),
-             Ok(vec![Expr::test(0, false)])
-        );
-        assert!(parse_with_k("#k=1\nx1 == 0", 5).is_err());
-        assert_eq!(
-            parse_with_k("x2==1", 3),
-            Ok(vec![Expr::test(2, true)])
-        );
-        assert!(parse_with_k("x3==1", 3).is_err());
-        assert_eq!(
-             parse_with_k("  // comment \n #k=1 \n x0==0", 2),
-             Ok(vec![Expr::test(0, false)])
-        );
-        assert_eq!(
-             parse_with_k("#k=1 // Set k=1\nx0==0", 2),
-             Ok(vec![Expr::test(0, false)])
-        );
-         assert_eq!(
-             parse_with_k("#k=1  \nx0==0", 2),
-             Ok(vec![Expr::test(0, false)])
-         );
-         // Test EOF after directive
-         assert_eq!(
-             parse_with_k("#k=5", 2), // k=5 from directive, no expressions follow
-             Ok(vec![])
-         );
-         assert_eq!(
-             parse_with_k("#k=5 ", 2), // k=5 from directive, trailing space before EOF
-             Ok(vec![])
-         );
-    }
-
-    #[test]
-    fn test_k_directive_errors() {
-        assert!(parse_with_k("#k=abc\nx0==0", 3).is_err());
-        assert!(parse_with_k("#k=\nx0==0", 3).is_err());
-        assert!(parse_with_k("#k=0\nx0==0", 3).is_err());
-        assert!(parse_with_k("x0==0\n#k=2", 3).is_err());
-        assert!(parse_with_k("#k 2\nx0==0", 3).is_err());
-        // Errors due to stricter newline/comment requirement
-        assert!(parse_with_k("#k=1x0==0", 2).is_err());
-        assert!(parse_with_k("#k=2 x0==0", 3).is_err());
-        assert!(parse_with_k("#k=2/", 3).is_err()); // Single slash error
-        assert!(parse_with_k("#k=2 /", 3).is_err()); // Space then single slash
-        // Multiple directives
-        assert!(parse_with_k("#k=2\n#k=3\nx0==0", 4).is_err());
-    }
-
     fn parse(s: &str) -> Result<Exp, String> {
-        let result = parse_expressions(s, 3)?;
+        let result = parse_expressions(s)?;
         if result.len() == 1 {
             Ok(result.into_iter().next().unwrap())
         } else if result.is_empty() {
@@ -578,10 +401,6 @@ mod tests {
         else {
             Err(format!("Expected single expression, found {}", result.len()))
         }
-    }
-
-    fn parse_multi(s: &str) -> Result<Vec<Exp>, String> {
-        parse_expressions(s, 3)
     }
 
     #[test]
@@ -603,22 +422,22 @@ mod tests {
     #[test]
     fn test_multiple_expressions() {
         assert_eq!(
-            parse_multi("0\n1"),
+            parse_expressions("0\n1"),
             Ok(vec![Expr::zero(), Expr::one()])
         );
         assert_eq!(
-            parse_multi("x0==1 // first\n x1:=0 // second"),
+            parse_expressions("x0==1 // first\n x1:=0 // second"),
             Ok(vec![Expr::test(0, true), Expr::assign(1, false)])
         );
         assert_eq!(
-            parse_multi(" T ; 1 \n\n // blank line \n (x0==0)* // star"),
+            parse_expressions(" T ; 1 \n\n // blank line \n (x0==0)* // star"),
             Ok(vec![
                 Expr::sequence(Expr::top(), Expr::one()),
                 Expr::star(Expr::test(0, false))
             ])
         );
-        assert_eq!(parse_multi(""), Ok(vec![]));
-        assert_eq!(parse_multi(" // only comment "), Ok(vec![]));
+        assert_eq!(parse_expressions(""), Ok(vec![]));
+        assert_eq!(parse_expressions(" // only comment "), Ok(vec![]));
     }
 
     #[test]
@@ -626,7 +445,6 @@ mod tests {
         assert_eq!(parse("x1 := 0"), Ok(Expr::assign(1, false)));
         assert_eq!(parse("x0 == 1"), Ok(Expr::test(0, true)));
         assert_eq!(parse("x2 := 1"), Ok(Expr::assign(2, true)));
-        assert!(parse("x3 == 0").is_err(), "Field index > k");
         assert!(parse("x1 = 0").is_err(), "Single equals");
         assert!(parse("x1 := 2").is_err(), "Invalid value");
         assert!(parse("x1 == T").is_err(), "Invalid value T");
