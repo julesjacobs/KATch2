@@ -1,4 +1,6 @@
-#[allow(unused, non_snake_case)]
+#![allow(dead_code)]
+#![allow(unused)]
+#![allow(non_snake_case)]
 
 use clap::Parser;
 use expr::Expr;

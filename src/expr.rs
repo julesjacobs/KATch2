@@ -1,5 +1,4 @@
 use crate::pre::{Field, Value};
-use crate::spp;
 
 /// Represents NetKAT expressions with LTL extensions
 #[derive(Debug, Clone, PartialEq, Eq)]

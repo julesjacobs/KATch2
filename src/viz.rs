@@ -1,4 +1,4 @@
-use crate::spp::{SPP, SPPnode, SPPstore};
+use crate::spp::{SPP, SPPstore};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{Error, ErrorKind, Result};

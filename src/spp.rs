@@ -5,7 +5,6 @@
 
 #[allow(non_snake_case)]
 use std::collections::HashMap;
-use std::path::Path;
 
 /// We use indices into the SPP store to represent SPPs.
 /// The zero SPP is represented by 0 and the one SPP is represented by 1.
