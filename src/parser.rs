@@ -26,7 +26,6 @@ pub enum Token {
     RParen,     // )
     Field(u32), // x followed by digits
     Eof,        // End of input
-    Newline,
 }
 
 pub struct Lexer<'a> {
@@ -48,11 +47,8 @@ impl<'a> Lexer<'a> {
         self.iter.peek()
     }
 
-    fn skip_whitespace(&mut self) {
+    fn skip_whitespace(&mut self) -> Result<(), String> {
         while let Some(&c) = self.peek_char() {
-            if c == '\n' {
-                break;
-            }
             if c == '/' {
                 // Skip the first '/'
                 self.next_char();
@@ -67,22 +63,23 @@ impl<'a> Lexer<'a> {
                         self.next_char();
                     }
                     continue;
+                } else {
+                    return Err("Unexpected character after '/'".to_string());
                 }
-                break;
             }
             if !c.is_whitespace() {
                 break;
             }
             self.next_char();
         }
+        Ok(())
     }
 
     pub fn next_token(&mut self) -> Result<Token, String> {
-        self.skip_whitespace(); // Skips whitespace AND comments, but not newlines
+        self.skip_whitespace()?; // Skips whitespace AND comments, but not newlines
         match self.next_char() {
             None => Ok(Token::Eof),
             Some(c) => match c {
-                '\n' => Ok(Token::Newline),
                 '0' => Ok(Token::Zero),
                 '1' => Ok(Token::One),
                 '+' => Ok(Token::Plus),
@@ -166,14 +163,12 @@ impl<'a> Iterator for Lexer<'a> {
 
 pub struct Parser<'a> {
     lexer: Peekable<Lexer<'a>>,
-    num_fields: u32,
 }
 
 impl<'a> Parser<'a> {
     pub fn new(lexer: Peekable<Lexer<'a>>) -> Self {
         Parser {
             lexer,
-            num_fields: 0,
         }
     }
 
@@ -184,39 +179,17 @@ impl<'a> Parser<'a> {
     }
 
     // Helper to get the next token
-    fn next_token_raw(&mut self) -> Result<Token, String> {
+    fn next_token(&mut self) -> Result<Token, String> {
         self.lexer.next().unwrap_or(Ok(Token::Eof))
     }
 
     // Helper to peek at the next token
-    fn peek_token_raw(&mut self) -> Result<&Token, String> {
+    fn peek_token(&mut self) -> Result<&Token, String> {
         match self.lexer.peek() {
             Some(Ok(token)) => Ok(token),
             Some(Err(e)) => Err(e.clone()),
             None => Ok(&Token::Eof),
         }
-    }
-
-    // This function gets the next token after skipping newlines
-    fn next_token(&mut self) -> Result<Token, String> {
-        loop {
-            match self.next_token_raw() {
-                Ok(Token::Newline) => continue,
-                Ok(token) => return Ok(token),
-                Err(e) => return Err(e),
-            }
-        }
-    }
-
-    // This function peeks the next token after skipping newlines
-    fn peek_token(&mut self) -> Result<&Token, String> {
-        loop {
-            match self.peek_token_raw() {
-                Ok(Token::Newline) => { self.next_token()?; }
-                _ => break,
-            }
-        }
-        self.peek_token_raw()
     }
 
     // Recursive descent parsing functions based on operator precedence:
@@ -378,13 +351,21 @@ pub fn parse_expressions(input: &str) -> Result<Vec<Exp>, String> {
     let mut parser = Parser::new(lexer);
     let mut expressions = Vec::new();
     loop {
-        match parser.peek_token_raw()? {
+        match parser.peek_token()? {
             Token::Eof => break,
-            Token::Newline => { parser.next_token()?; continue; }
             _ => expressions.push(parser.parse_single_expression()?),
         }
     }
     Ok(expressions)
+}
+
+pub fn tokenize(input: &str) -> Result<Vec<Token>, String> {
+    let lexer = Lexer::new(input);
+    let mut tokens = Vec::new();
+    for token in lexer {
+        tokens.push(token?);
+    }
+    Ok(tokens)
 }
 
 #[cfg(test)]
@@ -587,6 +568,12 @@ mod tests {
         assert!(parse("x0==1 x1==0").is_err(), "Requires operator");
         assert!(parse("!").is_err(), "Requires expression after !");
         assert!(parse(";").is_err(), "Requires expressions around ;");
+    }
+
+    #[test]
+    fn temp() {
+        println!("{:?}", parse_expressions("0 //\n 1"));
+        println!("{:?}", tokenize("0 //\n 1"));
     }
 }
 
