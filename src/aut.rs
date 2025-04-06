@@ -263,6 +263,11 @@ impl Aut {
     /// Insert a transition into a ST.
     /// Precondition: spp is disjoint from all other spp's in the ST
     pub fn st_insert_unsafe(&mut self, st: &mut ST, state: State, spp: spp::SPP) {
+        // Assert that spp is disjoint from all other spp's in the ST
+        #[cfg(debug_assertions)]
+        for (_, existing_spp) in st.transitions.iter() {
+            debug_assert!(self.spp.intersect(*existing_spp, spp) == self.spp.zero, "spp must be disjoint from all other spp's in the ST");
+        }
         // Check if the state already exists, if so union the spp's
         if let Some(existing_spp) = st.transitions.get_mut(&state) {
             *existing_spp = self.spp.union(*existing_spp, spp);
