@@ -74,9 +74,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Add some example expressions to help users get started
     const exampleExpressions = [
-        "test(0, true); test(1, true); assign(0, true)",
-        "test(0, true)* + assign(1, false)",
-        "(test(0, true) + test(1, false))*"
+        "!(dup; dup)"
     ];
     
     // Set a random example in the editor

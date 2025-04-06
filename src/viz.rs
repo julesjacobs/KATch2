@@ -360,7 +360,7 @@ pub fn render_aut(root_state: usize, aut: &mut Aut, output_dir: &Path) -> Result
             --primary-color: #2c3e50;
             --secondary-color: #34495e;
             --accent-color: #3498db;
-            --background-color: #f8f9fa;
+            --background-color: #fff;
             --card-color: #ffffff;
             --hover-color: #eef7fc;
             --border-color: #e0e0e0;
@@ -392,12 +392,6 @@ pub fn render_aut(root_state: usize, aut: &mut Aut, output_dir: &Path) -> Result
         h2 {
             font-size: 1.3rem;
             margin-top: 1rem;
-        }
-        .section {
-            background-color: var(--card-color);
-            border: 1px solid var(--border-color);
-            padding: 10px;
-            margin-bottom: 12px;
         }
         .visualization {
             max-width: 100%;
@@ -579,10 +573,6 @@ pub fn render_aut(root_state: usize, aut: &mut Aut, output_dir: &Path) -> Result
     </style>
 </head>
 <body>
-    <header>
-        <h1>Automaton Visualization</h1>
-    </header>
-    
     <div class="section">
         <h2>Automaton Structure</h2>
         <div class="svg-container" id="automaton-container">
