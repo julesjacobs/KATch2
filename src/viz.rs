@@ -53,8 +53,9 @@ fn generate_dot_recursive(
     visited: &mut HashSet<SPP>,
     liveness_map: &HashMap<SPP, bool>,
 ) {
-    // Only proceed if the node is alive (or is the special case 0, which we always draw if reached)
-    if !liveness_map.get(&index).copied().unwrap_or(false) {
+    // Only proceed if the node is alive OR is node 0 (which needs to be drawn if reached)
+    let is_alive = liveness_map.get(&index).copied().unwrap_or(false);
+    if !is_alive {
         return;
     }
 
@@ -65,21 +66,21 @@ fn generate_dot_recursive(
 
     match index {
         0 => {
-            // Style for the bottom node (⊥) - always drawn if visited
+            // Style for the bottom node (⊥)
             dot_string.push_str(&format!(
-                "  node{} [label=\"⊥\", shape=box, style=filled, fillcolor=lightcoral];\n",
+                "  node{} [label=\"\", shape=circle, style=filled, fillcolor=black, width=0.1, height=0.1];\n",
                 index
             ));
         }
         1 => {
-            // Style for the top node (⊤) - always drawn if visited (and alive)
+            // Style for the top node (⊤)
             dot_string.push_str(&format!(
-                "  node{} [label=\"⊤\", shape=box, style=filled, fillcolor=lightgreen];\n",
+                "  node{} [label=\"\", shape=circle, style=filled, fillcolor=black, width=0.1, height=0.1];\n",
                 index
             ));
         }
         _ => {
-            // Internal node (guaranteed to be alive at this point by the initial check)
+            // Internal node (guaranteed to be alive at this point)
             let node = store.get(index);
 
             // Style for internal nodes: small black circle
@@ -88,35 +89,49 @@ fn generate_dot_recursive(
                 index
             ));
 
-            // Group edges by target child and combine labels
-            let mut edges_by_child = HashMap::<SPP, Vec<&str>>::new();
-            let potential_edges = [
-                (node.x00, "tt"),
-                (node.x01, "tf"),
-                (node.x10, "ft"),
-                (node.x11, "ff"),
+            let zero_edge_style = "style=dashed, arrowhead=none, color=red"; // Corresponds to 'f' or 0 output/input
+            let one_edge_style = "style=solid, arrowhead=none, color=green";  // Corresponds to 't' or 1 output/input
+            let intermediate_node_style = "shape=point, width=0.00, height=0.00, style=filled, fillcolor=white";
+
+            let mut children_to_recurse = HashSet::new();
+
+            // Define transitions: (child_node, suffix, input_style, output_style)
+            // Suffix indicates input/output pair: tt (true/true), tf (true/false), ft (false/true), ff (false/false)
+            let transitions = [
+                (node.x00, "tt", one_edge_style, one_edge_style), // input=t(1), output=t(1)
+                (node.x01, "tf", one_edge_style, zero_edge_style),// input=t(1), output=f(0)
+                (node.x10, "ft", zero_edge_style, one_edge_style), // input=f(0), output=t(1)
+                (node.x11, "ff", zero_edge_style, zero_edge_style),// input=f(0), output=f(0)
             ];
 
-            for (child_index, label) in potential_edges.iter() {
-                // Only consider edges pointing to alive children (or 0)
-                if liveness_map.get(child_index).copied().unwrap_or(false) {
-                    edges_by_child.entry(*child_index).or_default().push(label);
+            for &(child_node, suffix, input_style, output_style) in &transitions {
+                // Only draw the edge and intermediate node if the child is alive OR is node 0 (the sink)
+                let child_is_alive = liveness_map.get(&child_node).copied().unwrap_or(false);
+                if child_is_alive {
+                    let inter_id = format!("inter_{}_{}", index, suffix);
+
+                    // Define the unique intermediate node
+                    dot_string.push_str(&format!("  {} [{}];\n", inter_id, intermediate_node_style));
+
+                    // Edge from parent to intermediate node (style based on input var)
+                    dot_string.push_str(&format!(
+                        "  node{} -> {} [{}];\n",
+                        index, inter_id, input_style
+                    ));
+
+                    // Edge from intermediate node to child node (style based on output var)
+                    dot_string.push_str(&format!(
+                        "  {} -> node{} [{}];\n",
+                        inter_id, child_node, output_style
+                    ));
+
+                    // Add child to the set for recursion (if not already visited)
+                    // The recursive call itself checks liveness and visited status
+                    children_to_recurse.insert(child_node);
                 }
             }
 
-            // Draw merged edges and recurse for unique children
-            let mut children_to_recurse = HashSet::new(); // Keep track of children already recursed into
-            for (child_index, labels) in edges_by_child.iter() {
-                let combined_label = labels.join(",");
-                dot_string.push_str(&format!(
-                    "  node{} -> node{} [label=\"{}\", labelangle=0];\n",
-                    index, child_index, combined_label
-                ));
-                 // Collect unique children for recursion after drawing all edges from this node
-                children_to_recurse.insert(*child_index);
-            }
-
-            // Recurse for each unique, alive child discovered
+            // Recurse for each unique child discovered that needs further expansion
             for child_index in children_to_recurse {
                  generate_dot_recursive(child_index, store, dot_string, visited, liveness_map);
             }

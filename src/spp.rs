@@ -127,7 +127,7 @@ impl SPPstore {
     }
     fn rand_helper(&mut self, depth: Var) -> SPP {
         if depth == 0 {
-            return if rand::random::<bool>() { 0 } else { 1 };
+            return if rand::random::<f64>() < 0.75 { 0 } else { 1 };
         }
         let x00 = self.rand_helper(depth - 1);
         let x01 = self.rand_helper(depth - 1);
