@@ -2,7 +2,7 @@
 #![allow(unused)]
 #![allow(non_snake_case)]
 
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use expr::Expr;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -15,34 +15,69 @@ mod pre;
 mod sp;
 mod spp;
 mod viz;
+mod ui;
 
-/// A simple parser for K2 expressions, operating on files or directories.
+/// KATch2: A symbolic automata toolkit for NetKAT expressions
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
-    /// The file or directory path to parse
-    path: PathBuf,
+    #[command(subcommand)]
+    command: Commands,
 }
 
-fn main() {
+#[derive(Subcommand, Debug)]
+enum Commands {
+    /// Run the interactive web UI
+    #[command(name = "webui")]
+    WebUI {
+        /// Port to run the web server on
+        #[arg(short, long, default_value = "8080")]
+        port: u16,
+    },
+    
+    /// Parse and process NetKAT expressions from a file or directory
+    Parse {
+        /// The file or directory path to parse
+        path: PathBuf,
+    },
+}
+
+#[tokio::main]
+async fn main() {
     let cli = Cli::parse();
-    let path = cli.path;
 
-    if !path.exists() {
-        eprintln!("Error: Path \"{}\" does not exist.", path.display());
-        std::process::exit(1);
-    }
+    match &cli.command {
+        Commands::WebUI { port } => {
+            println!("Starting web UI server on port {}", port);
+            if let Err(e) = ui::create_static_files() {
+                eprintln!("Error creating static files: {}", e);
+                std::process::exit(1);
+            }
+            
+            if let Err(e) = ui::start_ui(*port).await {
+                eprintln!("Error running web server: {}", e);
+                std::process::exit(1);
+            }
+        }
+        Commands::Parse { path } => {
+            // Traditional file processing mode
+            if !path.exists() {
+                eprintln!("Error: Path \"{}\" does not exist.", path.display());
+                std::process::exit(1);
+            }
 
-    if path.is_dir() {
-        process_directory(&path);
-    } else if path.is_file() {
-        process_file(&path);
-    } else {
-        eprintln!(
-            "Error: Path \"{}\" is neither a file nor a directory.",
-            path.display()
-        );
-        std::process::exit(1);
+            if path.is_dir() {
+                process_directory(&path);
+            } else if path.is_file() {
+                process_file(&path);
+            } else {
+                eprintln!(
+                    "Error: Path \"{}\" is neither a file nor a directory.",
+                    path.display()
+                );
+                std::process::exit(1);
+            }
+        }
     }
 }
 

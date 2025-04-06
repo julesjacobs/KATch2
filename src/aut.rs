@@ -184,6 +184,13 @@ impl Aut {
             // Check the type without getting inner_e
             return e; // Return the existing e* index
         }
+
+        // // SPP Simplification: s*
+        // if let AExpr::SPP(s) = self.get_expr(e) {
+        //     let result_spp = self.spp.star(s);
+        //     return self.mk_spp(result_spp);
+        // }
+
         self.intern(AExpr::Star(e))
     }
 

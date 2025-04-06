@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KATch2 Interactive Automaton Editor</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <h1>KATch2 Interactive Automaton Editor</h1>
+    </header>
+    
+    <main>
+        <section class="editor-section">
+            <h2>Expression Editor</h2>
+            <div class="editor-container">
+                <textarea id="expression-editor" placeholder="Enter your expression here..."></textarea>
+                <div class="editor-controls">
+                    <button id="evaluate-btn">Evaluate</button>
+                </div>
+            </div>
+            <div id="error-display" class="error-container"></div>
+        </section>
+        
+        <section class="visualization-section">
+            <h2>Automaton Visualization</h2>
+            <div id="visualization-container">
+                <div class="placeholder">Enter an expression and click Evaluate to generate visualization</div>
+                <iframe id="visualization-frame" style="display: none;"></iframe>
+            </div>
+        </section>
+    </main>
+    
+    <footer>
+        <p>KATch2 Automaton Visualization Tool</p>
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+</html>
