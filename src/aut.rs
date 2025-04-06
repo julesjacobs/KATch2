@@ -41,6 +41,11 @@ impl ST {
             transitions: HashMap::new(),
         }
     }
+    
+    /// Returns a reference to the internal transitions map
+    pub fn get_transitions(&self) -> &HashMap<State, spp::SPP> {
+        &self.transitions
+    }
 }
 
 pub struct Aut {
@@ -478,5 +483,10 @@ impl Aut {
             AExpr::LtlUntil(_, _) => todo!("Implement epsilon for LTL Until"),
             AExpr::Top => self.spp.top,
         }
+    }
+
+    /// Returns a reference to the internal SPPstore
+    pub fn spp_store(&self) -> &spp::SPPstore {
+        &self.spp
     }
 }
