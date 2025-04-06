@@ -30,7 +30,9 @@ pub struct SPPstore {
     sequence_memo: HashMap<(SPP, SPP), SPP>,
     star_memo: HashMap<SPP, SPP>,
     complement_memo: HashMap<SPP, SPP>,
-    branch_memo: HashMap<(Var, SPP, SPP, SPP, SPP), SPP>,
+    // branch_memo: HashMap<(Var, SPP, SPP, SPP, SPP), SPP>,
+    test_memo: HashMap<(Var, bool), SPP>,
+    assign_memo: HashMap<(Var, bool), SPP>,
 }
 
 /// A node in the SPP store. Has four children, one for each combination of the two variables.
@@ -60,7 +62,9 @@ impl SPPstore {
             sequence_memo: HashMap::from([((0, 0), 0), ((0, 1), 0), ((1, 0), 0), ((1, 1), 1)]),
             star_memo: HashMap::from([(0, 1), (1, 1)]),
             complement_memo: HashMap::from([(0, 1), (1, 0)]),
-            branch_memo: HashMap::new(),
+            // branch_memo: HashMap::new(),
+            test_memo: HashMap::new(),
+            assign_memo: HashMap::new(),
         };
         store.zero = store.zero();
         store.one = store.one();
@@ -293,81 +297,109 @@ impl SPPstore {
         res
     }
 
-    pub fn branch(&mut self, var: Var, x00: SPP, x01: SPP, x10: SPP, x11: SPP) -> SPP {
-        assert!(var < self.num_vars);
-        self.branch_helper(var, x00, x01, x10, x11)
-    }
-    fn branch_helper(&mut self, var: Var, x00: SPP, x01: SPP, x10: SPP, x11: SPP) -> SPP {
-        let key = (var, x00, x01, x10, x11);
-        if let Some(&result) = self.branch_memo.get(&key) {
+    // pub fn branch(&mut self, var: Var, x00: SPP, x01: SPP, x10: SPP, x11: SPP) -> SPP {
+    //     assert!(var < self.num_vars);
+    //     self.branch_helper(var, x00, x01, x10, x11)
+    // }
+    // fn branch_helper(&mut self, var: Var, x00: SPP, x01: SPP, x10: SPP, x11: SPP) -> SPP {
+    //     let key = (var, x00, x01, x10, x11);
+    //     if let Some(&result) = self.branch_memo.get(&key) {
+    //         return result;
+    //     }
+    //     let x00_node = self.get(x00);
+    //     let x01_node = self.get(x01);
+    //     let x10_node = self.get(x10);
+    //     let x11_node = self.get(x11);
+    //     let x00;
+    //     let x01;
+    //     let x10;
+    //     let x11;
+    //     if var == 0 {
+    //         x00 = x00_node.x00;
+    //         x01 = x01_node.x01;
+    //         x10 = x10_node.x10;
+    //         x11 = x11_node.x11;
+    //     } else {
+    //         x00 = self.branch(
+    //             var - 1,
+    //             x00_node.x00,
+    //             x01_node.x00,
+    //             x10_node.x00,
+    //             x11_node.x00,
+    //         );
+    //         x01 = self.branch(
+    //             var - 1,
+    //             x00_node.x01,
+    //             x01_node.x01,
+    //             x10_node.x01,
+    //             x11_node.x01,
+    //         );
+    //         x10 = self.branch(
+    //             var - 1,
+    //             x00_node.x10,
+    //             x01_node.x10,
+    //             x10_node.x10,
+    //             x11_node.x10,
+    //         );
+    //         x11 = self.branch(
+    //             var - 1,
+    //             x00_node.x11,
+    //             x01_node.x11,
+    //             x10_node.x11,
+    //             x11_node.x11,
+    //         );
+    //     }
+    //     let res = self.mk(x00, x01, x10, x11);
+    //     self.branch_memo.insert(key, res);
+    //     res
+    // }
+
+    // pub fn ifelse(&mut self, var: Var, then_branch: SPP, else_branch: SPP) -> SPP {
+    //     self.branch(var, then_branch, self.zero, self.zero, else_branch)
+    // }
+
+    pub fn test(&mut self, var: Var, value: bool) -> SPP {
+        if let Some(&result) = self.test_memo.get(&(var, value)) {
             return result;
         }
-        let x00_node = self.get(x00);
-        let x01_node = self.get(x01);
-        let x10_node = self.get(x10);
-        let x11_node = self.get(x11);
-        let x00;
-        let x01;
-        let x10;
-        let x11;
-        if var == 0 {
-            x00 = x00_node.x00;
-            x01 = x01_node.x01;
-            x10 = x10_node.x10;
-            x11 = x11_node.x11;
-        } else {
-            x00 = self.branch(
-                var - 1,
-                x00_node.x00,
-                x01_node.x00,
-                x10_node.x00,
-                x11_node.x00,
-            );
-            x01 = self.branch(
-                var - 1,
-                x00_node.x01,
-                x01_node.x01,
-                x10_node.x01,
-                x11_node.x01,
-            );
-            x10 = self.branch(
-                var - 1,
-                x00_node.x10,
-                x01_node.x10,
-                x10_node.x10,
-                x11_node.x10,
-            );
-            x11 = self.branch(
-                var - 1,
-                x00_node.x11,
-                x01_node.x11,
-                x10_node.x11,
-                x11_node.x11,
-            );
+        let mut res = 1;
+        let mut zero = 0;
+        for i in (0..self.num_vars).rev() {
+            if i == var {
+                if value {
+                    res = self.mk(zero, zero, zero, res);
+                } else {
+                    res = self.mk(res, zero, zero, zero);
+                }
+            } else {
+                res = self.mk(res, zero, zero, res);
+            }
+            zero = self.mk(zero, zero, zero, zero);
         }
-        let res = self.mk(x00, x01, x10, x11);
-        self.branch_memo.insert(key, res);
+        self.test_memo.insert((var, value), res);
         res
     }
 
-    pub fn ifelse(&mut self, var: Var, then_branch: SPP, else_branch: SPP) -> SPP {
-        self.branch(var, then_branch, then_branch, else_branch, else_branch)
-    }
-
-    pub fn test(&mut self, var: Var, value: bool) -> SPP {
-        if value {
-            self.ifelse(var, self.one, self.zero)
-        } else {
-            self.ifelse(var, self.zero, self.one)
-        }
-    }
-
     pub fn assign(&mut self, var: Var, value: bool) -> SPP {
-        if value {
-            self.branch(var, self.zero, self.one, self.zero, self.one)
-        } else {
-            self.branch(var, self.one, self.zero, self.one, self.zero)
+        if let Some(&result) = self.assign_memo.get(&(var, value)) {
+            return result;
         }
+        let mut res = 1;
+        let mut zero = 0;
+        for i in (0..self.num_vars).rev() {
+            if i == var {
+                if value {
+                    res = self.mk(zero, res, zero, res);
+                } else {
+                    res = self.mk(res, zero, res, zero);
+                }
+            } else {
+                res = self.mk(res, zero, zero, res);
+            }
+            zero = self.mk(zero, zero, zero, zero);
+        }
+        self.assign_memo.insert((var, value), res);
+        res
     }
 
     #[cfg(test)]

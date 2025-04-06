@@ -110,10 +110,10 @@ fn generate_dot_recursive(
             // Define transitions: (child_node, suffix, input_style, output_style)
             // Suffix indicates input/output pair: tt (true/true), tf (true/false), ft (false/true), ff (false/false)
             let transitions = [
-                (node.x00, "tt", one_edge_style, one_edge_style), // input=t(1), output=t(1)
-                (node.x01, "tf", one_edge_style, zero_edge_style), // input=t(1), output=f(0)
-                (node.x10, "ft", zero_edge_style, one_edge_style), // input=f(0), output=t(1)
-                (node.x11, "ff", zero_edge_style, zero_edge_style), // input=f(0), output=f(0)
+                (node.x11, "tt", one_edge_style, one_edge_style), // input=t(1), output=t(1)
+                (node.x10, "tf", one_edge_style, zero_edge_style), // input=t(1), output=f(0)
+                (node.x01, "ft", zero_edge_style, one_edge_style), // input=f(0), output=t(1)
+                (node.x00, "ff", zero_edge_style, zero_edge_style), // input=f(0), output=f(0)
             ];
 
             for &(child_node, suffix, input_style, output_style) in &transitions {

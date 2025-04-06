@@ -354,9 +354,14 @@ impl Aut {
             *existing_spp = self.spp.union(*existing_spp, spp);
         } else {
             // Check if the spp is 0, if so don't insert
-            if spp != self.spp.zero {
-                st.transitions.insert(state, spp);
+            if spp == self.spp.zero {
+                return;
             }
+            // Check if the State is zero, if so don't insert
+            if state == self.mk_spp(self.spp.zero) {
+                return;
+            }
+            st.transitions.insert(state, spp);
         }
     }
 
@@ -365,14 +370,22 @@ impl Aut {
         // We have to be careful here because a naive implementation would not result in a deterministic ST
         // Strategy: intersect the spp with all other spp's in the ST, and insert an expr union for those
         // Separately keep track of the remaining spp that is inserted separately
+        // Check if the state is zero, if so don't insert
+        if state == self.mk_spp(self.spp.zero) {
+            return;
+        }
         let transitions = st.transitions.clone();
         let mut remaining_spp = spp;
         for (state2, spp2) in transitions {
+            if remaining_spp == self.spp.zero {
+                return;
+            }
             let intersect_spp = self.spp.intersect(remaining_spp, spp2);
             let union_state = self.mk_union(state, state2);
             st.transitions.insert(union_state, intersect_spp);
             remaining_spp = self.spp.difference(remaining_spp, intersect_spp);
         }
+
         st.transitions.insert(state, remaining_spp);
     }
 
@@ -488,12 +501,13 @@ impl Aut {
                 self.st_union(delta_e1_seq_e2, epsilon_e1_seq_e2)
             }
             AExpr::Star(e) => {
-                // delta(e*) = epsilon(e) delta(e) e*
+                // delta(e*) = epsilon(e)* delta(e) e*
                 let epsilon_e = self.epsilon(e);
+                let epsilon_e_star = self.spp.star(epsilon_e);
                 let delta_e = self.delta(e);
                 let star_e = state;
                 let delta_e_star_e = self.st_postcompose(delta_e, star_e);
-                self.st_precompose(epsilon_e, delta_e_star_e)
+                self.st_precompose(epsilon_e_star, delta_e_star_e)
             }
             AExpr::Dup => {
                 let spp_one = self.mk_spp(self.spp.one);
