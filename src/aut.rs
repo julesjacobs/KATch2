@@ -337,8 +337,8 @@ impl Aut {
 
     // --- Automaton construction: delta, epsilon ---
 
-    pub fn delta(&mut self, expr_id: State) -> ST {
-        match self.get_expr(expr_id) {
+    pub fn delta(&mut self, state: State) -> ST {
+        match self.get_expr(state) {
             AExpr::SPP(_) => ST::empty(),
             AExpr::Union(e1, e2) => {
                 let delta1 = self.delta(e1);
@@ -377,7 +377,7 @@ impl Aut {
                 // delta(e*) = epsilon(e) delta(e) e*
                 let epsilon_e = self.epsilon(e);
                 let delta_e = self.delta(e);
-                let star_e = expr_id;
+                let star_e = state;
                 let delta_e_star_e = self.st_postcompose(delta_e, star_e);
                 self.st_precompose(epsilon_e, delta_e_star_e)
             }
@@ -396,8 +396,8 @@ impl Aut {
         }
     }
 
-    pub fn epsilon(&mut self, state_id: State) -> spp::SPP {
-        match self.get_expr(state_id) {
+    pub fn epsilon(&mut self, state: State) -> spp::SPP {
+        match self.get_expr(state) {
             AExpr::SPP(spp) => spp,
             AExpr::Union(e1, e2) => {
                 let eps1 = self.epsilon(e1);
