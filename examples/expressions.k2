@@ -17,10 +17,6 @@ x0 := 1 ; x1 := 0
 
 // Unary Operations
 !(x0 == 1)
-X (x0 == 1)
-
-// LTL Until
-(x0 == 0) U (x1 == 1)
 
 // Dup Operation
 dup
@@ -35,4 +31,3 @@ x0 == 1 + x1 == 0 & x2 == 1 // Equivalent to x0 == 1 + (x1 == 0 & x2 == 1)
 (x0 := 1 ; x1 := 0)* ; x0 == 1
 x0 == 1 ^ x1 == 0
 (x0 == 1 + x1 == 1) - (x0 == 1 & x1 == 1)
-X (x0 == 1 U (x1 == 0 ; x2 == 1)) 
