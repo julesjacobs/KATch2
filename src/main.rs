@@ -1,4 +1,5 @@
 use clap::Parser;
+use expr::Expr;
 use std::fs;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
@@ -33,7 +34,10 @@ fn main() {
     } else if path.is_file() {
         process_file(&path);
     } else {
-        eprintln!("Error: Path \"{}\" is neither a file nor a directory.", path.display());
+        eprintln!(
+            "Error: Path \"{}\" is neither a file nor a directory.",
+            path.display()
+        );
         std::process::exit(1);
     }
 }
@@ -72,6 +76,9 @@ fn process_file(file_path: &Path) {
                             // Potentially print a more user-friendly format later
                             // println!("  {}: {}", i + 1, expr);
                         }
+                        for expr in &expressions {
+                            process_expression(expr);
+                        }
                     }
                 }
                 Err(e) => {
@@ -84,4 +91,15 @@ fn process_file(file_path: &Path) {
         }
     }
     println!("-------------------------------");
+}
+
+fn process_expression(expr: &Box<Expr>) {
+    // Create an automaton from the expression
+    let mut aut = aut::Aut::new(expr.num_fields());
+    let state = aut.expr_to_state(expr);
+    println!("State: {}", state);
+    let delta = aut.delta(state);
+    println!("Delta: {:?}", delta);
+    let epsilon = aut.epsilon(state);
+    println!("Epsilon: {:?}", epsilon);
 }

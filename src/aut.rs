@@ -43,9 +43,11 @@ impl ST {
     }
 }
 
-struct Aut {
+pub struct Aut {
     aexprs: Vec<AExpr>,
     aexpr_map: HashMap<AExpr, State>,
+    delta_map: HashMap<State, ST>,
+    epsilon_map: HashMap<State, spp::SPP>,
     spp: spp::SPPstore,
     sp: sp::SPstore,
 }
@@ -55,6 +57,8 @@ impl Aut {
         let aut = Aut {
             aexprs: vec![],
             aexpr_map: HashMap::new(),
+            delta_map: HashMap::new(),
+            epsilon_map: HashMap::new(),
             spp: spp::SPPstore::new(num_vars),
             sp: sp::SPstore::new(num_vars),
         };
@@ -266,7 +270,10 @@ impl Aut {
         // Assert that spp is disjoint from all other spp's in the ST
         #[cfg(debug_assertions)]
         for (_, existing_spp) in st.transitions.iter() {
-            debug_assert!(self.spp.intersect(*existing_spp, spp) == self.spp.zero, "spp must be disjoint from all other spp's in the ST");
+            debug_assert!(
+                self.spp.intersect(*existing_spp, spp) == self.spp.zero,
+                "spp must be disjoint from all other spp's in the ST"
+            );
         }
         // Check if the state already exists, if so union the spp's
         if let Some(existing_spp) = st.transitions.get_mut(&state) {
@@ -368,6 +375,9 @@ impl Aut {
     // --- Automaton construction: delta, epsilon ---
 
     pub fn delta(&mut self, state: State) -> ST {
+        if let Some(delta) = self.delta_map.get(&state) {
+            return delta.clone();
+        }
         match self.get_expr(state) {
             AExpr::SPP(_) => ST::empty(),
             AExpr::Union(e1, e2) => {
@@ -427,6 +437,9 @@ impl Aut {
     }
 
     pub fn epsilon(&mut self, state: State) -> spp::SPP {
+        if let Some(epsilon) = self.epsilon_map.get(&state) {
+            return epsilon.clone();
+        }
         match self.get_expr(state) {
             AExpr::SPP(spp) => spp,
             AExpr::Union(e1, e2) => {

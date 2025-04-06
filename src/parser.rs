@@ -167,9 +167,7 @@ pub struct Parser<'a> {
 
 impl<'a> Parser<'a> {
     pub fn new(lexer: Peekable<Lexer<'a>>) -> Self {
-        Parser {
-            lexer,
-        }
+        Parser { lexer }
     }
 
     /// Parses a single complete expression.
@@ -342,8 +340,6 @@ impl<'a> Parser<'a> {
 
 // --- Main Parsing Functions ---
 
-
-
 /// Parses a string containing multiple NetKAT expressions (separated by whitespace/newlines/comments)
 /// into a Vec<Exp>.
 pub fn parse_expressions(input: &str) -> Result<Vec<Exp>, String> {
@@ -377,10 +373,12 @@ mod tests {
         if result.len() == 1 {
             Ok(result.into_iter().next().unwrap())
         } else if result.is_empty() {
-             Err("No expression found for single parse".to_string())
-        }
-        else {
-            Err(format!("Expected single expression, found {}", result.len()))
+            Err("No expression found for single parse".to_string())
+        } else {
+            Err(format!(
+                "Expected single expression, found {}",
+                result.len()
+            ))
         }
     }
 
@@ -397,7 +395,10 @@ mod tests {
         assert_eq!(parse("// comment\n 0 // another comment"), Ok(Expr::zero()));
         assert_eq!(parse("1 // just 1"), Ok(Expr::one()));
         assert_eq!(parse("// line 1\n // line 2\n T"), Ok(Expr::top()));
-        assert_eq!(parse("x0 == 1 // test x0\n // next line"), Ok(Expr::test(0, true)));
+        assert_eq!(
+            parse("x0 == 1 // test x0\n // next line"),
+            Ok(Expr::test(0, true))
+        );
     }
 
     #[test]
@@ -576,4 +577,3 @@ mod tests {
         println!("{:?}", tokenize("0 //\n 1"));
     }
 }
-

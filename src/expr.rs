@@ -70,4 +70,18 @@ impl Expr {
     pub fn ltl_until(e1: Exp, e2: Exp) -> Exp {
         Box::new(Expr::LtlUntil(e1, e2))
     }
+
+    pub fn num_fields(&self) -> u32 {
+        match self {
+            Expr::Zero | Expr::One | Expr::Top | Expr::Dup => 0,
+            Expr::Assign(field, _) | Expr::Test(field, _) => field + 1,
+            Expr::Union(e1, e2)
+            | Expr::Intersect(e1, e2)
+            | Expr::Xor(e1, e2)
+            | Expr::Difference(e1, e2)
+            | Expr::Sequence(e1, e2)
+            | Expr::LtlUntil(e1, e2) => e1.num_fields().max(e2.num_fields()),
+            Expr::Complement(e) | Expr::Star(e) | Expr::LtlNext(e) => e.num_fields(),
+        }
+    }
 }
