@@ -18,7 +18,6 @@ enum AExpr {
     Dup,           // dup
     LtlNext(State), // X e
     LtlUntil(State, State), // e1 U e2
-    End,           // represents the singleton set containing the empty string
     Top,           // represents the set of all strings
 }
 
@@ -159,16 +158,6 @@ impl Aut {
     }
 
     fn mk_sequence(&mut self, e1: State, e2: State) -> State {
-        // Simplify e ; End = e
-        let end_id = self.intern(AExpr::End); // Ensure End is interned if not already
-        if e2 == end_id {
-            return e1;
-        }
-        // Simplify End ; e = e
-        if e1 == end_id {
-            return e2;
-        }
-
         // SPP Simplification: s1 ; s2
         if let (AExpr::SPP(s1), AExpr::SPP(s2)) = (self.get_expr(e1), self.get_expr(e2)) {
             let result_spp = self.spp.sequence(s1, s2);
@@ -180,11 +169,6 @@ impl Aut {
     }
 
     fn mk_star(&mut self, e: State) -> State {
-        // Simplify End* = End
-        let end_id = self.intern(AExpr::End);
-        if e == end_id {
-            return end_id;
-        }
         // Simplify (e*)* = e*
         if let AExpr::Star(_) = self.get_expr(e) {
             // Check the type without getting inner_e
@@ -201,10 +185,6 @@ impl Aut {
         self.intern(AExpr::Top)
     }
 
-    fn mk_end(&mut self) -> State {
-        self.intern(AExpr::End)
-    }
-
     // Helper to get the actual expression from an index
     fn get_expr(&self, id: State) -> AExpr {
         self.aexprs[id]
@@ -214,8 +194,8 @@ impl Aut {
     pub fn expr_to_state(&mut self, expr: &Expr) -> State {
         match expr {
             Expr::Zero => self.mk_spp(self.spp.zero),
-            Expr::One => self.mk_end(), // Map Expr::One to AExpr::End
-            Expr::Top => self.mk_spp(self.spp.top), // Map Expr::Top to SPP Top
+            Expr::One => self.mk_spp(self.spp.one),
+            Expr::Top => self.mk_top(),
             Expr::Assign(field, value) => {
                 let spp = self.spp.assign(*field, *value);
                 self.mk_spp(spp)
@@ -351,14 +331,15 @@ impl Aut {
         result
     }
 
+    fn st_precompose(&mut self, spp: spp::SPP, st: ST) -> ST {
+        todo!();
+    }
+
     // --- Automaton construction: delta, epsilon ---
 
     pub fn delta(&mut self, expr_id: State) -> ST {
         match self.get_expr(expr_id) {
-            AExpr::SPP(spp) => {
-                let end = self.mk_end();
-                self.st_singleton(spp, end)
-            }
+            AExpr::SPP(_) => ST::empty(),
             AExpr::Union(e1, e2) => {
                 let delta1 = self.delta(e1);
                 let delta2 = self.delta(e2);
@@ -385,17 +366,12 @@ impl Aut {
             }
             AExpr::Sequence(e1, e2) => {
                 // delta(e1 ; e2) = delta(e1) ; e2 + epsilon(e1) delta(e2)
+                let epsilon_e1 = self.epsilon(e1);
                 let delta_e1 = self.delta(e1);
                 let delta_e1_seq_e2 = self.st_postcompose(delta_e1, e2);
-
-                // BUG: this is wrong, we need epsilon to compute the transformation like in KATch1.
-                // This seems to be fundamental to symbolic / weighted automata...
-                if self.epsilon(e1) {
-                    let delta_e2 = self.delta(e2);
-                    self.st_union(delta_e1_seq_e2, delta_e2)
-                } else {
-                    delta_e1_seq_e2
-                }
+                let delta_e2 = self.delta(e2);
+                let epsilon_e1_seq_e2 = self.st_precompose(epsilon_e1, delta_e2);
+                self.st_union(delta_e1_seq_e2, epsilon_e1_seq_e2)
             }
             AExpr::Star(e) => {
                 // delta(e*) = delta(e) ; e*
@@ -413,7 +389,6 @@ impl Aut {
             }
             AExpr::LtlNext(_) => todo!("Implement delta for LTL Next"),
             AExpr::LtlUntil(_, _) => todo!("Implement delta for LTL Until"),
-            AExpr::End => self.st_empty(),
             AExpr::Top => {
                 let top = self.mk_top();
                 self.st_singleton(self.spp.top, top)
@@ -421,21 +396,46 @@ impl Aut {
         }
     }
 
-    pub fn epsilon(&self, state_id: State) -> bool {
+    pub fn epsilon(&mut self, state_id: State) -> spp::SPP {
         match self.get_expr(state_id) {
-            AExpr::SPP(_) => false,
-            AExpr::Union(e1, e2) => self.epsilon(e1) || self.epsilon(e2),
-            AExpr::Intersect(e1, e2) => self.epsilon(e1) && self.epsilon(e2),
-            AExpr::Xor(e1, e2) => self.epsilon(e1) ^ self.epsilon(e2),
-            AExpr::Difference(e1, e2) => self.epsilon(e1) && !self.epsilon(e2),
-            AExpr::Complement(e) => !self.epsilon(e),
-            AExpr::Sequence(e1, e2) => self.epsilon(e1) && self.epsilon(e2),
-            AExpr::Star(_) => true,
-            AExpr::Dup => false,
+            AExpr::SPP(spp) => spp,
+            AExpr::Union(e1, e2) => {
+                let eps1 = self.epsilon(e1);
+                let eps2 = self.epsilon(e2);
+                self.spp.union(eps1, eps2)
+            }
+            AExpr::Intersect(e1, e2) => {
+                let eps1 = self.epsilon(e1);
+                let eps2 = self.epsilon(e2);
+                self.spp.intersect(eps1, eps2)
+            }
+            AExpr::Xor(e1, e2) => {
+                let eps1 = self.epsilon(e1);
+                let eps2 = self.epsilon(e2);
+                self.spp.xor(eps1, eps2)
+            }
+            AExpr::Difference(e1, e2) => {
+                let eps1 = self.epsilon(e1);
+                let eps2 = self.epsilon(e2);
+                self.spp.difference(eps1, eps2)
+            }
+            AExpr::Complement(e) => {
+                let eps = self.epsilon(e);
+                self.spp.complement(eps)
+            }
+            AExpr::Sequence(e1, e2) => {
+                let eps1 = self.epsilon(e1);
+                let eps2 = self.epsilon(e2);
+                self.spp.sequence(eps1, eps2)
+            }
+            AExpr::Star(e) => {
+                let eps = self.epsilon(e);
+                self.spp.star(eps)
+            }
+            AExpr::Dup => self.spp.zero,
             AExpr::LtlNext(_) => todo!("Implement epsilon for LTL Next"),
             AExpr::LtlUntil(_, _) => todo!("Implement epsilon for LTL Until"),
-            AExpr::End => true,
-            AExpr::Top => true,
+            AExpr::Top => self.spp.top,
         }
     }
 }
