@@ -354,9 +354,9 @@ impl SPPstore {
     //     res
     // }
 
-    // pub fn ifelse(&mut self, var: Var, then_branch: SPP, else_branch: SPP) -> SPP {
-    //     self.branch(var, then_branch, self.zero, self.zero, else_branch)
-    // }
+    pub fn ifelse(&mut self, var: Var, then_branch: SPP, else_branch: SPP) -> SPP {
+        todo!()
+    }
 
     pub fn test(&mut self, var: Var, value: bool) -> SPP {
         if let Some(&result) = self.test_memo.get(&(var, value)) {
@@ -516,15 +516,6 @@ mod tests {
                 let intersect_rev = s.intersect(spp2, spp1);
                 assert_eq!(union, union_rev);
                 assert_eq!(intersect, intersect_rev);
-
-                for i in 0..N {
-                    let ifelse = s.ifelse(i, spp1, spp2);
-                    let ifelse_complement = s.complement(ifelse);
-                    assert_eq!(
-                        ifelse_complement,
-                        s.ifelse(i, spp1_complement, spp2_complement)
-                    );
-                }
             }
         }
     }

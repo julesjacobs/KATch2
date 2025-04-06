@@ -6,10 +6,10 @@ use std::collections::HashSet;
 use std::hash::Hash;
 // An AExpr represents an automaton state.
 // This is essentially a compressed and hash-consed form of a NetKAT expression.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum AExpr {
     SPP(spp::SPP), // We keep field tests and mutations and combinations thereof in SPP form
-    Union(State, State), // e1 + e2
+    Union(Vec<State>), // e1 + e2 + ... + en
     Intersect(State, State), // e1 & e2
     Xor(State, State), // e1 ^ e2
     Difference(State, State), // e1 - e2
@@ -81,7 +81,7 @@ impl Aut {
             return id;
         }
         let id = self.aexprs.len();
-        self.aexprs.push(expr);
+        self.aexprs.push(expr.clone());
         self.aexpr_map.insert(expr, id);
         id
     }
@@ -93,32 +93,94 @@ impl Aut {
         self.intern(AExpr::SPP(spp))
     }
 
+    /// Canonicalizes a list of states for union
+    /// 1. Flattens nested unions
+    /// 2. Sorts and removes duplicates
+    /// 3. Combines all SPP children
+    fn canonicalize_union(&mut self, mut states: Vec<State>) -> Vec<State> {
+        // Keep track of SPPs to be combined
+        let mut combined_spp = self.spp.zero;
+        
+        // Process all states to collect nested unions and SPPs
+        let mut i = 0;
+        while i < states.len() {
+            match self.get_expr(states[i]) {
+                // Flatten nested unions
+                AExpr::Union(nested) => {
+                    // Remove the current state that's a union
+                    states.remove(i);
+                    
+                    // Add all nested states
+                    for &nested_state in nested {
+                        states.push(nested_state);
+                    }
+                },
+                // Collect SPPs for combining
+                AExpr::SPP(spp) => {
+                    combined_spp = self.spp.union(combined_spp, *spp);
+                    states.remove(i);
+                },
+                // Keep everything else
+                _ => i += 1,
+            }
+        }
+        
+        // Sort and remove duplicates
+        states.sort();
+        states.dedup();
+        
+        // Add the combined SPP back in if it's not zero
+        if combined_spp != self.spp.zero {
+            let spp_state = self.mk_spp(combined_spp);
+            states.push(spp_state);
+            states.sort();
+        }
+        
+        states
+    }
+
     fn mk_union(&mut self, e1: State, e2: State) -> State {
         if e1 == e2 {
             return e1;
         }
 
-        // SPP Simplification: s1 + s2
-        if let (AExpr::SPP(s1), AExpr::SPP(s2)) = (self.get_expr(e1), self.get_expr(e2)) {
-            let result_spp = self.spp.union(s1, s2);
-            return self.mk_spp(result_spp);
+        // Handle special cases
+        match self.get_expr(e1) {
+            AExpr::SPP(s) => {
+                if *s == self.spp.zero {
+                    return e2;
+                }
+            },
+            _ => {}
         }
-        // SPP Zero Simplification: e + 0 = e
-        if let AExpr::SPP(s) = self.get_expr(e1) {
-            if s == self.spp.zero {
-                return e2;
-            }
-        }
-        if let AExpr::SPP(s) = self.get_expr(e2) {
-            if s == self.spp.zero {
-                return e1;
-            }
+        
+        match self.get_expr(e2) {
+            AExpr::SPP(s) => {
+                if *s == self.spp.zero {
+                    return e1;
+                }
+            },
+            _ => {}
         }
 
-        // TODO: Add check for SPP zero/one (e + 0 = e, e + 1 = 1)
-        // Canonical ordering: Ensure smaller index comes first for commutative ops
-        let (e1, e2) = if e1 < e2 { (e1, e2) } else { (e2, e1) };
-        self.intern(AExpr::Union(e1, e2))
+        // Create initial vector with e1 and e2
+        let mut states = vec![e1, e2];
+        
+        // Canonicalize the union
+        states = self.canonicalize_union(states);
+        
+        // Special case: empty vector after canonicalization
+        if states.is_empty() {
+            return self.mk_spp(self.spp.zero);
+        }
+        
+        // Special case: just one element
+        if states.len() == 1 {
+            return states[0];
+        }
+        
+        // Create an n-ary union
+        self.intern(AExpr::Union(states))
     }
 
     fn mk_intersect(&mut self, e1: State, e2: State) -> State {
@@ -128,11 +190,10 @@ impl Aut {
 
         // SPP Simplification: s1 & s2
         if let (AExpr::SPP(s1), AExpr::SPP(s2)) = (self.get_expr(e1), self.get_expr(e2)) {
-            let result_spp = self.spp.intersect(s1, s2);
+            let result_spp = self.spp.intersect(*s1, *s2);
             return self.mk_spp(result_spp);
         }
 
-        // TODO: Add check for SPP zero/one (e & 0 = 0, e & 1 = e)
         // Canonical ordering
         let (e1, e2) = if e1 < e2 { (e1, e2) } else { (e2, e1) };
         self.intern(AExpr::Intersect(e1, e2))
@@ -145,7 +206,7 @@ impl Aut {
 
         // SPP Simplification: s1 ^ s2
         if let (AExpr::SPP(s1), AExpr::SPP(s2)) = (self.get_expr(e1), self.get_expr(e2)) {
-            let result_spp = self.spp.xor(s1, s2);
+            let result_spp = self.spp.xor(*s1, *s2);
             return self.mk_spp(result_spp);
         }
 
@@ -161,26 +222,39 @@ impl Aut {
 
         // SPP Simplification: s1 - s2
         if let (AExpr::SPP(s1), AExpr::SPP(s2)) = (self.get_expr(e1), self.get_expr(e2)) {
-            let result_spp = self.spp.difference(s1, s2);
+            let result_spp = self.spp.difference(*s1, *s2);
             return self.mk_spp(result_spp);
         }
 
-        // TODO: Add check for SPP zero (e - 0 = e, 0 - e = 0? depends if SPP is bool or set)
         self.intern(AExpr::Difference(e1, e2))
     }
 
     fn mk_complement(&mut self, e: State) -> State {
         // Simplify !!e = e
         if let AExpr::Complement(inner_e) = self.get_expr(e) {
-            return inner_e;
+            return *inner_e;
         }
+        
         // De Morgan's laws and complement simplifications
-        match self.get_expr(e) {
-            AExpr::Union(e1, e2) => {
-                // !(e1 + e2) = !e1 & !e2
-                let c1 = self.mk_complement(e1);
-                let c2 = self.mk_complement(e2);
-                return self.mk_intersect(c1, c2);
+        let expr = self.get_expr(e).clone();
+        match expr {
+            AExpr::Union(states) => {
+                // !(e1 + e2 + ... + en) = !e1 & !e2 & ... & !en
+                if states.is_empty() {
+                    return self.mk_spp(self.spp.one); // Complement of empty union is 1
+                }
+                
+                // Avoid borrowing self by calculating complements first
+                let complements: Vec<State> = states.iter()
+                    .map(|&state| self.mk_complement(state))
+                    .collect();
+                
+                // Then combine them with intersect
+                let mut result = complements[0];
+                for &state in &complements[1..] {
+                    result = self.mk_intersect(result, state);
+                }
+                return result;
             }
             AExpr::Intersect(e1, e2) => {
                 let c1 = self.mk_complement(e1);
@@ -197,29 +271,29 @@ impl Aut {
             }
             _ => {}
         }
+        
         // Simplify !⊤ = 0
-        if let AExpr::Top = self.get_expr(e) {
+        if let AExpr::Top = expr {
             return self.mk_spp(self.spp.zero);
         }
 
         // SPP Simplification is not valid here, since we are complementing a set of strings!
-
         self.intern(AExpr::Complement(e))
     }
 
     fn mk_sequence(&mut self, e1: State, e2: State) -> State {
         // SPP Simplification: s1 ; s2
         if let (AExpr::SPP(s1), AExpr::SPP(s2)) = (self.get_expr(e1), self.get_expr(e2)) {
-            let result_spp = self.spp.sequence(s1, s2);
+            let result_spp = self.spp.sequence(*s1, *s2);
             return self.mk_spp(result_spp);
         }
         // Simplify SPP.one ; e = e and e ; SPP.one = e and SPP.zero ; e = SPP.zero and e ; SPP.zero = SPP.zero
         match self.get_expr(e1) {
             AExpr::SPP(s1) => {
-                if s1 == self.spp.one {
+                if *s1 == self.spp.one {
                     return e2;
                 }
-                if s1 == self.spp.zero {
+                if *s1 == self.spp.zero {
                     return self.mk_spp(self.spp.zero);
                 }
             }
@@ -227,10 +301,10 @@ impl Aut {
         }
         match self.get_expr(e2) {
             AExpr::SPP(s2) => {
-                if s2 == self.spp.one {
+                if *s2 == self.spp.one {
                     return e1;
                 }
-                if s2 == self.spp.zero {
+                if *s2 == self.spp.zero {
                     return self.mk_spp(self.spp.zero);
                 }
             }
@@ -243,14 +317,14 @@ impl Aut {
 
     fn mk_star(&mut self, e: State) -> State {
         // Simplify (e*)* = e*
-        if let AExpr::Star(_) = self.get_expr(e) {
-            // Check the type without getting inner_e
-            return e; // Return the existing e* index
+        if let AExpr::Star(inner_e) = self.get_expr(e) {
+            // Return the existing e* index
+            return e;
         }
 
         // SPP Simplification: s*
         if let AExpr::SPP(s) = self.get_expr(e) {
-            let result_spp = self.spp.star(s);
+            let result_spp = self.spp.star(*s);
             return self.mk_spp(result_spp);
         }
 
@@ -266,8 +340,8 @@ impl Aut {
     }
 
     // Helper to get the actual expression from an index
-    fn get_expr(&self, id: State) -> AExpr {
-        self.aexprs[id]
+    fn get_expr(&self, id: State) -> &AExpr {
+        &self.aexprs[id]
     }
 
     // Function to convert an external Expr to an internal AExp index
@@ -472,12 +546,18 @@ impl Aut {
         if let Some(delta) = self.delta_map.get(&state) {
             return delta.clone();
         }
-        match self.get_expr(state) {
+        
+        // Extract all needed information from the expr before recursive calls
+        let result = match self.get_expr(state).clone() {
             AExpr::SPP(_) => ST::empty(),
-            AExpr::Union(e1, e2) => {
-                let delta1 = self.delta(e1);
-                let delta2 = self.delta(e2);
-                self.st_union(delta1, delta2)
+            AExpr::Union(states) => {
+                let states_copy = states.clone();
+                let mut result = ST::empty();
+                for s in states_copy {
+                    let delta_state = self.delta(s);
+                    result = self.st_union(result, delta_state);
+                }
+                result
             }
             AExpr::Intersect(e1, e2) => {
                 let delta1 = self.delta(e1);
@@ -502,8 +582,8 @@ impl Aut {
                 // delta(e1 e2) = delta(e1) e2 + epsilon(e1) delta(e2)
                 let epsilon_e1 = self.epsilon(e1);
                 let delta_e1 = self.delta(e1);
-                let delta_e1_seq_e2 = self.st_postcompose(delta_e1, e2);
                 let delta_e2 = self.delta(e2);
+                let delta_e1_seq_e2 = self.st_postcompose(delta_e1, e2);
                 let epsilon_e1_seq_e2 = self.st_precompose(epsilon_e1, delta_e2);
                 self.st_union(delta_e1_seq_e2, epsilon_e1_seq_e2)
             }
@@ -512,8 +592,7 @@ impl Aut {
                 let epsilon_e = self.epsilon(e);
                 let epsilon_e_star = self.spp.star(epsilon_e);
                 let delta_e = self.delta(e);
-                let star_e = state;
-                let delta_e_star_e = self.st_postcompose(delta_e, star_e);
+                let delta_e_star_e = self.st_postcompose(delta_e, state);
                 self.st_precompose(epsilon_e_star, delta_e_star_e)
             }
             AExpr::Dup => {
@@ -526,19 +605,34 @@ impl Aut {
                 let top = self.mk_top();
                 self.st_singleton(self.spp.top, top)
             }
-        }
+        };
+        
+        // Cache the result
+        self.delta_map.insert(state, result.clone());
+        result
     }
 
     pub fn epsilon(&mut self, state: State) -> spp::SPP {
         if let Some(epsilon) = self.epsilon_map.get(&state) {
-            return epsilon.clone();
+            return *epsilon;
         }
-        match self.get_expr(state) {
+        
+        // Extract all needed information from the expr before recursive calls
+        let expr = self.get_expr(state).clone();
+        let result = match expr {
             AExpr::SPP(spp) => spp,
-            AExpr::Union(e1, e2) => {
-                let eps1 = self.epsilon(e1);
-                let eps2 = self.epsilon(e2);
-                self.spp.union(eps1, eps2)
+            AExpr::Union(states) => {
+                // Pre-compute all epsilon values
+                let epsilon_values: Vec<spp::SPP> = states.iter()
+                    .map(|&s| self.epsilon(s))
+                    .collect();
+                
+                // Then combine them
+                let mut result = self.spp.zero;
+                for &eps in &epsilon_values {
+                    result = self.spp.union(result, eps);
+                }
+                result
             }
             AExpr::Intersect(e1, e2) => {
                 let eps1 = self.epsilon(e1);
@@ -572,7 +666,11 @@ impl Aut {
             AExpr::LtlNext(_) => todo!("Implement epsilon for LTL Next"),
             AExpr::LtlUntil(_, _) => todo!("Implement epsilon for LTL Until"),
             AExpr::Top => self.spp.top,
-        }
+        };
+        
+        // Cache the result
+        self.epsilon_map.insert(state, result);
+        result
     }
 
     /// Returns a reference to the internal SPPstore
@@ -584,16 +682,19 @@ impl Aut {
     pub fn state_to_string(&self, state: State) -> String {
         match self.get_expr(state) {
             AExpr::SPP(spp) => format!("SPP({})", spp),
-            AExpr::Union(e1, e2) => format!("({} + {})", self.state_to_string(e1), self.state_to_string(e2)),
-            AExpr::Intersect(e1, e2) => format!("({} & {})", self.state_to_string(e1), self.state_to_string(e2)),
-            AExpr::Xor(e1, e2) => format!("({} ^ {})", self.state_to_string(e1), self.state_to_string(e2)),
-            AExpr::Difference(e1, e2) => format!("({} - {})", self.state_to_string(e1), self.state_to_string(e2)),
-            AExpr::Complement(e) => format!("!{}", self.state_to_string(e)),
-            AExpr::Sequence(e1, e2) => format!("({} ; {})", self.state_to_string(e1), self.state_to_string(e2)),
-            AExpr::Star(e) => format!("({})*", self.state_to_string(e)),
+            AExpr::Union(states) => {
+                let state_strings: Vec<String> = states.iter().map(|&s| self.state_to_string(s)).collect();
+                format!("({})", state_strings.join(" + "))
+            }
+            AExpr::Intersect(e1, e2) => format!("({} & {})", self.state_to_string(*e1), self.state_to_string(*e2)),
+            AExpr::Xor(e1, e2) => format!("({} ^ {})", self.state_to_string(*e1), self.state_to_string(*e2)),
+            AExpr::Difference(e1, e2) => format!("({} - {})", self.state_to_string(*e1), self.state_to_string(*e2)),
+            AExpr::Complement(e) => format!("!{}", self.state_to_string(*e)),
+            AExpr::Sequence(e1, e2) => format!("({} ; {})", self.state_to_string(*e1), self.state_to_string(*e2)),
+            AExpr::Star(e) => format!("({})*", self.state_to_string(*e)),
             AExpr::Dup => "dup".to_string(),
-            AExpr::LtlNext(e) => format!("X({})", self.state_to_string(e)),
-            AExpr::LtlUntil(e1, e2) => format!("({} U {})", self.state_to_string(e1), self.state_to_string(e2)),
+            AExpr::LtlNext(e) => format!("X({})", self.state_to_string(*e)),
+            AExpr::LtlUntil(e1, e2) => format!("({} U {})", self.state_to_string(*e1), self.state_to_string(*e2)),
             AExpr::Top => "⊤".to_string(),
         }
     }
@@ -602,15 +703,20 @@ impl Aut {
     pub fn collect_spps(&self, state: State, spps: &mut HashSet<spp::SPP>) {
         match self.get_expr(state) {
             AExpr::SPP(spp) => {
-                spps.insert(spp);
+                spps.insert(*spp);
             },
-            AExpr::Union(e1, e2) | AExpr::Intersect(e1, e2) | AExpr::Xor(e1, e2) | 
+            AExpr::Union(states) => {
+                for &s in states {
+                    self.collect_spps(s, spps);
+                }
+            },
+            AExpr::Intersect(e1, e2) | AExpr::Xor(e1, e2) | 
             AExpr::Difference(e1, e2) | AExpr::Sequence(e1, e2) | AExpr::LtlUntil(e1, e2) => {
-                self.collect_spps(e1, spps);
-                self.collect_spps(e2, spps);
+                self.collect_spps(*e1, spps);
+                self.collect_spps(*e2, spps);
             },
             AExpr::Complement(e) | AExpr::Star(e) | AExpr::LtlNext(e) => {
-                self.collect_spps(e, spps);
+                self.collect_spps(*e, spps);
             },
             AExpr::Dup | AExpr::Top => {
                 // No SPP to collect
