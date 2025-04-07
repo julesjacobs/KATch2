@@ -78,6 +78,15 @@ Note: The parser takes `k` as an argument to determine the number of available f
 
 ## Future
 
+Immediate TODOs:
+1. Improve the UI
+2. Implement pruning
+3. Implement a parser for the katch1 fuzz tests (https://github.com/cornell-netlab/KATch/blob/master/nkpl/tests/fuzz100k.nkpl)
+4. Better comment the code & improve the code in general
+5. Add info to the UI about the syntax, what the SPP figures mean, what the automaton states/transitions/epsilons mean.
+
+### Later
+
 Other interesting operations to support:
 1. The Phi function that removes dups (which is no-trivial in combination with the extended boolean operators, since you can't just push Phi inside them)
 2. A projection operator that removes certain packet fields from traces. For example, if you are only interested in the paths, you could project out only the switch field and remove other fields
