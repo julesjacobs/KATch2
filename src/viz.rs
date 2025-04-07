@@ -7,7 +7,6 @@ use std::process::Command;
 use crate::aut::Aut;
 use std::fs::File;
 use std::io::Write;
-use crate::expr::Expr;
 use regex;
 
 /// Helper function to escape HTML special characters in a string
@@ -1081,7 +1080,7 @@ mod tests {
     #[test]
     fn test_render_specific_spps() {
         // Test rendering 0 and 1
-        let mut store = SPPstore::new(1); // Only 1 var needed for 0/1
+        let store = SPPstore::new(1); // Only 1 var needed for 0/1
         let output_dir = Path::new(TEST_OUTPUT_DIR);
 
         // Render SPP 0 (Zero)
@@ -1113,10 +1112,6 @@ mod tests {
         
         // Create a star operation: (test(f1=v1))*
         let star = Expr::star(test_f1_v1);
-        
-        // Convert expressions to automaton states
-        let seq_state = aut.expr_to_state(&seq2);
-        let star_state = aut.expr_to_state(&star);
         
         // Create a union of the two: seq + star
         let union = Expr::union(seq2, star);

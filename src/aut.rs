@@ -423,7 +423,7 @@ impl Aut {
 
     fn mk_star(&mut self, e: State) -> State {
         // Simplify (e*)* = e*
-        if let AExpr::Star(inner_e) = self.get_expr(e) {
+        if let AExpr::Star(_inner_e) = self.get_expr(e) {
             // Return the existing e* index
             return e;
         }
@@ -657,7 +657,7 @@ impl Aut {
         let expr = self.get_expr(state).clone();
 
         // Calculate delta for each case
-        let mut result = match expr {
+        let result = match expr {
             AExpr::SPP(_) => ST::empty(),
             AExpr::Union(states) => {
                 let states_copy = states.clone();

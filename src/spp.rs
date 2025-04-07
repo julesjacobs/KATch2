@@ -354,9 +354,9 @@ impl SPPstore {
     //     res
     // }
 
-    pub fn ifelse(&mut self, var: Var, then_branch: SPP, else_branch: SPP) -> SPP {
-        todo!()
-    }
+    // pub fn ifelse(&mut self, var: Var, then_branch: SPP, else_branch: SPP) -> SPP {
+    //     todo!()
+    // }
 
     pub fn test(&mut self, var: Var, value: bool) -> SPP {
         if let Some(&result) = self.test_memo.get(&(var, value)) {
