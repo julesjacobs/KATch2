@@ -48,15 +48,6 @@ A symbolic transition can be deterministic or nondeterministic, depending on whe
 
 Automata are unlabeled nodes connected via SPPs. Since each SPP represents packet pairs (pk1, pk2), the language of an Aut is a string of such packet pairs. However, since this represents a packet transformation from pk1 to pk2, the n-th out packet must be the same as the (n+1)-th in packet. That is, in a string ... (in_i, out_i) (in_{i+1}, out_{i+1}) ... we must have out_i = in_{i+1}. Strings that violate this principle are not considered to be part of the language accepted by the Aut.
 
-### Accepting states
-
-To represent acceptance, we have two options:
-
-- Do it like KATch, and have a special output transition on each node that accepts a string after a final packet transformation.
-- Mark each state as either accepting or non-accepting, similar to DFAs/NFAs.
-
-The latter may be more attractive, as is more uniform: there is no need to treat the last character in the string different from the rest.
-
 ## Syntax
 
 The language supports the following expressions:
@@ -85,3 +76,11 @@ value ::= 0 | 1
 
 Note: The parser takes `k` as an argument to determine the number of available fields.
 
+## Future
+
+Other interesting operations to support:
+1. The Phi function that removes dups (which is no-trivial in combination with the extended boolean operators, since you can't just push Phi inside them)
+2. A projection operator that removes certain packet fields from traces. For example, if you are only interested in the paths, you could project out only the switch field and remove other fields
+3. An un-projection operator that materializes the automaton state as an explicit field in the packet, representing a netkat program as a single SPP.
+4. Pruning a netkat automaton to distill the SPPs to the minimum, removing "dead" elements of SPPs, such that you have the property that any packet pair in any internal SPP always appears in some guarded string of the entire automaton. This generalizes checking whether an automaton is empty (a semantically empty automaton would distill down to nothing)
+5. LTL/stackat/probabilities/etc
