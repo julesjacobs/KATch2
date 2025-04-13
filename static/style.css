@@ -112,29 +112,10 @@ button:hover {
     padding: 20px;
 }
 
-#visualization-content {
+#visualization-frame {
     width: 100%;
-    height: auto;
-    min-height: 300px;
+    height: 600px;
     border: none;
-    /* Ensure proper spacing in injected content */
-    padding: 15px;
-}
-
-/* Ensure that our styles don't clash with injected SVG viewers */
-#visualization-content .svg-container {
-    overflow: visible;
-    max-height: none;
-}
-
-#visualization-content .svg-placeholder {
-    width: 100%;
-    min-height: 200px;
-}
-
-#visualization-content svg {
-    max-width: 100%;
-    height: auto;
 }
 
 footer {
