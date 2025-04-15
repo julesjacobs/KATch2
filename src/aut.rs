@@ -560,6 +560,8 @@ impl Aut {
         result
     }
 
+    /// Helper function for intersecting an ST with an `expr` on the right
+    /// (used for computing the derivative of `e1 U e2`)
     fn st_intersect_expr(&mut self, st: ST, expr: State) -> ST {
         let mut result = ST::empty();
         for (state, spp) in st.transitions {

@@ -76,10 +76,10 @@ fn get_distinct_fields(k: u32) -> (Field, Field) {
 
 // The `genax(n, d, k)` function returns a random pair of semantically equivalent expressions.
 // The n parameter controls how many axioms are used.
-// The d parameter controls the depth of the expression (viewing the expr as an AST).
+// The d parameter controls the depth of each expression (viewing the expr as an AST).
 // The k parameter controls how many variables are used.
 // The function works as follows:
-// - For genax(0, d, k), return a pair (e,e) where e is a random expression of depth d with k variables.
+// - For genax(0, d, k), return a pair (e, e) where e is a random expression of depth d with k variables.
 // - For genax(n, d, k), pick any axiom, say e1 + e2 = e2 + e1.
 //   Then recursively generate (e1, e1') and (e2, e2') using genax(n-1, d, k) and
 //   substitute them into the axiom and return (e1 + e2, e2' + e1').
@@ -157,7 +157,7 @@ pub fn genax(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) 
             // --- PA Axioms --- (No recursive calls needed)
             match rand::random_range(0..8) {
                 0 => {
-                    // PA-MOD-MOD-COMM
+                    // PA-MOD-MOD-COMM: `xi <- v . xj <- v' = xj <- v' . xi <- v`
                     let (xi, xj) = get_distinct_fields(num_fields);
                     let v = gen_random_value();
                     let v_prime = gen_random_value();
@@ -204,7 +204,7 @@ pub fn genax(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) 
                     );
                 }
                 5 => {
-                    // PA-MOD-MOD
+                    // PA-MOD-MOD: `(xi <- v) . (xi <- v') = xi <- v'`
                     let xi = gen_random_field(num_fields);
                     let v = gen_random_value();
                     let v_prime = gen_random_value();
@@ -214,7 +214,7 @@ pub fn genax(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) 
                     );
                 }
                 6 => {
-                    // PA-CONTRA
+                    // PA-CONTRA: `(xi = 0) . (xi = 1) = 0`
                     let xi = gen_random_field(num_fields);
                     return (
                         Expr::sequence(Expr::test(xi, false), Expr::test(xi, true)),
@@ -222,7 +222,7 @@ pub fn genax(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) 
                     );
                 }
                 7 => {
-                    // PA-MATCH-ALL
+                    // PA-MATCH-ALL: `(xi = 0) + (xi = 1) = 1`
                     let xi = gen_random_field(num_fields);
                     return (
                         Expr::union(Expr::test(xi, false), Expr::test(xi, true)),
@@ -234,7 +234,7 @@ pub fn genax(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) 
         }
         1 => {
             let (lhs, rhs) = genax(ax_depth - 1, expr_depth, num_fields);
-            match rand::random_range(0..12) {
+            match rand::random_range(0..17) {
                 0 => {
                     // KA-PLUS-ZERO: p + 0 = p
                     return (Expr::union(lhs, Expr::zero()), rhs);
@@ -288,6 +288,40 @@ pub fn genax(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) 
                 11 => {
                     // BA-SEQ-IDEM: a & a = a
                     return (Expr::intersect(lhs.clone(), lhs), rhs);
+                }
+                12 => {
+                    // !(F e) = G (!e)
+                    let new_lhs = Expr::complement(Expr::ltl_finally(lhs));
+                    let new_rhs = Expr::ltl_globally(Expr::complement(rhs));
+                    return (new_lhs, new_rhs);
+                }
+                13 => {
+                    // !(G e) = F (!e)
+                    let new_lhs = Expr::complement(Expr::ltl_globally(lhs));
+                    let new_rhs = Expr::ltl_finally(Expr::complement(rhs));
+                    return (new_lhs, new_rhs);
+                }
+                14 => {
+                    // !(X e) = End + X (!e)
+                    let new_lhs = Expr::complement(Expr::ltl_next(lhs));
+                    let new_rhs = Expr::union(Expr::end(), Expr::ltl_next(Expr::complement(rhs)));
+                    return (new_lhs, new_rhs);
+                }
+                15 => {
+                    // F e = e + X (F e)
+                    let new_lhs = Expr::ltl_finally(lhs);
+                    let new_rhs = Expr::union(rhs.clone(), Expr::ltl_next(Expr::ltl_finally(rhs)));
+                    return (new_lhs, new_rhs);
+                }
+                16 => {
+                    // G e = e & (End + X (G e))
+                    // TODO: double check that we should be using intersection here & not sequential composition
+                    let new_lhs = Expr::ltl_globally(lhs);
+                    let new_rhs = Expr::intersect(
+                        rhs.clone(),
+                        Expr::union(Expr::end(), Expr::ltl_next(Expr::ltl_globally(rhs))),
+                    );
+                    return (new_lhs, new_rhs);
                 }
                 _ => unreachable!(),
             }
