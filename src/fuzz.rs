@@ -386,8 +386,8 @@ mod tests {
     #[test]
     fn fuzz_test() {
         // Generate random expressions, create the xor, and check if the automaton is empty
-        let ax_depth = 2;
-        let expr_depth = 0;
+        let ax_depth = 3;
+        let expr_depth = 1;
         let num_fields = 3;
         let number = 1000;
         for _ in 0..number {

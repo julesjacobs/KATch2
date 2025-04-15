@@ -574,15 +574,16 @@ impl Aut {
 
     pub fn delta(&mut self, state: State) -> ST {
         self.num_calls += 1;
-        if self.num_calls > 200 {
+        if self.num_calls > 500 {
             panic!(
                 "Delta called {} times, artificial limit reached for state {}",
                 self.num_calls, self.state_to_string(state)
             );
         }
-        if self.state_to_string(state).len() > 1000 {
+        if self.state_to_string(state).len() > 10000 {
             panic!(
-                "Delta called with state length > 1000: {}",
+                "Delta called with state length = {}: {}",
+                self.state_to_string(state).len(),
                 self.state_to_string(state)
             );
         }
