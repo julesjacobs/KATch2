@@ -220,7 +220,8 @@ impl<'a> Parser<'a> {
     // 7. :=, == (Assign, Test) - Non-associative? Usually require primary exprs
     // 8. Primary (Literals, Parentheses, dup, field)
 
-    // parse_until handles 'U' and 'R'
+    /// `parse_until` handles 'U' and 'R'.     
+    /// This function desugars `e1 R e2 ≡ ¬(¬e1 U ¬e2)`.
     fn parse_until(&mut self) -> Result<Exp, String> {
         let left = self.parse_sequence()?;
         match self.peek_token()? {
@@ -232,7 +233,7 @@ impl<'a> Parser<'a> {
             Token::LtlR => {
                 self.next_token()?; // Consume 'R'
                 let right = self.parse_until()?; // Recurse for right associativity
-                // e1 R e2 ≡ ¬(¬e1 U ¬e2)
+                                                 // e1 R e2 ≡ ¬(¬e1 U ¬e2)
                 let not_left = Expr::complement(left);
                 let not_right = Expr::complement(right);
                 let until = Expr::ltl_until(not_left, not_right);
@@ -290,7 +291,10 @@ impl<'a> Parser<'a> {
         Ok(left)
     }
 
-    // parse_unary handles prefix '!', 'X', 'F', 'G' and postfix '*'
+    /// `parse_unary` handles prefix '!', 'X', 'F', 'G' and postfix '*'.      
+    /// This function desugars the derived LTL operators:
+    /// - `F e ≡ true U e`
+    /// - `G e ≡ ¬(true U ¬e)`
     fn parse_unary(&mut self) -> Result<Exp, String> {
         match self.peek_token()? {
             Token::Not => {
@@ -305,7 +309,7 @@ impl<'a> Parser<'a> {
             }
             Token::LtlF => {
                 self.next_token()?; // Consume 'F'
-                let expr = self.parse_unary()?; 
+                let expr = self.parse_unary()?;
                 // F e ≡ true U e
                 Ok(Expr::ltl_until(Expr::top(), expr))
             }
@@ -579,13 +583,13 @@ mod tests {
                 Expr::test(2, false)
             ))
         );
-        
+
         // Test F operator (F e ≡ true U e)
         assert_eq!(
             parse("F x0==0"),
             Ok(Expr::ltl_until(Expr::top(), Expr::test(0, false)))
         );
-        
+
         // Test G operator (G e ≡ ¬(true U ¬e))
         assert_eq!(
             parse("G x0==0"),
@@ -594,7 +598,7 @@ mod tests {
                 Expr::complement(Expr::test(0, false))
             )))
         );
-        
+
         // Test R operator (e1 R e2 ≡ ¬(¬e1 U ¬e2))
         assert_eq!(
             parse("x0==0 R x1==1"),
@@ -603,7 +607,7 @@ mod tests {
                 Expr::complement(Expr::test(1, true))
             )))
         );
-        
+
         // Test complex combinations
         assert_eq!(
             parse("F G x0==0"),
@@ -615,15 +619,12 @@ mod tests {
                 ))
             ))
         );
-        
+
         assert_eq!(
             parse("G F x0==0"),
             Ok(Expr::complement(Expr::ltl_until(
                 Expr::top(),
-                Expr::complement(Expr::ltl_until(
-                    Expr::top(),
-                    Expr::test(0, false)
-                ))
+                Expr::complement(Expr::ltl_until(Expr::top(), Expr::test(0, false)))
             )))
         );
     }

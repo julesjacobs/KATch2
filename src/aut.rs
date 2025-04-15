@@ -1,5 +1,4 @@
 use crate::expr::Expr;
-use crate::sp;
 use crate::spp;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -25,9 +24,9 @@ enum AExpr {
 // A State is an index into the Aut's expression table.
 type State = usize;
 
-// Symbolic transitions ST<T>
-// Symbolic transitions represent, for each T, a set of packet pairs that can transition to T. These are represented as a finite map from T to SPP's.
-// A symbolic transition can be deterministic or nondeterministic, depending on whether the SPPs associated with different T's are disjoint. We typically keep ST's in deterministic form.
+/// Symbolic transitions ST<T>.           
+/// Symbolic transitions represent, for each T, a set of packet pairs that can transition to T. These are represented as a finite map from T to SPP's.
+/// A symbolic transition can be deterministic or nondeterministic, depending on whether the SPPs associated with different T's are disjoint. We typically keep ST's in deterministic form.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ST {
     transitions: HashMap<State, spp::SPP>,
@@ -151,7 +150,7 @@ impl Aut {
         let mut new_states = vec![];
         for state in states2.clone() {
             match self.get_expr(state) {
-                AExpr::Top => {},
+                AExpr::Top => {}
                 _ => new_states.push(state),
             }
         }
@@ -387,18 +386,18 @@ impl Aut {
                 let aexp2 = self.expr_to_state(e2);
                 self.intern(AExpr::LtlUntil(aexp1, aexp2))
             }
-            Expr::End => {
-                self.mk_spp(self.spp.top)
-            }
+            Expr::End => self.mk_spp(self.spp.top),
         }
     }
 
     // --- Symbolic transitions: ST ---
 
+    /// The empty ST
     pub fn st_empty(&mut self) -> ST {
         ST::new(HashMap::new())
     }
 
+    /// Creates a singleton ST mapping `spp` to `state`
     pub fn st_singleton(&mut self, spp: spp::SPP, state: State) -> ST {
         if spp == self.spp.zero {
             return ST::new(HashMap::new());
@@ -577,7 +576,8 @@ impl Aut {
         if self.num_calls > 500 {
             panic!(
                 "Delta called {} times, artificial limit reached for state {}",
-                self.num_calls, self.state_to_string(state)
+                self.num_calls,
+                self.state_to_string(state)
             );
         }
         if self.state_to_string(state).len() > 10000 {

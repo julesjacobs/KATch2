@@ -58,7 +58,8 @@ fn gen_random_expr(num_fields: u32, max_depth: usize) -> Exp {
     }
 }
 
-// Gets two distinct fields. Panics if k < 2. Should be guarded before calling.
+/// Gets two distinct fields that are each in the range [0, k].
+/// Panics if k < 2. Should be guarded before calling.
 fn get_distinct_fields(k: u32) -> (Field, Field) {
     if k < 2 {
         panic!("get_distinct_fields called with k < 2");
@@ -73,13 +74,14 @@ fn get_distinct_fields(k: u32) -> (Field, Field) {
 
 // --- Main Fuzzing Function ---
 
-// The genax(n,k) function returns a random pair of semantically equivalent expressions.
+// The `genax(n, d, k)` function returns a random pair of semantically equivalent expressions.
 // The n parameter controls how many axioms are used.
+// The d parameter controls the depth of the expression (viewing the expr as an AST).
 // The k parameter controls how many variables are used.
 // The function works as follows:
-// - For genax(0,k), return a pair (e,e) where e is a random expression with k variables.
-// - For genax(n,k), pick any axiom, say e1 + e2 = e2 + e1.
-//   Then recursively generate (e1,e1') and (e2,e2') using genax(n-1) and
+// - For genax(0, d, k), return a pair (e,e) where e is a random expression of depth d with k variables.
+// - For genax(n, d, k), pick any axiom, say e1 + e2 = e2 + e1.
+//   Then recursively generate (e1, e1') and (e2, e2') using genax(n-1, d, k) and
 //   substitute them into the axiom and return (e1 + e2, e2' + e1').
 
 // Here is the list of axioms we can pick from:
@@ -135,8 +137,9 @@ fn get_distinct_fields(k: u32) -> (Field, Field) {
 
 /// Generates a pair of semantically equivalent expressions.
 ///
-/// - `n`: Controls the number of axiom applications (recursion depth).
-/// - `k`: Controls the maximum number of distinct variables (fields `x0` to `xk-1`).
+/// - `n` (`ax_depth`): Controls the number of axiom applications (recursion depth).
+/// - `d` (`expr_depth`): Controls the depth of the generated expression
+/// - `k` (`num_fields`): Controls the maximum number of distinct variables (fields `x0` to `xk-1`).
 pub fn genax(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) {
     assert!(
         num_fields >= 2,
@@ -368,8 +371,8 @@ mod tests {
     use crate::aut::Aut;
 
     use super::*;
-    use rand::SeedableRng;
     use rand::rngs::StdRng;
+    use rand::SeedableRng;
 
     #[test]
     fn print_random_genax() {
