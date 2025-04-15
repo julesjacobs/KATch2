@@ -10,13 +10,13 @@ use walkdir::WalkDir;
 
 mod aut;
 mod expr;
+mod fuzz;
 mod parser;
 mod pre;
 mod sp;
 mod spp;
-mod viz;
 mod ui;
-mod fuzz;
+mod viz;
 /// KATch2: A symbolic automata toolkit for NetKAT expressions
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -34,7 +34,7 @@ enum Commands {
         #[arg(short, long, default_value = "8080")]
         port: u16,
     },
-    
+
     /// Parse and process NetKAT expressions from a file or directory
     Parse {
         /// The file or directory path to parse

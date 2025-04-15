@@ -91,8 +91,12 @@ impl std::fmt::Display for Expr {
             Expr::Zero => write!(f, "0"),
             Expr::One => write!(f, "1"),
             Expr::Top => write!(f, "⊤"),
-            Expr::Assign(field, value) => write!(f, "x{} := {}", field, if *value { "1" } else { "0" }),
-            Expr::Test(field, value) => write!(f, "x{} == {}", field, if *value { "1" } else { "0" }),
+            Expr::Assign(field, value) => {
+                write!(f, "x{} := {}", field, if *value { "1" } else { "0" })
+            }
+            Expr::Test(field, value) => {
+                write!(f, "x{} == {}", field, if *value { "1" } else { "0" })
+            }
             Expr::Union(e1, e2) => write!(f, "({} + {})", e1, e2),
             Expr::Intersect(e1, e2) => write!(f, "({} & {})", e1, e2),
             Expr::Xor(e1, e2) => write!(f, "({} ^ {})", e1, e2),

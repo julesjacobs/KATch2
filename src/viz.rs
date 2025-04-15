@@ -1,21 +1,21 @@
+use crate::aut::Aut;
 use crate::spp::{SPP, SPPstore};
+use regex;
 use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::fs::File;
+use std::io::Write;
 use std::io::{Error, ErrorKind, Result};
 use std::path::Path;
 use std::process::Command;
-use crate::aut::Aut;
-use std::fs::File;
-use std::io::Write;
-use regex;
 
 /// Helper function to escape HTML special characters in a string
 fn html_escape(s: &str) -> String {
     s.replace("&", "&amp;")
-     .replace("<", "&lt;")
-     .replace(">", "&gt;")
-     .replace("\"", "&quot;")
-     .replace("'", "&#39;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("\"", "&quot;")
+        .replace("'", "&#39;")
 }
 
 /// Computes which nodes in the SPP DAG reachable from `root_index` can reach the `1` node.
@@ -230,7 +230,7 @@ pub fn render_spp(index: SPP, store: &SPPstore, output_dir: &Path) -> Result<()>
 }
 
 /// Renders the Aut automaton into visualizations and an HTML report.
-/// 
+///
 /// This function:
 /// 1. Explores all reachable states starting from the given root state
 /// 2. Renders all SPPs involved in transitions
@@ -240,81 +240,81 @@ pub fn render_spp(index: SPP, store: &SPPstore, output_dir: &Path) -> Result<()>
 pub fn render_aut(root_state: usize, aut: &mut Aut, output_dir: &Path) -> Result<()> {
     // Ensure the output directory exists
     fs::create_dir_all(output_dir)?;
-    
+
     // Set up tracking structures
     let mut visited_states = HashSet::new();
     let mut states_to_process = vec![root_state];
     let mut transitions = Vec::new();
     let mut spp_ids = HashSet::new();
     let mut state_expressions = HashMap::new();
-    
+
     // Explore the automaton
     while let Some(state) = states_to_process.pop() {
         if !visited_states.insert(state) {
             continue; // Skip if already visited
         }
-        
+
         // Get expression string for this state
         let expr_string = aut.state_to_string(state);
         state_expressions.insert(state, expr_string);
-        
+
         // Get epsilon for this state
         let epsilon_spp = aut.epsilon(state);
         spp_ids.insert(epsilon_spp);
-        
+
         // Collect SPPs from the expression
         aut.collect_spps(state, &mut spp_ids);
-        
+
         // Get transitions (delta) for this state
         let delta = aut.delta(state);
         for (&target_state, &spp) in delta.get_transitions() {
             transitions.push((state, target_state, spp));
             spp_ids.insert(spp);
-            
+
             // Add target state to processing queue if not already visited
             if !visited_states.contains(&target_state) {
                 states_to_process.push(target_state);
             }
         }
     }
-    
+
     // Render all SPPs
     for spp_id in &spp_ids {
         render_spp(*spp_id, &aut.spp_store(), output_dir)?;
     }
-    
+
     // Generate dot file for the automaton
     let dot_path = output_dir.join("automaton.dot");
     let svg_path = output_dir.join("automaton.svg");
-    
+
     let mut dot_content = String::from("digraph Automaton {\n  rankdir=LR;\n");
-    
+
     // Add nodes with clickable SPP references
     for state in &visited_states {
         let epsilon_spp = aut.epsilon(*state);
         let unknown = String::from("Unknown");
         let expr = state_expressions.get(state).unwrap_or(&unknown);
-        
+
         // Format the expression to include HTML-like labels
         // This will make SPP references clickable in the SVG
         let spp_pattern = regex::Regex::new(r"SPP\((\d+)\)").unwrap();
-        
+
         // First, escape the entire expression for HTML
         let html_safe_expr = html_escape(expr);
-        
+
         // Then replace the SPP references with properly formatted HTML
         let expr_with_links = spp_pattern.replace_all(&html_safe_expr, |caps: &regex::Captures| {
             let spp_id = &caps[1];
             format!("<FONT COLOR=\"#3498db\"><U>SPP({})</U></FONT>", spp_id)
         });
-        
+
         // Create the node with HTML-like label
         dot_content.push_str(&format!(
             "  node{} [label=<{} ε:{}<BR/>{}>; shape=box; style=rounded];\n",
             state, state, epsilon_spp, expr_with_links
         ));
     }
-    
+
     // Add edges
     for (src, dst, spp) in &transitions {
         let edge_label = format!("{}", spp);
@@ -323,12 +323,12 @@ pub fn render_aut(root_state: usize, aut: &mut Aut, output_dir: &Path) -> Result
             src, dst, edge_label
         ));
     }
-    
+
     dot_content.push_str("}\n");
-    
+
     // Write dot file
     fs::write(&dot_path, &dot_content)?;
-    
+
     // Generate SVG from dot
     let output = Command::new("dot")
         .arg("-Tsvg")
@@ -336,15 +336,15 @@ pub fn render_aut(root_state: usize, aut: &mut Aut, output_dir: &Path) -> Result
         .arg("-o")
         .arg(&svg_path)
         .output()?;
-    
+
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(Error::new(
             ErrorKind::Other,
-            format!("Graphviz 'dot' command failed: {}", stderr.trim())
+            format!("Graphviz 'dot' command failed: {}", stderr.trim()),
         ));
     }
-    
+
     // Generate HTML report
     let html_path = output_dir.join("report.html");
     let mut html_content = String::from(
@@ -585,21 +585,21 @@ pub fn render_aut(root_state: usize, aut: &mut Aut, output_dir: &Path) -> Result
         <div class="flex-container" id="spp-container">
 "#,
     );
-    
+
     // Add SPP visualizations
     let mut sorted_spps: Vec<_> = spp_ids.iter().collect();
     sorted_spps.sort();
-    
+
     // Group SPPs in rows of 4 for even height distribution
     const CARDS_PER_ROW: usize = 4;
     let rows = (sorted_spps.len() + CARDS_PER_ROW - 1) / CARDS_PER_ROW; // Ceiling division
-    
+
     for row in 0..rows {
         html_content.push_str("            <div class=\"spp-row\">\n");
-        
+
         let start_idx = row * CARDS_PER_ROW;
         let end_idx = std::cmp::min((row + 1) * CARDS_PER_ROW, sorted_spps.len());
-        
+
         for i in start_idx..end_idx {
             let spp = sorted_spps[i];
             html_content.push_str(&format!(
@@ -607,10 +607,10 @@ pub fn render_aut(root_state: usize, aut: &mut Aut, output_dir: &Path) -> Result
                 spp, spp, spp, spp
             ));
         }
-        
+
         html_content.push_str("            </div>\n");
     }
-    
+
     html_content.push_str(
         r#"        </div>
     </div>
@@ -628,7 +628,7 @@ pub fn render_aut(root_state: usize, aut: &mut Aut, output_dir: &Path) -> Result
             <tbody>
 "#,
     );
-    
+
     // Add state information rows with clickable SPP references
     let mut state_vec: Vec<_> = visited_states.iter().collect();
     state_vec.sort();
@@ -636,16 +636,16 @@ pub fn render_aut(root_state: usize, aut: &mut Aut, output_dir: &Path) -> Result
         let epsilon_spp = aut.epsilon(*state);
         let unknown = String::from("Unknown");
         let expr_string = state_expressions.get(state).unwrap_or(&unknown);
-        
+
         // Replace SPP(n) with clickable spans
         let expr_with_links = make_spp_clickable(expr_string);
-        
+
         html_content.push_str(&format!(
             "                <tr>\n                    <td>{}</td>\n                    <td><div class=\"expr-text\">{}</div></td>\n                    <td><span class=\"spp-reference\" data-spp=\"{}\">{}</span></td>\n                </tr>\n",
             state, expr_with_links, epsilon_spp, epsilon_spp
         ));
     }
-    
+
     html_content.push_str(
         r#"            </tbody>
         </table>
@@ -664,7 +664,7 @@ pub fn render_aut(root_state: usize, aut: &mut Aut, output_dir: &Path) -> Result
             <tbody>
 "#,
     );
-    
+
     // Add transition rows
     let mut sorted_transitions = transitions.clone();
     sorted_transitions.sort_by_key(|(src, dst, _)| (*src, *dst));
@@ -674,7 +674,7 @@ pub fn render_aut(root_state: usize, aut: &mut Aut, output_dir: &Path) -> Result
             src, dst, spp, spp
         ));
     }
-    
+
     html_content.push_str(
         r#"            </tbody>
         </table>
@@ -1010,13 +1010,16 @@ pub fn render_aut(root_state: usize, aut: &mut Aut, output_dir: &Path) -> Result
 </html>
 "#,
     );
-    
+
     // Write HTML file
     let mut file = File::create(html_path)?;
     file.write_all(html_content.as_bytes())?;
-    
-    println!("Successfully generated automaton visualization report at: {:?}", output_dir.join("report.html"));
-    
+
+    println!(
+        "Successfully generated automaton visualization report at: {:?}",
+        output_dir.join("report.html")
+    );
+
     Ok(())
 }
 
@@ -1024,25 +1027,28 @@ pub fn render_aut(root_state: usize, aut: &mut Aut, output_dir: &Path) -> Result
 fn make_spp_clickable(expr: &str) -> String {
     // First HTML escape the expression
     let escaped_expr = html_escape(expr);
-    
+
     // Use regex to find all instances of SPP(number)
     let spp_pattern = regex::Regex::new(r"SPP\((\d+)\)").unwrap();
-    
+
     let result = spp_pattern.replace_all(&escaped_expr, |caps: &regex::Captures| {
         let spp_id = &caps[1];
-        format!("<span class=\"expr-spp\" data-spp=\"{}\">{}</span>", spp_id, &caps[0])
+        format!(
+            "<span class=\"expr-spp\" data-spp=\"{}\">{}</span>",
+            spp_id, &caps[0]
+        )
     });
-    
+
     result.to_string()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*; // Import items from the parent module (viz.rs)
-    use crate::spp::SPPstore; // Need the store to create and manage SPPs
-    use crate::spp::Var;
     use crate::aut::Aut;
     use crate::expr::Expr;
+    use crate::spp::SPPstore; // Need the store to create and manage SPPs
+    use crate::spp::Var;
     use std::path::Path;
 
     // Define a constant for the number of variables for test SPPs
@@ -1096,31 +1102,34 @@ mod tests {
     fn test_render_automaton() {
         // Create a simple automaton for testing
         let mut aut = Aut::new(TEST_NUM_VARS);
-        
+
         // Create a few simple expressions using factory methods
         let field0 = 0;
         let field1 = 1;
         let value1 = true;
-        
+
         let test_f1_v1 = Expr::test(field0, value1);
         let test_f2_v1 = Expr::test(field1, value1);
         let assign_f1_v1 = Expr::assign(field0, value1);
-        
+
         // Create a sequence: test(f1=v1); test(f2=v1); assign(f1=v1)
         let seq1 = Expr::sequence(test_f1_v1.clone(), test_f2_v1.clone());
         let seq2 = Expr::sequence(seq1, assign_f1_v1);
-        
+
         // Create a star operation: (test(f1=v1))*
         let star = Expr::star(test_f1_v1);
-        
+
         // Create a union of the two: seq + star
         let union = Expr::union(seq2, star);
         let root_state = aut.expr_to_state(&union);
-        
+
         // Render the automaton
         let output_dir = Path::new(TEST_AUT_OUTPUT_DIR);
         render_aut(root_state, &mut aut, output_dir).expect("Failed to render the test automaton");
-        
-        println!("Test finished. Please check the generated automaton report in the '{}' directory.", TEST_AUT_OUTPUT_DIR);
+
+        println!(
+            "Test finished. Please check the generated automaton report in the '{}' directory.",
+            TEST_AUT_OUTPUT_DIR
+        );
     }
 }
