@@ -33,6 +33,7 @@ pub struct SPPstore {
     // branch_memo: HashMap<(Var, SPP, SPP, SPP, SPP), SPP>,
     test_memo: HashMap<(Var, bool), SPP>,
     assign_memo: HashMap<(Var, bool), SPP>,
+    flip_memo: HashMap<SPP, SPP>,
 }
 
 /// A node in the SPP store. Has four children, one for each combination of the two variables.
@@ -65,6 +66,7 @@ impl SPPstore {
             // branch_memo: HashMap::new(),
             test_memo: HashMap::new(),
             assign_memo: HashMap::new(),
+            flip_memo: HashMap::from([(0, 0), (1, 1)]),
         };
         store.zero = store.zero();
         store.one = store.one();
@@ -402,6 +404,28 @@ impl SPPstore {
         res
     }
 
+    /// Computes all packets that can be produced from this SPP.
+    /// We give the answer as an SPP instead of an SP for convenience.
+    pub fn forward(&mut self, spp: SPP) -> SPP {
+        self.sequence(self.top, spp)
+    }
+
+    /// Computes all packets that can be input to this SPP.
+    pub fn backward(&mut self, spp: SPP) -> SPP {
+        self.sequence(spp, self.top)
+    }
+
+    /// Flips the relation represented by this SPP.
+    pub fn flip(&mut self, spp: SPP) -> SPP {
+        if let Some(&result) = self.flip_memo.get(&spp) {
+            return result;
+        }
+        let spp_node = self.get(spp);
+        let res = self.mk(spp_node.x00, spp_node.x10, spp_node.x01, spp_node.x11);
+        self.flip_memo.insert(spp, res);
+        res
+    }
+
     #[cfg(test)]
     pub fn all(&mut self) -> Vec<SPP> {
         return self.all_helper(self.num_vars);
@@ -516,6 +540,14 @@ mod tests {
                 let intersect_rev = s.intersect(spp2, spp1);
                 assert_eq!(union, union_rev);
                 assert_eq!(intersect, intersect_rev);
+
+                // flip of sequence is sequence of flipped
+                let seq = s.sequence(spp1, spp2);
+                let seq_flip = s.flip(seq);
+                let spp1_flip = s.flip(spp1);
+                let spp2_flip = s.flip(spp2);
+                let flip_seq = s.sequence(spp2_flip, spp1_flip);
+                assert_eq!(seq_flip, flip_seq);
             }
         }
     }
