@@ -93,196 +93,82 @@ impl Aut {
         self.intern(AExpr::SPP(spp))
     }
 
-    /// Canonicalizes a list of states for union
-    /// 1. Flattens nested unions
-    /// 2. Sorts and removes duplicates
-    /// 3. Combines all SPP children
-    fn canonicalize_union(&mut self, mut states: Vec<State>) -> Vec<State> {
-        // Keep track of SPPs to be combined
-        let mut combined_spp = self.spp.zero;
-
-        // Process all states to collect nested unions and SPPs
-        let mut i = 0;
-        while i < states.len() {
-            match self.get_expr(states[i]) {
-                // Flatten nested unions
+    fn mk_union_n(&mut self, states: Vec<State>) -> State {
+        let mut states2 = vec![];
+        for state in states {
+            match self.get_expr(state) {
                 AExpr::Union(nested) => {
-                    // Remove the current state that's a union
-                    states.remove(i);
-
-                    // Add all nested states
-                    for &nested_state in nested {
-                        states.push(nested_state);
+                    for nested_state in nested.clone() {
+                        states2.push(nested_state);
                     }
                 }
-                // Collect SPPs for combining
-                AExpr::SPP(spp) => {
-                    combined_spp = self.spp.union(combined_spp, *spp);
-                    states.remove(i);
-                }
-                // Keep everything else
-                _ => i += 1,
+                _ => states2.push(state),
             }
         }
-
-        // Sort and remove duplicates
-        states.sort();
-        states.dedup();
-
-        // Add the combined SPP back in if it's not zero
-        if combined_spp != self.spp.zero {
-            let spp_state = self.mk_spp(combined_spp);
-            states.push(spp_state);
-            states.sort();
-        }
-
-        states
-    }
-
-    fn mk_union(&mut self, e1: State, e2: State) -> State {
-        if e1 == e2 {
-            return e1;
-        }
-
-        // Handle special cases
-        match self.get_expr(e1) {
-            AExpr::SPP(s) => {
-                if *s == self.spp.zero {
-                    return e2;
-                }
+        let mut spp = self.spp.zero;
+        let mut new_states = vec![];
+        for state in states2.clone() {
+            match self.get_expr(state) {
+                AExpr::SPP(s) => spp = self.spp.union(spp, *s),
+                _ => new_states.push(state),
             }
-            _ => {}
+        }
+        if spp != self.spp.zero {
+            new_states.push(self.mk_spp(spp));
         }
 
-        match self.get_expr(e2) {
-            AExpr::SPP(s) => {
-                if *s == self.spp.zero {
-                    return e1;
-                }
-            }
-            _ => {}
-        }
-
-        // Create initial vector with e1 and e2
-        let mut states = vec![e1, e2];
-
-        // Canonicalize the union
-        states = self.canonicalize_union(states);
-
-        // Special case: empty vector after canonicalization
-        if states.is_empty() {
-            return self.mk_spp(self.spp.zero);
-        }
-
+        new_states.sort();
+        new_states.dedup();
         // Special case: just one element
-        if states.len() == 1 {
-            return states[0];
+        if new_states.len() == 1 {
+            return new_states[0];
         }
 
         // Create an n-ary union
-        self.intern(AExpr::Union(states))
+        self.intern(AExpr::Union(new_states))
     }
 
-    /// Canonicalizes a list of states for intersection
-    /// 1. Flattens nested intersections
-    /// 2. Sorts and removes duplicates
-    /// 3. Combines all SPP children
-    fn canonicalize_intersect(&mut self, mut states: Vec<State>) -> Vec<State> {
-        // Keep track of SPPs to be combined
-        let mut combined_spp = self.spp.top;
+    fn mk_union(&mut self, e1: State, e2: State) -> State {
+        self.mk_union_n(vec![e1, e2])
+    }
 
-        // Process all states to collect nested intersections and SPPs
-        let mut i = 0;
-        while i < states.len() {
-            match self.get_expr(states[i]) {
-                // Flatten nested intersections
+    fn mk_intersect_n(&mut self, states: Vec<State>) -> State {
+        let mut states2 = vec![];
+        for state in states {
+            match self.get_expr(state) {
                 AExpr::Intersect(nested) => {
-                    // Remove the current state that's an intersection
-                    states.remove(i);
-
-                    // Add all nested states
-                    for &nested_state in nested {
-                        states.push(nested_state);
+                    for nested_state in nested.clone() {
+                        states2.push(nested_state);
                     }
                 }
-                // Collect SPPs for combining
-                AExpr::SPP(spp) => {
-                    combined_spp = self.spp.intersect(combined_spp, *spp);
-                    states.remove(i);
-                }
-                // Keep everything else
-                _ => i += 1,
+                _ => states2.push(state),
             }
         }
-
-        // Sort and remove duplicates
-        states.sort();
-        states.dedup();
-
-        // Add the combined SPP back in if it's not one
-        if combined_spp != self.spp.top {
-            let spp_state = self.mk_spp(combined_spp);
-            states.push(spp_state);
-            states.sort();
+        let mut spp = self.spp.top;
+        let mut new_states = vec![];
+        for state in states2.clone() {
+            match self.get_expr(state) {
+                AExpr::SPP(s) => spp = self.spp.intersect(spp, *s),
+                _ => new_states.push(state),
+            }
+        }
+        if spp != self.spp.top {
+            new_states.push(self.mk_spp(spp));
         }
 
-        states
+        new_states.sort();
+        new_states.dedup();
+        // Special case: just one element
+        if new_states.len() == 1 {
+            return new_states[0];
+        }
+
+        // Create an n-ary union
+        self.intern(AExpr::Intersect(new_states))
     }
 
     fn mk_intersect(&mut self, e1: State, e2: State) -> State {
-        if e1 == e2 {
-            return e1;
-        }
-
-        // Handle special cases
-        match self.get_expr(e1) {
-            AExpr::SPP(s) => {
-                if *s == self.spp.one {
-                    return e2;
-                }
-                if *s == self.spp.zero {
-                    return self.mk_spp(self.spp.zero);
-                }
-            }
-            _ => {}
-        }
-
-        match self.get_expr(e2) {
-            AExpr::SPP(s) => {
-                if *s == self.spp.one {
-                    return e1;
-                }
-                if *s == self.spp.zero {
-                    return self.mk_spp(self.spp.zero);
-                }
-            }
-            _ => {}
-        }
-
-        // SPP Simplification: s1 & s2
-        if let (AExpr::SPP(s1), AExpr::SPP(s2)) = (self.get_expr(e1), self.get_expr(e2)) {
-            let result_spp = self.spp.intersect(*s1, *s2);
-            return self.mk_spp(result_spp);
-        }
-
-        // Create initial vector with e1 and e2
-        let mut states = vec![e1, e2];
-
-        // Canonicalize the intersection
-        states = self.canonicalize_intersect(states);
-
-        // Special case: empty vector after canonicalization
-        if states.is_empty() {
-            return self.mk_spp(self.spp.one);
-        }
-
-        // Special case: just one element
-        if states.len() == 1 {
-            return states[0];
-        }
-
-        // Create an n-ary intersection
-        self.intern(AExpr::Intersect(states))
+        self.mk_intersect_n(vec![e1, e2])
     }
 
     fn mk_xor(&mut self, e1: State, e2: State) -> State {
@@ -345,7 +231,7 @@ impl Aut {
                     return complements[0];
                 }
 
-                return self.intern(AExpr::Intersect(complements));
+                return self.mk_intersect_n(complements);
             }
             AExpr::Intersect(states) => {
                 // !(e1 & e2 & ... & en) = !e1 + !e2 + ... + !en
@@ -367,7 +253,7 @@ impl Aut {
                     return complements[0];
                 }
 
-                return self.intern(AExpr::Union(complements));
+                return self.mk_union_n(complements);
             }
             AExpr::Difference(e1, e2) => {
                 let c1 = self.mk_complement(e1);
@@ -447,6 +333,10 @@ impl Aut {
         self.intern(AExpr::Top)
     }
 
+    fn mk_until(&mut self, e1: State, e2: State) -> State {
+        self.intern(AExpr::LtlUntil(e1, e2))
+    }
+
     // Helper to get the actual expression from an index
     fn get_expr(&self, id: State) -> &AExpr {
         &self.aexprs[id]
@@ -522,52 +412,57 @@ impl Aut {
         ST::new(HashMap::from([(state, spp)]))
     }
 
-    /// Insert a transition into a ST.
-    /// Precondition: spp is disjoint from all other spp's in the ST
-    pub fn st_insert_unsafe(&mut self, st: &mut ST, state: State, spp: spp::SPP) {
-        // Assert that spp is disjoint from all other spp's in the ST
-        #[cfg(debug_assertions)]
-        for (_, existing_spp) in st.transitions.iter() {
-            debug_assert!(
-                self.spp.intersect(*existing_spp, spp) == self.spp.zero,
-                "spp must be disjoint from all other spp's in the ST"
-            );
-        }
-        // Check if the state already exists, if so union the spp's
-        if let Some(existing_spp) = st.transitions.get_mut(&state) {
-            *existing_spp = self.spp.union(*existing_spp, spp);
-        } else {
-            // Check if the spp is 0, if so don't insert
-            if spp == self.spp.zero {
-                return;
-            }
-            // Check if the State is zero, if so don't insert
-            if state == self.mk_spp(self.spp.zero) {
-                return;
-            }
-            st.transitions.insert(state, spp);
-        }
-    }
+    // /// Insert a transition into a ST.
+    // /// Precondition: spp is disjoint from all other spp's in the ST
+    // pub fn st_insert_unsafe(&mut self, st: &mut ST, state: State, spp: spp::SPP) {
+    //     // Assert that spp is disjoint from all other spp's in the ST
+    //     #[cfg(debug_assertions)]
+    //     for (_, existing_spp) in st.transitions.iter() {
+    //         debug_assert!(
+    //             self.spp.intersect(*existing_spp, spp) == self.spp.zero,
+    //             "spp must be disjoint from all other spp's in the ST"
+    //         );
+    //     }
+    //     // Check if the state already exists, if so union the spp's
+    //     if let Some(existing_spp) = st.transitions.get_mut(&state) {
+    //         *existing_spp = self.spp.union(*existing_spp, spp);
+    //     } else {
+    //         // Check if the spp is 0, if so don't insert
+    //         if spp == self.spp.zero {
+    //             return;
+    //         }
+    //         // Check if the State is zero, if so don't insert
+    //         if state == self.mk_spp(self.spp.zero) {
+    //             return;
+    //         }
+    //         st.transitions.insert(state, spp);
+    //     }
+    // }
 
     /// Insert a transition into a ST.
     pub fn st_insert(&mut self, st: &mut ST, state: State, spp: spp::SPP) {
         // We have to be careful here because a naive implementation would not result in a deterministic ST
         // Strategy: intersect the spp with all other spp's in the ST, and insert an expr union for those
         // Separately keep track of the remaining spp that is inserted separately
+
         // Check if the state is zero, if so don't insert
         if state == self.mk_spp(self.spp.zero) {
             return;
         }
+        if spp == self.spp.zero {
+            return;
+        }
+
         let transitions = st.transitions.clone();
         let mut remaining_spp = spp;
         for (state2, spp2) in transitions {
-            if remaining_spp == self.spp.zero {
-                return;
-            }
             let intersect_spp = self.spp.intersect(remaining_spp, spp2);
             let union_state = self.mk_union(state, state2);
             st.transitions.insert(union_state, intersect_spp);
             remaining_spp = self.spp.difference(remaining_spp, intersect_spp);
+            if remaining_spp == self.spp.zero {
+                return;
+            }
         }
 
         st.transitions.insert(state, remaining_spp);
@@ -579,7 +474,7 @@ impl Aut {
             for (state2, spp2) in &st2.transitions {
                 let intersect_state = self.mk_intersect(*state1, *state2);
                 let spp = self.spp.intersect(*spp1, *spp2);
-                self.st_insert_unsafe(&mut result, intersect_state, spp);
+                self.st_insert(&mut result, intersect_state, spp);
             }
         }
         result
@@ -609,7 +504,7 @@ impl Aut {
         let mut result = ST::empty();
         for (&state, &spp) in &st.transitions {
             let new_state = self.mk_complement(state);
-            self.st_insert_unsafe(&mut result, new_state, spp);
+            self.st_insert(&mut result, new_state, spp);
         }
         // Find the union of all the spp's in the transitions
         let mut union_spp = self.spp.zero;
@@ -619,7 +514,7 @@ impl Aut {
         // Add a transition from the complement of the union to the Top state
         let complement_spp = self.spp.complement(union_spp);
         let top = self.mk_top();
-        self.st_insert_unsafe(&mut result, top, complement_spp);
+        self.st_insert(&mut result, top, complement_spp);
         result
     }
 
@@ -627,7 +522,7 @@ impl Aut {
         let mut result = ST::empty();
         for (state, spp) in st.transitions {
             let new_state = self.mk_sequence(state, expr);
-            self.st_insert_unsafe(&mut result, new_state, spp);
+            self.st_insert(&mut result, new_state, spp);
         }
         result
     }
@@ -639,6 +534,15 @@ impl Aut {
         for (state, spp2) in st.transitions {
             let new_spp = self.spp.sequence(spp, spp2);
             self.st_insert(&mut result, state, new_spp);
+        }
+        result
+    }
+
+    fn st_intersect_expr(&mut self, st: ST, expr: State) -> ST {
+        let mut result = ST::empty();
+        for (state, spp) in st.transitions {
+            let new_state = self.mk_intersect(state, expr);
+            self.st_insert(&mut result, new_state, spp);
         }
         result
     }
@@ -726,8 +630,15 @@ impl Aut {
                 let spp_one = self.mk_spp(self.spp.one);
                 self.st_singleton(self.spp.one, spp_one)
             }
-            AExpr::LtlNext(_) => todo!("Implement delta for LTL Next"),
-            AExpr::LtlUntil(_, _) => todo!("Implement delta for LTL Until"),
+            AExpr::LtlNext(e) => self.st_singleton(self.spp.top, e),
+            AExpr::LtlUntil(e1, e2) => {
+                // delta(e1 U e2) = delta(e2) ∪ (delta(e1) ∩ (e1 U e2))
+                let delta_e1 = self.delta(e1);
+                let delta_e2 = self.delta(e2);
+                let e1_u_e2 = self.mk_until(e1, e2);
+                let delta_e2_intersect_e1_u_e2 = self.st_intersect_expr(delta_e1, e1_u_e2);
+                self.st_union(delta_e2, delta_e2_intersect_e1_u_e2)
+            }
             AExpr::Top => {
                 let top = self.mk_top();
                 self.st_singleton(self.spp.top, top)
