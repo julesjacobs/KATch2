@@ -100,6 +100,9 @@ impl Aut {
                         states2.push(nested_state);
                     }
                 }
+                AExpr::Top => {
+                    return self.mk_top();
+                }
                 _ => states2.push(state),
             }
         }
@@ -206,35 +209,35 @@ impl Aut {
             return *inner_e;
         }
 
-        // De Morgan's laws and complement simplifications
+        // // De Morgan's laws and complement simplifications
         let expr = self.get_expr(e).clone();
-        match expr {
-            AExpr::Union(states) => {
-                // !(e1 + e2 + ... + en) = !e1 & !e2 & ... & !en
-                let complements: Vec<State> = states
-                    .iter()
-                    .map(|&state| self.mk_complement(state))
-                    .collect();
-                return self.mk_intersect_n(complements);
-            }
-            AExpr::Intersect(states) => {
-                // !(e1 & e2 & ... & en) = !e1 + !e2 + ... + !en
-                let complements: Vec<State> = states
-                    .iter()
-                    .map(|&state| self.mk_complement(state))
-                    .collect();
-                return self.mk_union_n(complements);
-            }
-            AExpr::Difference(e1, e2) => {
-                let c1 = self.mk_complement(e1);
-                return self.mk_union(c1, e2);
-            }
-            AExpr::Xor(e1, e2) => {
-                let c1 = self.mk_complement(e1);
-                return self.mk_xor(c1, e2);
-            }
-            _ => {}
-        }
+        // match expr {
+        //     AExpr::Union(states) => {
+        //         // !(e1 + e2 + ... + en) = !e1 & !e2 & ... & !en
+        //         let complements: Vec<State> = states
+        //             .iter()
+        //             .map(|&state| self.mk_complement(state))
+        //             .collect();
+        //         return self.mk_intersect_n(complements);
+        //     }
+        //     AExpr::Intersect(states) => {
+        //         // !(e1 & e2 & ... & en) = !e1 + !e2 + ... + !en
+        //         let complements: Vec<State> = states
+        //             .iter()
+        //             .map(|&state| self.mk_complement(state))
+        //             .collect();
+        //         return self.mk_union_n(complements);
+        //     }
+        //     AExpr::Difference(e1, e2) => {
+        //         let c1 = self.mk_complement(e1);
+        //         return self.mk_union(c1, e2);
+        //     }
+        //     AExpr::Xor(e1, e2) => {
+        //         let c1 = self.mk_complement(e1);
+        //         return self.mk_xor(c1, e2);
+        //     }
+        //     _ => {}
+        // }
 
         // Simplify !⊤ = 0
         if let AExpr::Top = expr {
@@ -275,6 +278,17 @@ impl Aut {
             _ => {}
         }
 
+        // (a; b); c = a; (b; c)
+        if let AExpr::Sequence(e11, e12) = self.get_expr(e1).clone() {
+            let tmp = self.mk_sequence(e12, e2);
+            return self.mk_sequence(e11, tmp);
+        }
+
+        // Simplify T; T = T
+        if let (AExpr::Top, AExpr::Top) = (self.get_expr(e1), self.get_expr(e2)) {
+            return self.mk_top();
+        }
+
         self.intern(AExpr::Sequence(e1, e2))
     }
 
@@ -289,6 +303,11 @@ impl Aut {
         if let AExpr::SPP(s) = self.get_expr(e) {
             let result_spp = self.spp.star(*s);
             return self.mk_spp(result_spp);
+        }
+
+        // Simplify T* = T
+        if let AExpr::Top = self.get_expr(e) {
+            return self.mk_top();
         }
 
         self.intern(AExpr::Star(e))
@@ -465,16 +484,35 @@ impl Aut {
     }
 
     pub fn st_union(&mut self, st1: ST, st2: ST) -> ST {
-        let st1_complement = self.st_complement(st1);
-        let st2_complement = self.st_complement(st2);
-        let st = self.st_intersect(st1_complement, st2_complement);
-        self.st_complement(st)
+        let mut result = ST::empty();
+        for (state, spp) in st1.transitions {
+            self.st_insert(&mut result, state, spp);
+        }
+        for (state, spp) in st2.transitions {
+            self.st_insert(&mut result, state, spp);
+        }
+        result
     }
 
     fn st_difference(&mut self, st1: ST, st2: ST) -> ST {
         // (st1 - st2) = st1 & !st2
-        let st2_complement = self.st_complement(st2);
-        self.st_intersect(st1, st2_complement)
+        // let st2_complement = self.st_complement(st2);
+        // self.st_intersect(st1, st2_complement)
+        let mut result = ST::empty();
+        let mut spp_sum = self.spp.zero;
+        for (state1, spp1) in st1.transitions.clone() {
+            for (state2, spp2) in st2.transitions.clone() {
+                let diff_state = self.mk_difference(state1, state2);
+                let inter_spp = self.spp.intersect(spp1, spp2);
+                spp_sum = self.spp.union(spp_sum, inter_spp);
+                self.st_insert(&mut result, diff_state, inter_spp);
+            }
+        }
+        for (state, spp) in st1.transitions.clone() {
+            let diff_spp = self.spp.difference(spp, spp_sum);
+            self.st_insert(&mut result, state, diff_spp);
+        }
+        result
     }
 
     fn st_xor(&mut self, st1: ST, st2: ST) -> ST {
@@ -535,12 +573,17 @@ impl Aut {
 
     pub fn delta(&mut self, state: State) -> ST {
         self.num_calls += 1;
-        if self.num_calls > 50 {
-            println!(
-                "Delta called {} times, artificial limit reached",
-                self.num_calls
+        if self.num_calls > 200 {
+            panic!(
+                "Delta called {} times, artificial limit reached for state {}",
+                self.num_calls, self.state_to_string(state)
             );
-            return ST::empty();
+        }
+        if self.state_to_string(state).len() > 1000 {
+            panic!(
+                "Delta called with state length > 1000: {}",
+                self.state_to_string(state)
+            );
         }
         if let Some(st) = self.delta_map.get(&state) {
             return st.clone();

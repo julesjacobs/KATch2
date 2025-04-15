@@ -392,13 +392,14 @@ mod tests {
         let number = 1000;
         for _ in 0..number {
             let (e1, e2) = genax(ax_depth, expr_depth, num_fields);
+            println!("Checking xor of\n  {}\n   ===\n  {}", e1, e2);
             let xor = Expr::xor(e1.clone(), e2.clone());
             let mut aut = Aut::new(num_fields);
             let state = aut.expr_to_state(&xor);
             if aut.is_empty(state) {
-                println!("Success for xor of\n  {}\n   ===\n  {}", e1, e2);
+                println!("Success!");
             } else {
-                assert!(false, "Found a non-empty automaton for xor of\n  {}\n   ===\n  {}", e1, e2);
+                assert!(false, "Failure!");
             }
         }
     }
