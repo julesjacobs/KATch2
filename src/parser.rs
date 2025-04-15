@@ -24,6 +24,7 @@ pub enum Token {
     LParen,     // (
     RParen,     // )
     Field(u32), // x followed by digits
+    End,        // end
     Eof,        // End of input
 }
 
@@ -93,6 +94,19 @@ impl<'a> Lexer<'a> {
                 'T' => Ok(Token::Top),
                 'U' => Ok(Token::LtlU),
                 'X' => Ok(Token::LtlX),
+                'e' => {
+                    if self.peek_char() == Some(&'n') {
+                        self.next_char();
+                        if self.peek_char() == Some(&'d') {
+                            self.next_char();
+                            Ok(Token::End)
+                        } else {
+                            Err("Expected 'end'".to_string())
+                        }
+                    } else {
+                        Err("Expected 'end'".to_string())
+                    }
+                }
                 ':' => {
                     if self.peek_char() == Some(&'=') {
                         self.next_char();
@@ -296,6 +310,7 @@ impl<'a> Parser<'a> {
             Token::One => Ok(Expr::one()),
             Token::Top => Ok(Expr::top()),
             Token::Dup => Ok(Expr::dup()),
+            Token::End => Ok(Expr::end()),
             Token::Field(idx) => {
                 // Look ahead for '==' or ':='
                 match self.peek_token()? {

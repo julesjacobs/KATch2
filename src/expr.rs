@@ -18,6 +18,7 @@ pub enum Expr {
     Dup,                  // dup
     LtlNext(Exp),         // X e
     LtlUntil(Exp, Exp),   // e1 U e2
+    End,                  // end
 }
 
 /// Represents a boxed expression
@@ -69,10 +70,13 @@ impl Expr {
     pub fn ltl_until(e1: Exp, e2: Exp) -> Exp {
         Box::new(Expr::LtlUntil(e1, e2))
     }
+    pub fn end() -> Exp {
+        Box::new(Expr::End)
+    }
 
     pub fn num_fields(&self) -> u32 {
         match self {
-            Expr::Zero | Expr::One | Expr::Top | Expr::Dup => 0,
+            Expr::Zero | Expr::One | Expr::Top | Expr::Dup | Expr::End => 0,
             Expr::Assign(field, _) | Expr::Test(field, _) => field + 1,
             Expr::Union(e1, e2)
             | Expr::Intersect(e1, e2)
@@ -107,6 +111,7 @@ impl std::fmt::Display for Expr {
             Expr::Dup => write!(f, "dup"),
             Expr::LtlNext(e) => write!(f, "X({})", e),
             Expr::LtlUntil(e1, e2) => write!(f, "({} U {})", e1, e2),
+            Expr::End => write!(f, "end"),
         }
     }
 }

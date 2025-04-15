@@ -144,16 +144,12 @@ impl Aut {
                 _ => states2.push(state),
             }
         }
-        let mut spp = self.spp.top;
         let mut new_states = vec![];
         for state in states2.clone() {
             match self.get_expr(state) {
-                AExpr::SPP(s) => spp = self.spp.intersect(spp, *s),
+                AExpr::Top => {},
                 _ => new_states.push(state),
             }
-        }
-        if spp != self.spp.top {
-            new_states.push(self.mk_spp(spp));
         }
 
         new_states.sort();
@@ -399,6 +395,9 @@ impl Aut {
                 let aexp2 = self.expr_to_state(e2);
                 self.intern(AExpr::LtlUntil(aexp1, aexp2))
             }
+            Expr::End => {
+                self.mk_spp(self.spp.top)
+            }
         }
     }
 
@@ -636,8 +635,8 @@ impl Aut {
                 let delta_e1 = self.delta(e1);
                 let delta_e2 = self.delta(e2);
                 let e1_u_e2 = self.mk_until(e1, e2);
-                let delta_e2_intersect_e1_u_e2 = self.st_intersect_expr(delta_e1, e1_u_e2);
-                self.st_union(delta_e2, delta_e2_intersect_e1_u_e2)
+                let delta_e1_intersect_e1_u_e2 = self.st_intersect_expr(delta_e1, e1_u_e2);
+                self.st_union(delta_e2, delta_e1_intersect_e1_u_e2)
             }
             AExpr::Top => {
                 let top = self.mk_top();
