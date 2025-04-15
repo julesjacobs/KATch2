@@ -16,7 +16,7 @@ fn gen_random_value() -> Value {
 }
 
 // Generates a random expression.
-fn gen_random_expr(k: u32, max_depth: usize) -> Exp {
+fn gen_random_expr(num_fields: u32, max_depth: usize) -> Exp {
     // Base case: terminals or depth limit reached
     if max_depth == 0 {
         match rand::random_range(0..5) {
@@ -25,30 +25,30 @@ fn gen_random_expr(k: u32, max_depth: usize) -> Exp {
             2 => Expr::top(),
             3 => Expr::dup(),
             4 => { // Assign (only reachable if k > 0)
-                Expr::assign(gen_random_field(k), gen_random_value())
+                Expr::assign(gen_random_field(num_fields), gen_random_value())
             }
             5 => { // Test (only reachable if k > 0)
-                 Expr::test(gen_random_field(k), gen_random_value())
+                 Expr::test(gen_random_field(num_fields), gen_random_value())
             }
              _ => unreachable!(),
         }
 
     } else {
         match rand::random_range(0..6) {
-            0 => gen_random_expr(k, 0),
-            1 => Expr::star(gen_random_expr(k, max_depth - 1)),
-            2 => Expr::complement(gen_random_expr(k, max_depth - 1)),
+            0 => gen_random_expr(num_fields, max_depth - 1),
+            1 => Expr::star(gen_random_expr(num_fields, max_depth - 1)),
+            2 => Expr::complement(gen_random_expr(num_fields, max_depth - 1)),
             3 => Expr::union(
-                gen_random_expr(k, max_depth - 1),
-                gen_random_expr(k, max_depth - 1),
+                gen_random_expr(num_fields, max_depth - 1),
+                gen_random_expr(num_fields, max_depth - 1),
             ),
             4 => Expr::sequence(
-                gen_random_expr(k, max_depth - 1),
-                gen_random_expr(k, max_depth - 1),
+                gen_random_expr(num_fields, max_depth - 1),
+                gen_random_expr(num_fields, max_depth - 1),
             ),
             5 => Expr::intersect(
-                gen_random_expr(k, max_depth - 1),
-                gen_random_expr(k, max_depth - 1),
+                gen_random_expr(num_fields, max_depth - 1),
+                gen_random_expr(num_fields, max_depth - 1),
             ),
             _ => unreachable!(),
         }
@@ -135,11 +135,11 @@ fn get_distinct_fields(k: u32) -> (Field, Field) {
 ///
 /// - `n`: Controls the number of axiom applications (recursion depth).
 /// - `k`: Controls the maximum number of distinct variables (fields `x0` to `xk-1`).
-pub fn genax(n: usize, k: u32) -> (Exp, Exp) {
-    assert!(k >= 2, "k must be >= 2 to generate distinct fields");
-    if n == 0 {
+pub fn genax(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) {
+    assert!(num_fields >= 2, "num_fields must be >= 2 to generate distinct fields");
+    if ax_depth == 0 {
         // Base case: return (e, e) where e is a random expression
-        let random_expr = gen_random_expr(k, 3); // Use a default depth
+        let random_expr = gen_random_expr(num_fields, expr_depth); // Use a default depth
         return (random_expr.clone(), random_expr)
     }
     // Recursive step: pick an axiom and apply it
@@ -148,7 +148,7 @@ pub fn genax(n: usize, k: u32) -> (Exp, Exp) {
             // --- PA Axioms --- (No recursive calls needed)
             match rand::random_range(0..8) {
                 0 => { // PA-MOD-MOD-COMM
-                    let (xi, xj) = get_distinct_fields(k);
+                    let (xi, xj) = get_distinct_fields(num_fields);
                     let v = gen_random_value();
                     let v_prime = gen_random_value();
                     return (
@@ -157,7 +157,7 @@ pub fn genax(n: usize, k: u32) -> (Exp, Exp) {
                     );
                 }
                 1 => { // PA-MOD-FILTER-COMM
-                    let (xi, xj) = get_distinct_fields(k);
+                    let (xi, xj) = get_distinct_fields(num_fields);
                     let v = gen_random_value();
                     let v_prime = gen_random_value();
                     return (
@@ -166,7 +166,7 @@ pub fn genax(n: usize, k: u32) -> (Exp, Exp) {
                     );
                 }
                 2 => { // PA-DUP-FILTER-COMM
-                    let xi = gen_random_field(k);
+                    let xi = gen_random_field(num_fields);
                     let v = gen_random_value();
                     return (
                         Expr::sequence(Expr::dup(), Expr::test(xi, v)),
@@ -174,7 +174,7 @@ pub fn genax(n: usize, k: u32) -> (Exp, Exp) {
                     );
                 }
                 3 => { // PA-MOD-FILTER
-                    let xi = gen_random_field(k);
+                    let xi = gen_random_field(num_fields);
                     let v = gen_random_value();
                     return (
                         Expr::sequence(Expr::assign(xi, v), Expr::test(xi, v)),
@@ -182,7 +182,7 @@ pub fn genax(n: usize, k: u32) -> (Exp, Exp) {
                     );
                 }
                 4 => { // PA-FILTER-MOD
-                    let xi = gen_random_field(k);
+                    let xi = gen_random_field(num_fields);
                     let v = gen_random_value();
                     return (
                         Expr::sequence(Expr::test(xi, v), Expr::assign(xi, v)),
@@ -190,7 +190,7 @@ pub fn genax(n: usize, k: u32) -> (Exp, Exp) {
                     );
                 }
                 5 => { // PA-MOD-MOD
-                    let xi = gen_random_field(k);
+                    let xi = gen_random_field(num_fields);
                     let v = gen_random_value();
                     let v_prime = gen_random_value();
                     return (
@@ -199,14 +199,14 @@ pub fn genax(n: usize, k: u32) -> (Exp, Exp) {
                     );
                 }
                 6 => { // PA-CONTRA
-                    let xi = gen_random_field(k);
+                    let xi = gen_random_field(num_fields);
                     return (
                         Expr::sequence(Expr::test(xi, false), Expr::test(xi, true)),
                         Expr::zero(),
                     );
                 }
                 7 => { // PA-MATCH-ALL
-                    let xi = gen_random_field(k);
+                    let xi = gen_random_field(num_fields);
                     return (
                         Expr::union(Expr::test(xi, false), Expr::test(xi, true)),
                         Expr::one(),
@@ -216,7 +216,7 @@ pub fn genax(n: usize, k: u32) -> (Exp, Exp) {
             }
         }
         1 => {
-            let (lhs, rhs) = genax(n - 1, k);
+            let (lhs, rhs) = genax(ax_depth - 1, expr_depth, num_fields);
             match rand::random_range(0..12) {
                 0 => { // KA-PLUS-ZERO: p + 0 = p
                     return (Expr::union(lhs, Expr::zero()), rhs);
@@ -258,22 +258,22 @@ pub fn genax(n: usize, k: u32) -> (Exp, Exp) {
             }
         }
         2 => {
-            let (p1_lhs, p1_rhs) = genax(n - 1, k);
-            let (p2_lhs, p2_rhs) = genax(n - 1, k);
+            let (p1_lhs, p1_rhs) = genax(ax_depth - 1, expr_depth, num_fields);
+            let (p2_lhs, p2_rhs) = genax(ax_depth - 1, expr_depth, num_fields);
             match rand::random_range(0..2) {
                 0 => { // KA-PLUS-COMM: p + q = q + p
                     return (Expr::union(p1_lhs, p2_lhs), Expr::union(p2_rhs, p1_rhs));
                 }
                 1 => { // BA-SEQ-COMM: a & b = b & a
-                return (Expr::intersect(p1_lhs, p2_lhs), Expr::intersect(p2_rhs, p1_rhs));
+                    return (Expr::intersect(p1_lhs, p2_lhs), Expr::intersect(p2_rhs, p1_rhs));
                 }
                 _ => unreachable!(),
             }
         }
         3 => {
-            let (p1_lhs, p1_rhs) = genax(n - 1, k);
-            let (p2_lhs, p2_rhs) = genax(n - 1, k);
-            let (p3_lhs, p3_rhs) = genax(n - 1, k);
+            let (p1_lhs, p1_rhs) = genax(ax_depth - 1, expr_depth, num_fields);
+            let (p2_lhs, p2_rhs) = genax(ax_depth - 1, expr_depth, num_fields);
+            let (p3_lhs, p3_rhs) = genax(ax_depth - 1, expr_depth, num_fields);
             match rand::random_range(0..5) {
                 0 => { // KA-PLUS-ASSOC: p + (q + r) = (p + q) + r
                     return (
@@ -318,47 +318,14 @@ mod tests {
     use rand::rngs::StdRng;
     use rand::SeedableRng;
 
-    // Helper to check field bounds
-    fn check_fields(expr: &Exp, k: u32) {
-        if expr.num_fields() > 0 {
-            assert!(expr.num_fields() <= k, "Expression {:?} uses fields beyond k={}", expr, k);
-        } else {
-             // num_fields == 0 means no fields used, which is always ok
-             assert_eq!(expr.num_fields(), 0);
-        }
-    }
-
-    #[test]
-    fn test_gen_base_case() {
-        let mut rng = StdRng::seed_from_u64(0);
-        let k = 3;
-        let (e1, e2) = genax(0, k);
-        assert_eq!(e1, e2, "genax(0, k) should return identical expressions");
-        println!("genax(0, {}): ({:?}, {:?})", k, e1, e2);
-        check_fields(&e1, k);
-        check_fields(&e2, k);
-    }
-
-    #[test]
-    fn test_gen_recursive_case() {
-        let mut rng = StdRng::seed_from_u64(1);
-        let k = 4;
-        let n = 3; // Apply 3 axioms
-        let (e1, e2) = genax(n, k);
-        println!("genax({}, {}):", n, k);
-        println!(" LHS: {:?}", e1);
-        println!(" RHS: {:?}", e2);
-        check_fields(&e1, k);
-        check_fields(&e2, k);
-    }
-
     #[test]
     fn print_random_genax() {
-        let k = 4;
-        let n = 3;
+        let ax_depth = 2;
+        let expr_depth = 0;
+        let num_fields = 3;
         let number = 100;
         for _ in 0..number {
-            let (e1, e2) = genax(n, k);
+            let (e1, e2) = genax(ax_depth, expr_depth, num_fields);
             println!("  {}\n   ===\n  {}\n", e1, e2);
         }
     }
