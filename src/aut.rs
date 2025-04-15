@@ -436,39 +436,40 @@ impl Aut {
     //     }
     // }
 
+    fn st_insert_helper(&mut self, st: &mut ST, state: State, spp: spp::SPP) {
+        if spp == self.spp.zero {
+            return;
+        }
+        if state == self.mk_spp(self.spp.zero) {
+            return;
+        }
+        if let Some(existing_spp) = st.transitions.get_mut(&state) {
+            *existing_spp = self.spp.union(*existing_spp, spp);
+        } else {
+            st.transitions.insert(state, spp);
+        }
+    }
+
     /// Insert a transition into a ST.
     pub fn st_insert(&mut self, st: &mut ST, state: State, spp: spp::SPP) {
         // We have to be careful here because a naive implementation would not result in a deterministic ST
         // Strategy: intersect the spp with all other spp's in the ST, and insert an expr union for those
         // Separately keep track of the remaining spp that is inserted separately
 
-        // Check if the state is zero, if so don't insert
-        if state == self.mk_spp(self.spp.zero) {
-            return;
-        }
-        if spp == self.spp.zero {
-            return;
-        }
-
-        let transitions = st.transitions.clone();
-        let mut remaining_spp = spp;
-        for (state2, spp2) in transitions {
-            let intersect_spp = self.spp.intersect(remaining_spp, spp2);
+        let mut result = ST::empty();
+        let mut total_instersect = self.spp.zero;
+        for (state2, spp2) in st.transitions.clone() {
+            let intersect_spp = self.spp.intersect(spp, spp2);
             let union_state = self.mk_union(state, state2);
-            if intersect_spp != self.spp.zero {
-                st.transitions.insert(union_state, intersect_spp);
-            }
-            remaining_spp = self.spp.difference(remaining_spp, intersect_spp);
-            if remaining_spp == self.spp.zero {
-                return;
-            }
+            self.st_insert_helper(&mut result, union_state, intersect_spp);
+            total_instersect = self.spp.union(total_instersect, intersect_spp);
+            let diff_spp = self.spp.difference(spp2, intersect_spp);
+            self.st_insert_helper(&mut result, state2, diff_spp);
         }
 
-        if let Some(existing_spp) = st.transitions.get_mut(&state) {
-            *existing_spp = self.spp.union(*existing_spp, remaining_spp);
-        } else {
-            st.transitions.insert(state, remaining_spp);
-        }
+        let remaining_spp = self.spp.difference(spp, total_instersect);
+        self.st_insert_helper(&mut result, state, remaining_spp);
+        *st = result;
     }
 
     fn st_intersect(&mut self, st1: ST, st2: ST) -> ST {
