@@ -315,7 +315,6 @@ pub fn genax(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) 
                 }
                 16 => {
                     // G e = e & (End + X (G e))
-                    // TODO: double check that we should be using intersection here & not sequential composition
                     let new_lhs = Expr::ltl_globally(lhs);
                     let new_rhs = Expr::intersect(
                         rhs.clone(),
@@ -329,7 +328,7 @@ pub fn genax(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) 
         2 => {
             let (p1_lhs, p1_rhs) = genax(ax_depth - 1, expr_depth, num_fields);
             let (p2_lhs, p2_rhs) = genax(ax_depth - 1, expr_depth, num_fields);
-            match rand::random_range(0..2) {
+            match rand::random_range(0..5) {
                 0 => {
                     // KA-PLUS-COMM: p + q = q + p
                     return (Expr::union(p1_lhs, p2_lhs), Expr::union(p2_rhs, p1_rhs));
@@ -340,6 +339,30 @@ pub fn genax(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) 
                         Expr::intersect(p1_lhs, p2_lhs),
                         Expr::intersect(p2_rhs, p1_rhs),
                     );
+                }
+                2 => {
+                    // X (e1 & e2) = X e1 & X e2
+                    let new_lhs = Expr::ltl_next(Expr::intersect(p1_lhs, p2_lhs));
+                    let new_rhs = Expr::intersect(Expr::ltl_next(p1_rhs), Expr::ltl_next(p2_rhs));
+                    return (new_lhs, new_rhs);
+                }
+                3 => {
+                    // X (e1 + e2) = X e1 + X e2
+                    let new_lhs = Expr::ltl_next(Expr::union(p1_lhs, p2_lhs));
+                    let new_rhs = Expr::union(Expr::ltl_next(p1_rhs), Expr::ltl_next(p2_rhs));
+                    return (new_lhs, new_rhs);
+                }
+                4 => {
+                    // e1 U e2 = e2 + (e1 & X (e1 U e2))
+                    let new_lhs = Expr::ltl_until(p1_lhs, p2_lhs);
+                    let new_rhs = Expr::union(
+                        p2_rhs.clone(),
+                        Expr::intersect(
+                            p1_rhs.clone(),
+                            Expr::ltl_next(Expr::ltl_until(p1_rhs, p2_rhs)),
+                        ),
+                    );
+                    return (new_lhs, new_rhs);
                 }
                 _ => unreachable!(),
             }
