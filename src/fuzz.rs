@@ -365,6 +365,8 @@ pub fn genax(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) 
 
 #[cfg(test)]
 mod tests {
+    use crate::aut::Aut;
+
     use super::*;
     use rand::SeedableRng;
     use rand::rngs::StdRng;
@@ -378,6 +380,26 @@ mod tests {
         for _ in 0..number {
             let (e1, e2) = genax(ax_depth, expr_depth, num_fields);
             println!("  {}\n   ===\n  {}\n", e1, e2);
+        }
+    }
+
+    #[test]
+    fn fuzz_test() {
+        // Generate random expressions, create the xor, and check if the automaton is empty
+        let ax_depth = 2;
+        let expr_depth = 0;
+        let num_fields = 3;
+        let number = 100;
+        for _ in 0..number {
+            let (e1, e2) = genax(ax_depth, expr_depth, num_fields);
+            let xor = Expr::xor(e1.clone(), e2.clone());
+            let mut aut = Aut::new(num_fields);
+            let state = aut.expr_to_state(&xor);
+            if aut.is_empty(state) {
+                println!("Success for xor of\n  {}\n   ===\n  {}", e1, e2);
+            } else {
+                assert!(false, "Found a non-empty automaton for xor of\n  {}\n   ===\n  {}", e1, e2);
+            }
         }
     }
 }
