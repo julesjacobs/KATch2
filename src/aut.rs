@@ -714,7 +714,7 @@ impl Aut {
                 self.spp.star(eps)
             }
             AExpr::Dup => self.spp.zero,
-            AExpr::LtlNext(_) => self.spp.top,
+            AExpr::LtlNext(_) => self.spp.zero,
             AExpr::LtlUntil(_e1, e2) => self.epsilon(e2),
             AExpr::Top => self.spp.top,
         };
