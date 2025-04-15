@@ -21,6 +21,9 @@ pub enum Token {
     Dup,        // dup
     LtlX,       // X
     LtlU,       // U
+    LtlF,       // F
+    LtlG,       // G
+    LtlR,       // R
     LParen,     // (
     RParen,     // )
     Field(u32), // x followed by digits
@@ -94,6 +97,9 @@ impl<'a> Lexer<'a> {
                 'T' => Ok(Token::Top),
                 'U' => Ok(Token::LtlU),
                 'X' => Ok(Token::LtlX),
+                'F' => Ok(Token::LtlF),
+                'G' => Ok(Token::LtlG),
+                'R' => Ok(Token::LtlR),
                 'e' => {
                     if self.peek_char() == Some(&'n') {
                         self.next_char();
@@ -214,16 +220,25 @@ impl<'a> Parser<'a> {
     // 7. :=, == (Assign, Test) - Non-associative? Usually require primary exprs
     // 8. Primary (Literals, Parentheses, dup, field)
 
-    // parse_until handles 'U'
+    // parse_until handles 'U' and 'R'
     fn parse_until(&mut self) -> Result<Exp, String> {
         let left = self.parse_sequence()?;
-        // LTL Until is right-associative
-        if let Ok(Token::LtlU) = self.peek_token() {
-            self.next_token()?; // Consume 'U'
-            let right = self.parse_until()?; // Recurse for right associativity
-            Ok(Expr::ltl_until(left, right))
-        } else {
-            Ok(left)
+        match self.peek_token()? {
+            Token::LtlU => {
+                self.next_token()?; // Consume 'U'
+                let right = self.parse_until()?; // Recurse for right associativity
+                Ok(Expr::ltl_until(left, right))
+            }
+            Token::LtlR => {
+                self.next_token()?; // Consume 'R'
+                let right = self.parse_until()?; // Recurse for right associativity
+                // e1 R e2 ≡ ¬(¬e1 U ¬e2)
+                let not_left = Expr::complement(left);
+                let not_right = Expr::complement(right);
+                let until = Expr::ltl_until(not_left, not_right);
+                Ok(Expr::complement(until))
+            }
+            _ => Ok(left),
         }
     }
 
@@ -275,7 +290,7 @@ impl<'a> Parser<'a> {
         Ok(left)
     }
 
-    // parse_unary handles prefix '!', 'X' and postfix '*'
+    // parse_unary handles prefix '!', 'X', 'F', 'G' and postfix '*'
     fn parse_unary(&mut self) -> Result<Exp, String> {
         match self.peek_token()? {
             Token::Not => {
@@ -287,6 +302,20 @@ impl<'a> Parser<'a> {
                 self.next_token()?; // Consume 'X'
                 let expr = self.parse_unary()?; // Apply to the result of next level
                 Ok(Expr::ltl_next(expr))
+            }
+            Token::LtlF => {
+                self.next_token()?; // Consume 'F'
+                let expr = self.parse_unary()?; 
+                // F e ≡ true U e
+                Ok(Expr::ltl_until(Expr::top(), expr))
+            }
+            Token::LtlG => {
+                self.next_token()?; // Consume 'G'
+                let expr = self.parse_unary()?;
+                // G e ≡ ¬(true U ¬e)
+                let not_expr = Expr::complement(expr);
+                let until = Expr::ltl_until(Expr::top(), not_expr);
+                Ok(Expr::complement(until))
             }
             _ => {
                 // If not a prefix operator, parse the primary expression
@@ -549,6 +578,53 @@ mod tests {
                 Expr::sequence(Expr::test(0, false), Expr::test(1, true)),
                 Expr::test(2, false)
             ))
+        );
+        
+        // Test F operator (F e ≡ true U e)
+        assert_eq!(
+            parse("F x0==0"),
+            Ok(Expr::ltl_until(Expr::top(), Expr::test(0, false)))
+        );
+        
+        // Test G operator (G e ≡ ¬(true U ¬e))
+        assert_eq!(
+            parse("G x0==0"),
+            Ok(Expr::complement(Expr::ltl_until(
+                Expr::top(),
+                Expr::complement(Expr::test(0, false))
+            )))
+        );
+        
+        // Test R operator (e1 R e2 ≡ ¬(¬e1 U ¬e2))
+        assert_eq!(
+            parse("x0==0 R x1==1"),
+            Ok(Expr::complement(Expr::ltl_until(
+                Expr::complement(Expr::test(0, false)),
+                Expr::complement(Expr::test(1, true))
+            )))
+        );
+        
+        // Test complex combinations
+        assert_eq!(
+            parse("F G x0==0"),
+            Ok(Expr::ltl_until(
+                Expr::top(),
+                Expr::complement(Expr::ltl_until(
+                    Expr::top(),
+                    Expr::complement(Expr::test(0, false))
+                ))
+            ))
+        );
+        
+        assert_eq!(
+            parse("G F x0==0"),
+            Ok(Expr::complement(Expr::ltl_until(
+                Expr::top(),
+                Expr::complement(Expr::ltl_until(
+                    Expr::top(),
+                    Expr::test(0, false)
+                ))
+            )))
         );
     }
 
