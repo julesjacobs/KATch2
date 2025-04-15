@@ -16,7 +16,7 @@ mod sp;
 mod spp;
 mod viz;
 mod ui;
-
+mod fuzz;
 /// KATch2: A symbolic automata toolkit for NetKAT expressions
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]

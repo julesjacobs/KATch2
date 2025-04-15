@@ -84,3 +84,25 @@ impl Expr {
         }
     }
 }
+
+impl std::fmt::Display for Expr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Expr::Zero => write!(f, "0"),
+            Expr::One => write!(f, "1"),
+            Expr::Top => write!(f, "⊤"),
+            Expr::Assign(field, value) => write!(f, "x{} := {}", field, if *value { "1" } else { "0" }),
+            Expr::Test(field, value) => write!(f, "x{} == {}", field, if *value { "1" } else { "0" }),
+            Expr::Union(e1, e2) => write!(f, "({} + {})", e1, e2),
+            Expr::Intersect(e1, e2) => write!(f, "({} & {})", e1, e2),
+            Expr::Xor(e1, e2) => write!(f, "({} ^ {})", e1, e2),
+            Expr::Difference(e1, e2) => write!(f, "({} - {})", e1, e2),
+            Expr::Complement(e) => write!(f, "!{}", e),
+            Expr::Sequence(e1, e2) => write!(f, "({} ; {})", e1, e2),
+            Expr::Star(e) => write!(f, "({})*", e),
+            Expr::Dup => write!(f, "dup"),
+            Expr::LtlNext(e) => write!(f, "X({})", e),
+            Expr::LtlUntil(e1, e2) => write!(f, "({} U {})", e1, e2),
+        }
+    }
+}
