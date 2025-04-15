@@ -457,14 +457,15 @@ mod tests {
         let number = 1000;
         for _ in 0..number {
             let (e1, e2) = genax(ax_depth, expr_depth, num_fields);
+            println!("Checking xor of\n  {}\n   ===\n  {}\n", e1, e2);
             let xor = Expr::xor(e1.clone(), e2.clone());
+            println!("XOR result = {}\n", xor);
             let mut aut = Aut::new(num_fields);
             let state = aut.expr_to_state(&xor);
             if aut.is_empty(state) {
-                // println!("Success!");
+                println!("Success!\n");
             } else {
-                println!("Checking xor of\n  {}\n   ===\n  {}", e1, e2);
-                assert!(false, "Failure!");
+                assert!(false, "Failure!\n");
             }
         }
     }
