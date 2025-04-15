@@ -98,6 +98,14 @@ impl Expr {
         let until_expr = Expr::ltl_until(Expr::top(), Expr::complement(e));
         Box::new(Expr::Complement(until_expr))
     }
+
+    // Helper function for constructing `e1 R e2` using the equivalence `e1 R e2 ≡ ¬(¬e1 U ¬e2)`
+    pub fn ltl_release(e1: Exp, e2: Exp) -> Exp {
+        let not_e1 = Expr::complement(e1);
+        let not_e2 = Expr::complement(e2);
+        let until_expr = Expr::ltl_until(not_e1, not_e2);
+        Box::new(Expr::Complement(until_expr))
+    }
 }
 
 impl std::fmt::Display for Expr {
