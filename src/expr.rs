@@ -87,6 +87,17 @@ impl Expr {
             Expr::Complement(e) | Expr::Star(e) | Expr::LtlNext(e) => e.num_fields(),
         }
     }
+
+    /// Helper function for constructing `F e` using the equivalence `F e ≡ true U e`
+    pub fn ltl_finally(e: Exp) -> Exp {
+        Box::new(Expr::LtlUntil(Expr::top(), e))
+    }
+
+    // Helper function for constructing `G e` using the equivalence `G e ≡ ¬(true U ¬e)`
+    pub fn ltl_globally(e: Exp) -> Exp {
+        let until_expr = Expr::ltl_until(Expr::top(), Expr::complement(e));
+        Box::new(Expr::Complement(until_expr))
+    }
 }
 
 impl std::fmt::Display for Expr {
