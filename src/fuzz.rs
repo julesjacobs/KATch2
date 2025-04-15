@@ -389,7 +389,7 @@ mod tests {
         let ax_depth = 2;
         let expr_depth = 0;
         let num_fields = 3;
-        let number = 100;
+        let number = 1000;
         for _ in 0..number {
             let (e1, e2) = genax(ax_depth, expr_depth, num_fields);
             let xor = Expr::xor(e1.clone(), e2.clone());

@@ -55,7 +55,6 @@ pub struct Aut {
     delta_map: HashMap<State, ST>,
     epsilon_map: HashMap<State, spp::SPP>,
     spp: spp::SPPstore,
-    sp: sp::SPstore,
     num_calls: u32,
 }
 
@@ -67,7 +66,6 @@ impl Aut {
             delta_map: HashMap::new(),
             epsilon_map: HashMap::new(),
             spp: spp::SPPstore::new(num_vars),
-            sp: sp::SPstore::new(num_vars),
             num_calls: 0,
         };
         aut
@@ -123,6 +121,9 @@ impl Aut {
         if new_states.len() == 1 {
             return new_states[0];
         }
+        if new_states.is_empty() {
+            return self.mk_spp(self.spp.zero);
+        }
 
         // Create an n-ary union
         self.intern(AExpr::Union(new_states))
@@ -158,8 +159,10 @@ impl Aut {
         if new_states.len() == 1 {
             return new_states[0];
         }
-
-        // Create an n-ary union
+        if new_states.is_empty() {
+            return self.mk_top();
+        }
+        // Create an n-ary intersection
         self.intern(AExpr::Intersect(new_states))
     }
 
@@ -208,47 +211,18 @@ impl Aut {
         match expr {
             AExpr::Union(states) => {
                 // !(e1 + e2 + ... + en) = !e1 & !e2 & ... & !en
-                if states.is_empty() {
-                    return self.mk_spp(self.spp.one); // Complement of empty union is 1
-                }
-
-                // Avoid borrowing self by calculating complements first
                 let complements: Vec<State> = states
                     .iter()
                     .map(|&state| self.mk_complement(state))
                     .collect();
-
-                // Then combine them with intersect
-                if complements.is_empty() {
-                    return self.mk_spp(self.spp.one);
-                }
-
-                if complements.len() == 1 {
-                    return complements[0];
-                }
-
                 return self.mk_intersect_n(complements);
             }
             AExpr::Intersect(states) => {
                 // !(e1 & e2 & ... & en) = !e1 + !e2 + ... + !en
-                if states.is_empty() {
-                    return self.mk_spp(self.spp.zero); // Complement of empty intersection is 0
-                }
-
-                // Avoid borrowing self by calculating complements first
                 let complements: Vec<State> = states
                     .iter()
                     .map(|&state| self.mk_complement(state))
                     .collect();
-
-                if complements.is_empty() {
-                    return self.mk_spp(self.spp.zero);
-                }
-
-                if complements.len() == 1 {
-                    return complements[0];
-                }
-
                 return self.mk_union_n(complements);
             }
             AExpr::Difference(e1, e2) => {
@@ -301,7 +275,6 @@ impl Aut {
             _ => {}
         }
 
-        // TODO: Add check for SPP zero (0 ; e = 0, e ; 0 = 0)
         self.intern(AExpr::Sequence(e1, e2))
     }
 
@@ -408,6 +381,12 @@ impl Aut {
     }
 
     pub fn st_singleton(&mut self, spp: spp::SPP, state: State) -> ST {
+        if spp == self.spp.zero {
+            return ST::new(HashMap::new());
+        }
+        if state == self.mk_spp(self.spp.zero) {
+            return ST::new(HashMap::new());
+        }
         ST::new(HashMap::from([(state, spp)]))
     }
 
@@ -457,14 +436,20 @@ impl Aut {
         for (state2, spp2) in transitions {
             let intersect_spp = self.spp.intersect(remaining_spp, spp2);
             let union_state = self.mk_union(state, state2);
-            st.transitions.insert(union_state, intersect_spp);
+            if intersect_spp != self.spp.zero {
+                st.transitions.insert(union_state, intersect_spp);
+            }
             remaining_spp = self.spp.difference(remaining_spp, intersect_spp);
             if remaining_spp == self.spp.zero {
                 return;
             }
         }
 
-        st.transitions.insert(state, remaining_spp);
+        if let Some(existing_spp) = st.transitions.get_mut(&state) {
+            *existing_spp = self.spp.union(*existing_spp, remaining_spp);
+        } else {
+            st.transitions.insert(state, remaining_spp);
+        }
     }
 
     fn st_intersect(&mut self, st1: ST, st2: ST) -> ST {
@@ -744,7 +729,8 @@ impl Aut {
                 // iterate over all transitions from the state
                 for (state2, spp2) in self.delta(state).transitions {
                     let seq_spp = self.spp.sequence(to_add, spp2);
-                    todo.push((state2, seq_spp));
+                    let seq_forward = self.spp.forward(seq_spp);
+                    todo.push((state2, seq_forward));
                 }
             }
         }
