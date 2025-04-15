@@ -70,13 +70,71 @@ fn get_distinct_fields(k: u32) -> (Field, Field) {
 
 // --- Main Fuzzing Function ---
 
-const NUM_AXIOMS: u32 = 27; // Count of axioms listed in the initial comment
+// The genax(n,k) function returns a random pair of semantically equivalent expressions.
+// The n parameter controls how many axioms are used.
+// The k parameter controls how many variables are used.
+// The function works as follows:
+// - For genax(0,k), return a pair (e,e) where e is a random expression with k variables.
+// - For genax(n,k), pick any axiom, say e1 + e2 = e2 + e1.
+//   Then recursively generate (e1,e1') and (e2,e2') using genax(n-1) and
+//   substitute them into the axiom and return (e1 + e2, e2' + e1').
+
+// Here is the list of axioms we can pick from:
+
+// # NetKAT Axioms for Binary Variables
+
+// **Notation:**
+// *   `p, q, r, a, b, c`: Arbitrary NetKAT policies.
+// *   `xi, xj`: Distinct binary variable field names (where `i` and `j` are distinct non-negative integers).
+// *   `v, v'`: Binary values (either `0` or `1`).
+// *   `¬a`: Negation of predicate `a`.
+// *   `0`: The policy/predicate that drops/rejects all packets (false).
+// *   `1`: The policy/predicate that passes/accepts all packets unmodified (true).
+// *   `+`: Union / Disjunction.
+// *   `.`: Sequential Composition / Conjunction.
+// *   `*`: Kleene Star (iteration).
+// *   `xi = v`: Test if field `xi` equals value `v`.
+// *   `xi <- v`: Modification setting field `xi` to value `v`.
+// *   `dup`: Duplication policy (records current packet state in history).
+
+// *   `p + (q + r) = (p + q) + r` *(KA-PLUS-ASSOC)*
+// *   `p + q = q + p` *(KA-PLUS-COMM)*
+// *   `p + 0 = p` *(KA-PLUS-ZERO)*
+// *   `p + p = p` *(KA-PLUS-IDEM)*
+// *   `p . (q . r) = (p . q) . r` *(KA-SEQ-ASSOC)*
+// *   `1 . p = p` *(KA-ONE-SEQ - Left)*
+// *   `p . 1 = p` *(KA-SEQ-ONE - Right)*
+// *   `p . (q + r) = p . q + p . r` *(KA-SEQ-DIST-L)*
+// *   `(p + q) . r = p . r + q . r` *(KA-SEQ-DIST-R)*
+// *   `0 . p = 0` *(KA-ZERO-SEQ - Left)*
+// *   `p . 0 = 0` *(KA-SEQ-ZERO - Right)*
+// *   `1 + p . p* = p*` *(KA-UNROLL-L - Left)*
+// *   `1 + p* . p = p*` *(KA-UNROLL-R - Right)*
+// *   `a + (b & c) = (a + b) & (a + c)` *(BA-PLUS-DIST)*
+// *   `a + T = T` *(BA-PLUS-ONE)*
+// *   `a + ¬a = T` *(BA-EXCL-MID)*
+// *   `a & b = b & a` *(BA-SEQ-COMM)*
+// *   `a & ¬a = 0` *(BA-CONTRA)*
+// *   `a & a = a` *(BA-SEQ-IDEM)*
+// *   `xi <- v . xj <- v' = xj <- v' . xi <- v` *(PA-MOD-MOD-COMM)* -- Modifications on distinct variables commute
+// *   `(xi <- v) . (xj = v') = (xj = v') . (xi <- v)` *(PA-MOD-FILTER-COMM)* -- Modification on `xi` commutes with a test on distinct variable `xj`
+// *   `dup . (xi = v) = (xi = v) . dup` *(PA-DUP-FILTER-COMM)* -- Dup commutes with tests
+// *   `(xi <- v) . (xi = v) = xi <- v` *(PA-MOD-FILTER)* -- Testing for a value immediately after setting it is redundant
+// *   `(xi = v) . (xi <- v) = (xi = v)` *(PA-FILTER-MOD)* -- Setting a variable to a value it's already known to have doesn't change the test result
+// *   `(xi <- v) . (xi <- v') = xi <- v'` *(PA-MOD-MOD)* -- Sequential modifications to the same variable; the last one prevails
+// *   `(xi = 0) . (xi = 1) = 0` *(PA-CONTRA) -- A variable cannot be both 0 and 1 simultaneously
+// *   `(xi = 0) + (xi = 1) = 1` *(PA-MATCH-ALL) -- A binary variable must be either 0 or 1
+
+// The following axioms are not used in the current implementation.
+// *   `q + p . r <= r => p* . q <= r` *(KA-LFP-L - Left Induction)* (UNUSED)
+// *   `p + q . r <= q => p . r* <= q` *(KA-LFP-R - Right Induction)* (UNUSED)
+//     *(Note: `x <= y` is shorthand for `x + y = y`)*
+
 
 /// Generates a pair of semantically equivalent expressions.
 ///
 /// - `n`: Controls the number of axiom applications (recursion depth).
 /// - `k`: Controls the maximum number of distinct variables (fields `x0` to `xk-1`).
-/// - `rng`: Random number generator.
 pub fn genax(n: usize, k: u32) -> (Exp, Exp) {
     assert!(k >= 2, "k must be >= 2 to generate distinct fields");
     if n == 0 {
@@ -292,8 +350,6 @@ mod tests {
         println!(" RHS: {:?}", e2);
         check_fields(&e1, k);
         check_fields(&e2, k);
-         // Note: e1 might equal e2 even for n > 0 if axioms simplify things,
-         // so we don't assert inequality.
     }
 
     #[test]
@@ -307,67 +363,3 @@ mod tests {
         }
     }
 }
-
-// Fuzzing utilities
-
-
-// The genax(n,k) function returns a random pair of semantically equivalent expressions.
-// The n parameter controls how many axioms are used.
-// The k parameter controls how many variables are used.
-// The function works as follows:
-// - For genax(0,k), return a pair (e,e) where e is a random expression with k variables.
-// - For genax(n,k), pick any axiom, say e1 + e2 = e2 + e1.
-//   Then recursively generate (e1,e1') and (e2,e2') using genax(n-1) and
-//   substitute them into the axiom and return (e1 + e2, e2' + e1').
-
-// Here is the list of axioms we can pick from:
-
-// # NetKAT Axioms for Binary Variables
-
-// **Notation:**
-
-// *   `p, q, r, a, b, c`: Arbitrary NetKAT policies.
-// *   `xi, xj`: Distinct binary variable field names (where `i` and `j` are distinct non-negative integers).
-// *   `v, v'`: Binary values (either `0` or `1`).
-// *   `¬a`: Negation of predicate `a`.
-// *   `0`: The policy/predicate that drops/rejects all packets (false).
-// *   `1`: The policy/predicate that passes/accepts all packets unmodified (true).
-// *   `+`: Union / Disjunction.
-// *   `.`: Sequential Composition / Conjunction.
-// *   `*`: Kleene Star (iteration).
-// *   `xi = v`: Test if field `xi` equals value `v`.
-// *   `xi <- v`: Modification setting field `xi` to value `v`.
-// *   `dup`: Duplication policy (records current packet state in history).
-
-// *   `p + (q + r) = (p + q) + r` *(KA-PLUS-ASSOC)*
-// *   `p + q = q + p` *(KA-PLUS-COMM)*
-// *   `p + 0 = p` *(KA-PLUS-ZERO)*
-// *   `p + p = p` *(KA-PLUS-IDEM)*
-// *   `p . (q . r) = (p . q) . r` *(KA-SEQ-ASSOC)*
-// *   `1 . p = p` *(KA-ONE-SEQ - Left)*
-// *   `p . 1 = p` *(KA-SEQ-ONE - Right)*
-// *   `p . (q + r) = p . q + p . r` *(KA-SEQ-DIST-L)*
-// *   `(p + q) . r = p . r + q . r` *(KA-SEQ-DIST-R)*
-// *   `0 . p = 0` *(KA-ZERO-SEQ - Left)*
-// *   `p . 0 = 0` *(KA-SEQ-ZERO - Right)*
-// *   `1 + p . p* = p*` *(KA-UNROLL-L - Left)*
-// *   `1 + p* . p = p*` *(KA-UNROLL-R - Right)*
-// *   `a + (b & c) = (a + b) & (a + c)` *(BA-PLUS-DIST)*
-// *   `a + T = T` *(BA-PLUS-ONE)*
-// *   `a + ¬a = T` *(BA-EXCL-MID)*
-// *   `a & b = b & a` *(BA-SEQ-COMM)*
-// *   `a & ¬a = 0` *(BA-CONTRA)*
-// *   `a & a = a` *(BA-SEQ-IDEM)*
-// *   `xi <- v . xj <- v' = xj <- v' . xi <- v` *(PA-MOD-MOD-COMM)* -- Modifications on distinct variables commute
-// *   `(xi <- v) . (xj = v') = (xj = v') . (xi <- v)` *(PA-MOD-FILTER-COMM)* -- Modification on `xi` commutes with a test on distinct variable `xj`
-// *   `dup . (xi = v) = (xi = v) . dup` *(PA-DUP-FILTER-COMM)* -- Dup commutes with tests
-// *   `(xi <- v) . (xi = v) = xi <- v` *(PA-MOD-FILTER)* -- Testing for a value immediately after setting it is redundant
-// *   `(xi = v) . (xi <- v) = (xi = v)` *(PA-FILTER-MOD)* -- Setting a variable to a value it's already known to have doesn't change the test result
-// *   `(xi <- v) . (xi <- v') = xi <- v'` *(PA-MOD-MOD)* -- Sequential modifications to the same variable; the last one prevails
-// *   `(xi = 0) . (xi = 1) = 0` *(PA-CONTRA) -- A variable cannot be both 0 and 1 simultaneously
-// *   `(xi = 0) + (xi = 1) = 1` *(PA-MATCH-ALL) -- A binary variable must be either 0 or 1
-
-// The following axioms are not used in the current implementation.
-// *   `q + p . r <= r => p* . q <= r` *(KA-LFP-L - Left Induction)* (UNUSED)
-// *   `p + q . r <= q => p . r* <= q` *(KA-LFP-R - Right Induction)* (UNUSED)
-//     *(Note: `x <= y` is shorthand for `x + y = y`)*
