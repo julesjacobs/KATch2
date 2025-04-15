@@ -445,6 +445,11 @@ mod tests {
 
     #[test]
     fn fuzz_test() {
+        // Enable backtrace for debugging failing tests
+        unsafe {
+            std::env::set_var("RUST_BACKTRACE", "1");
+        }
+
         // Generate random expressions, create the xor, and check if the automaton is empty
         let ax_depth = 3;
         let expr_depth = 1;
@@ -452,13 +457,13 @@ mod tests {
         let number = 1000;
         for _ in 0..number {
             let (e1, e2) = genax(ax_depth, expr_depth, num_fields);
-            println!("Checking xor of\n  {}\n   ===\n  {}", e1, e2);
             let xor = Expr::xor(e1.clone(), e2.clone());
             let mut aut = Aut::new(num_fields);
             let state = aut.expr_to_state(&xor);
             if aut.is_empty(state) {
-                println!("Success!");
+                // println!("Success!");
             } else {
+                println!("Checking xor of\n  {}\n   ===\n  {}", e1, e2);
                 assert!(false, "Failure!");
             }
         }
