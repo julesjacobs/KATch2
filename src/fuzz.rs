@@ -188,10 +188,10 @@ pub fn genax(n: usize, k: u32) -> (Exp, Exp) {
                     return (Expr::union(lhs, Expr::top()), Expr::top()); // rhs unused
                 }
                 9 => { // BA-EXCL-MID: a + ¬a = T
-                    return (Expr::union(lhs.clone(), Expr::complement(lhs)), Expr::top()); // rhs unused
+                    return (Expr::union(lhs, Expr::complement(rhs)), Expr::top());
                 }
                 10 => { // BA-CONTRA: a & ¬a = 0
-                    return (Expr::intersect(lhs.clone(), Expr::complement(lhs)), Expr::zero()); // rhs unused
+                    return (Expr::intersect(lhs, Expr::complement(rhs)), Expr::zero());
                 }
                 11 => { // BA-SEQ-IDEM: a & a = a
                     return (Expr::intersect(lhs.clone(), lhs), rhs);
