@@ -454,7 +454,7 @@ mod tests {
         let ax_depth = 3;
         let expr_depth = 1;
         let num_fields = 3;
-        let number = 1000;
+        let number = 10000;
         for _ in 0..number {
             let (e1, e2) = genax(ax_depth, expr_depth, num_fields);
             println!("Checking xor of\n  {}\n   ===\n  {}\n", e1, e2);

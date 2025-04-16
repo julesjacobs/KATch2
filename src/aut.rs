@@ -136,36 +136,91 @@ impl Aut {
     }
 
     fn mk_intersect_n(&mut self, states: Vec<State>) -> State {
-        let mut states2 = vec![];
+        let mut new_states = vec![];
         for state in states {
             match self.get_expr(state) {
                 AExpr::Intersect(nested) => {
                     for nested_state in nested.clone() {
-                        states2.push(nested_state);
+                        new_states.push(nested_state);
                     }
                 }
-                _ => states2.push(state),
-            }
-        }
-        let mut new_states = vec![];
-        for state in states2.clone() {
-            match self.get_expr(state) {
-                AExpr::Top => {}
                 _ => new_states.push(state),
             }
         }
 
-        new_states.sort();
-        new_states.dedup();
-        // Special case: just one element
-        if new_states.len() == 1 {
-            return new_states[0];
+        // Distribute intersections over unions
+        let mut distributed_states : Vec<Vec<State>> = vec![vec![]];
+        for state in new_states {
+            match self.get_expr(state) {
+                AExpr::Union(nested) => {
+                    let mut new_distributed_states = vec![];
+                    for nested_state in nested.clone() {
+                        for i in 0..distributed_states.len() {
+                            let mut new_distributed_state = distributed_states[i].clone();
+                            new_distributed_state.push(nested_state);
+                            new_distributed_states.push(new_distributed_state);
+                        }
+                    }
+                    distributed_states = new_distributed_states;
+                }
+                _ => {
+                    for i in 0..distributed_states.len() {
+                        distributed_states[i].push(state);
+                    }
+                }
+            }
         }
-        if new_states.is_empty() {
-            return self.mk_top();
+
+        // Make an actual intersection of each distributed state
+        let mut intersections = vec![];
+        for distributed_state in distributed_states {
+            intersections.push(self.mk_intersect_n_base(distributed_state));
         }
-        // Create an n-ary intersection
-        self.intern(AExpr::Intersect(new_states))
+        
+        return self.mk_union_n(intersections);
+    }
+
+    fn mk_intersect_n_base(&mut self, mut states: Vec<State>) -> State {
+        // Basic version that does not do distribution, but does handle Top and Zero and merges SPPs
+        let mut new_states = vec![];
+        for state in states {
+            match self.get_expr(state) {
+                AExpr::Intersect(nested) => {
+                    for nested_state in nested.clone() {
+                        new_states.push(nested_state);
+                    }
+                }
+                _ => new_states.push(state),
+            }
+        }
+        states = new_states;
+        // Remove Top
+        states.retain(|&state| state != self.mk_top());
+        // Intersect the SPPs, collecting the rest
+        let mut spp = None;
+        let mut rest = vec![];
+        for state in states {
+            match self.get_expr(state) {
+                AExpr::SPP(s) => spp = Some(self.spp.intersect(spp.unwrap_or(self.spp.top), *s)),
+                _ => rest.push(state),
+            }
+        }
+        rest.sort();
+        rest.dedup();
+        if spp == Some(self.spp.zero) {
+            return self.mk_spp(self.spp.zero);
+        }
+        if rest.is_empty() {
+            if let Some(spp) = spp {
+                return self.mk_spp(spp);
+            } else {
+                return self.mk_top();
+            }
+        }
+        if let Some(spp) = spp {
+            rest.push(self.mk_spp(spp));
+        }
+        self.intern(AExpr::Intersect(rest))
     }
 
     fn mk_intersect(&mut self, e1: State, e2: State) -> State {
@@ -575,14 +630,14 @@ impl Aut {
 
     pub fn delta(&mut self, state: State) -> ST {
         self.num_calls += 1;
-        if self.num_calls > 500 {
+        if self.num_calls > 5000 {
             panic!(
                 "Delta called {} times, artificial limit reached for state {}",
                 self.num_calls,
                 self.state_to_string(state)
             );
         }
-        if self.state_to_string(state).len() > 10000 {
+        if self.state_to_string(state).len() > 100000 {
             panic!(
                 "Delta called with state length = {}: {}",
                 self.state_to_string(state).len(),
