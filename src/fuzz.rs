@@ -423,6 +423,27 @@ pub fn genax(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) 
     }
 }
 
+/// Shrinks an expression, returning a list of subterms:
+/// - `f == v, f := v, Top` are shrunken to the list `[0, 1]`
+/// - Binary operators `e1 ⊙ e2` are shrunken to the list `[e1, e2]`
+/// - Unary operator, e.g. `!e` are shrunken to the list `[e]`
+fn shrink_exp(exp: Exp) -> Vec<Exp> {
+    use Expr::*;
+    match *exp {
+        Zero | One => vec![],
+        Top | Dup | End | Assign(_, _) | Test(_, _) => vec![Expr::zero(), Expr::one()],
+        Union(e1, e2)
+        | Intersect(e1, e2)
+        | Xor(e1, e2)
+        | Difference(e1, e2)
+        | Sequence(e1, e2)
+        | LtlUntil(e1, e2) => {
+            vec![e1, e2]
+        }
+        Star(e) | Complement(e) | LtlNext(e) => vec![e],
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::aut::Aut;

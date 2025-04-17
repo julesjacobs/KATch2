@@ -12,11 +12,11 @@ use std::collections::HashMap;
 pub type SPP = u32;
 pub type Var = u32;
 
-/// The store of SPs.
+/// The store of SPs. (store = arena + memo tables)
 #[derive(Debug)]
 pub struct SPPstore {
     num_vars: Var, // Idea: it's ok to pick this larger than you need. Hash consing & memoization will handle it
-    nodes: Vec<SPPnode>,
+    nodes: Vec<SPPnode>, // the arena
     hc: HashMap<SPPnode, SPP>,
     pub zero: SPP,
     pub one: SPP,
@@ -34,6 +34,9 @@ pub struct SPPstore {
     test_memo: HashMap<(Var, bool), SPP>,
     assign_memo: HashMap<(Var, bool), SPP>,
     flip_memo: HashMap<SPP, SPP>,
+    // fwd_memo
+    // bwd_memo, etc.
+    // TODO: maybe put the SPStore in here?
 }
 
 /// A node in the SPP store. Has four children, one for each combination of the two variables.
