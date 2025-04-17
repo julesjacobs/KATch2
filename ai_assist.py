@@ -3,6 +3,7 @@ import glob
 from pathlib import Path
 import tiktoken
 from openai import OpenAI
+import google.generativeai as genai
 from rich.console import Console
 from rich.prompt import Prompt
 from rich.panel import Panel
@@ -15,6 +16,68 @@ from datetime import datetime
 import re
 
 console = Console()
+
+# Available models with their full names
+AVAILABLE_MODELS = {
+    "o4-mini": "o4-mini",
+    "gpt-4.1": "gpt-4.1",
+    "o3": "o3",
+    "gemini-2.5-pro": "gemini-2.5-pro-preview-03-25",
+    "gemini-1.5-pro": "gemini-1.5-pro"
+}
+
+try:
+    from Levenshtein import distance
+    LEVENSHTEIN_AVAILABLE = True
+except ImportError:
+    LEVENSHTEIN_AVAILABLE = False
+    console.print("[yellow]python-Levenshtein not installed. Using simple string matching instead.[/yellow]")
+    console.print("[yellow]To install: pip install python-Levenshtein[/yellow]")
+
+def find_best_matching_model(input_str):
+    """Find the best matching model using Levenshtein distance or simple matching."""
+    # Convert input to lowercase for case-insensitive matching
+    input_str = input_str.lower()
+    
+    if LEVENSHTEIN_AVAILABLE:
+        # Calculate distances for each model
+        distances = {}
+        for model in AVAILABLE_MODELS:
+            # Try both the short name and full name
+            short_dist = distance(input_str, model.lower())
+            full_dist = distance(input_str, AVAILABLE_MODELS[model].lower())
+            distances[model] = min(short_dist, full_dist)
+        
+        # Find the model with the smallest distance
+        best_match = min(distances.items(), key=lambda x: x[1])
+        
+        # If the distance is too large, return None
+        if best_match[1] > len(input_str) * 0.5:  # Allow 50% difference
+            return None
+        
+        return best_match[0]
+    else:
+        # Simple string matching fallback
+        input_words = set(input_str.split())
+        best_score = 0
+        best_model = None
+        
+        for model in AVAILABLE_MODELS:
+            # Check both short and full names
+            model_words = set(model.lower().split('-'))
+            full_words = set(AVAILABLE_MODELS[model].lower().split('-'))
+            
+            # Calculate match score
+            short_score = len(input_words & model_words)
+            full_score = len(input_words & full_words)
+            score = max(short_score, full_score)
+            
+            if score > best_score:
+                best_score = score
+                best_model = model
+        
+        # Require at least one word match
+        return best_model if best_score > 0 else None
 
 def parse_model_response(response_text):
     """Parse the model's response, extracting summary and file changes."""
@@ -72,7 +135,11 @@ def save_response(response, task_description):
 def read_api_keys():
     try:
         with open('api_keys.json', 'r') as f:
-            return json.load(f)
+            keys = json.load(f)
+            # Initialize Gemini if key is present
+            if 'gemini' in keys:
+                genai.configure(api_key=keys['gemini'])
+            return keys
     except FileNotFoundError:
         console.print("[red]Error: api_keys.json not found[/red]")
         exit(1)
@@ -231,10 +298,53 @@ def generate_prompt(task_description):
         console.print(f"[red]Error generating prompt: {str(e)}[/red]")
         return None, 0, []
 
+def get_model_client(model):
+    """Return the appropriate client for the given model."""
+    if model.startswith('gemini'):
+        return 'gemini'
+    return 'openai'
+
+def call_model(model, system_prompt, user_prompt, client):
+    """Call the appropriate model API based on the model type."""
+    # Get the full model name
+    full_model = AVAILABLE_MODELS[model]
+    
+    if model.startswith('gemini'):
+        # Configure Gemini model
+        gemini_model = genai.GenerativeModel(full_model)
+        
+        # Combine system and user prompts for Gemini
+        full_prompt = f"{system_prompt}\n\n{user_prompt}"
+        
+        # Generate content
+        response = gemini_model.generate_content(full_prompt)
+        
+        # Convert to similar format as OpenAI response
+        return type('Response', (), {
+            'choices': [type('Choice', (), {
+                'message': type('Message', (), {
+                    'content': response.text
+                })
+            })],
+            'usage': type('Usage', (), {
+                'prompt_tokens': len(response.text.split()),  # Approximate
+                'completion_tokens': len(response.text.split())  # Approximate
+            })
+        })
+    else:
+        # OpenAI models
+        return client.chat.completions.create(
+            model=full_model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ]
+        )
+
 def main():
     try:
         api_keys = read_api_keys()
-        client = OpenAI(api_key=api_keys.get('openai'))
+        openai_client = OpenAI(api_key=api_keys.get('openai'))
         
         current_model = "o4-mini"
         cost_history = []
@@ -247,12 +357,12 @@ def main():
                 console.print(f"[dim]- {pattern}[/dim]")
         
         # Show initial include patterns
-        console.print("\n[bold cyan]KATch2 AI Assistant[/bold cyan]")
+        console.print("\n[bold cyan]AI Coding Assistant[/bold cyan]")
         show_include_patterns()
         console.print("[dim]Type /help for available commands[/dim]")
         
         while True:
-            console.print("\n[bold cyan]KATch2 AI Assistant[/bold cyan]")
+            console.print("\n[bold cyan]AI Coding Assistant[/bold cyan]")
             console.print("[dim]Type /help for available commands[/dim]")
             
             if cost_history:
@@ -263,9 +373,25 @@ def main():
             
             if command.startswith('/'):
                 if command == '/model':
-                    models = ["o4-mini", "gpt-4.1", "o3", "gemini-2.5-pro", "gemini-1.5-pro"]
-                    current_model = Prompt.ask("Select model", choices=models, default=current_model)
-                    console.print(f"[green]Switched to model: {current_model}[/green]")
+                    # Show available models
+                    console.print("\n[bold]Available Models:[/bold]")
+                    for model in AVAILABLE_MODELS:
+                        console.print(f"- {model} ({AVAILABLE_MODELS[model]})")
+                    
+                    # Get user input and find best match
+                    while True:
+                        model_input = Prompt.ask("\nEnter model name", default=current_model)
+                        best_match = find_best_matching_model(model_input)
+                        
+                        if best_match:
+                            current_model = best_match
+                            console.print(f"[green]Switched to model: {current_model} ({AVAILABLE_MODELS[current_model]})[/green]")
+                            break
+                        else:
+                            console.print("[red]No matching model found. Please try again.[/red]")
+                            console.print("[dim]Available models:[/dim]")
+                            for model in AVAILABLE_MODELS:
+                                console.print(f"[dim]- {model}[/dim]")
                 elif command == '/cost':
                     if not cost_history:
                         console.print("[yellow]No cost history available[/yellow]")
@@ -375,31 +501,14 @@ version = "0.1.0"
 
 Your response will be parsed by a script that expects this exact format. Any deviation will cause errors."""
 
-                response = client.chat.completions.create(
-                    model=current_model,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": f"Codebase:\n{content}\n\nTask: {task_description}"}
-                    ]
-                )
+                # Get the appropriate client
+                client_type = get_model_client(current_model)
+                client = openai_client if client_type == 'openai' else None
                 
-                # Calculate and store the cost of this query
-                input_tokens = response.usage.prompt_tokens
-                output_tokens = response.usage.completion_tokens
-                model_prices = estimate_costs(0)
-                prices = model_prices.get(current_model, model_prices["o4-mini"])
-                cost = (input_tokens * prices["input"] + output_tokens * prices["output"]) / 1_000_000
+                # Call the model
+                response = call_model(current_model, system_prompt, f"Codebase:\n{content}\n\nTask: {task_description}", client)
                 
-                # Add to cost history
-                cost_history.append({
-                    'time': datetime.now(),
-                    'model': current_model,
-                    'cost': cost,
-                    'input_tokens': input_tokens,
-                    'output_tokens': output_tokens
-                })
-                
-                # Save the response for debugging
+                # Save the response
                 response_file = save_response(response, task_description)
                 
                 try:
