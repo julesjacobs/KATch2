@@ -72,6 +72,8 @@ fn get_distinct_fields(k: u32) -> (Field, Field) {
     (f1, f2)
 }
 
+/// Flips a coin to decide whether to swap the LHS and RHS of an equality.    
+/// (Helper function used in `genax` below)
 fn flip_equality_rand(lhs: Exp, rhs: Exp) -> (Exp, Exp) {
     let b = rand::random::<bool>();
     if b {
@@ -92,7 +94,8 @@ fn flip_equality_rand(lhs: Exp, rhs: Exp) -> (Exp, Exp) {
 // - For genax(n, d, k), pick any axiom, say e1 + e2 = e2 + e1.
 //   Then recursively generate (e1, e1') and (e2, e2') using genax(n-1, d, k) and
 //   substitute them into the axiom and return (e2' + e1', e1 + e2).
-//   Note: we swap the lhs & rhs with each recursive call so that equations are applied in both orders
+//   Note: we randomly swap the lhs & rhs with each recursive call (using `flip_equality_rand` above)
+//   so that equations are applied in both orders.
 
 // Here is the list of axioms we can pick from:
 
