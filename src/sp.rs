@@ -8,11 +8,11 @@ use std::collections::HashMap;
 /// We use indices into the SP store to represent SPs.
 /// The zero SP is represented by 0 and the one SP is represented by 1.
 /// Indices into the store are the u32 value - 2.
-type SP = u32;
+pub type SP = u32;
 type Var = u32;
 
 /// The store of SPs.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SPstore {
     num_vars: Var, // Idea: it's ok to pick this larger than you need. Hash consing & memoization will handle it
     nodes: Vec<SPnode>,
@@ -29,9 +29,9 @@ pub struct SPstore {
 
 /// A node in the SP store. Has two children, one for this variable being 0 and one for it being 1.
 #[derive(Debug, Eq, Hash, PartialEq, Clone, Copy)]
-struct SPnode {
-    x0: SP,
-    x1: SP,
+pub struct SPnode {
+    pub x0: SP,
+    pub x1: SP,
 }
 
 impl SPstore {
@@ -54,11 +54,11 @@ impl SPstore {
         store
     }
 
-    fn get(&self, sp: SP) -> SPnode {
+    pub fn get(&self, sp: SP) -> SPnode {
         self.nodes[sp as usize - 2]
     }
 
-    fn mk(&mut self, x0: SP, x1: SP) -> SP {
+    pub fn mk(&mut self, x0: SP, x1: SP) -> SP {
         let node = SPnode { x0, x1 };
 
         // Check if the node is already in the store using the hc table
@@ -73,7 +73,7 @@ impl SPstore {
         sp
     }
 
-    fn zero(&mut self) -> SP {
+    pub fn zero(&mut self) -> SP {
         // We must construct a zero SP of the right depth
         let mut sp = 0;
         for _ in 0..self.num_vars {
@@ -81,7 +81,7 @@ impl SPstore {
         }
         sp
     }
-    fn one(&mut self) -> SP {
+    pub fn one(&mut self) -> SP {
         // We must construct a one SP of the right depth
         let mut sp = 1;
         for _ in 0..self.num_vars {

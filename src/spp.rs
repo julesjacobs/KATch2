@@ -3,6 +3,7 @@
 // Unlike traditional BDDs, we do not leave out any levels of the BDD:
 // each path down the BDD has precisely the same depth, namely the number of variables, i.e. the packet size in bits.
 
+use crate::sp::{SPnode, SPstore, SP};
 #[allow(non_snake_case)]
 use std::collections::HashMap;
 
@@ -12,7 +13,7 @@ use std::collections::HashMap;
 pub type SPP = u32;
 pub type Var = u32;
 
-/// The store of SPs. (store = arena + memo tables)
+/// The store of SPPs. (store = arena + memo tables)
 #[derive(Debug)]
 pub struct SPPstore {
     num_vars: Var, // Idea: it's ok to pick this larger than you need. Hash consing & memoization will handle it
@@ -34,9 +35,10 @@ pub struct SPPstore {
     test_memo: HashMap<(Var, bool), SPP>,
     assign_memo: HashMap<(Var, bool), SPP>,
     flip_memo: HashMap<SPP, SPP>,
-    // fwd_memo
     // bwd_memo, etc.
-    // TODO: maybe put the SPStore in here?
+    sp_store: SPstore,
+    fwd_memo: HashMap<SPP, SP>,
+    ifwd_memo: HashMap<SP, SPP>,
 }
 
 /// A node in the SPP store. Has four children, one for each combination of the two variables.
@@ -70,10 +72,24 @@ impl SPPstore {
             test_memo: HashMap::new(),
             assign_memo: HashMap::new(),
             flip_memo: HashMap::from([(0, 0), (1, 1)]),
+            sp_store: SPstore::new(num_vars),
+            fwd_memo: HashMap::new(), // dummy values, will be filled later
+            ifwd_memo: HashMap::new(),
         };
         store.zero = store.zero();
         store.one = store.one();
         store.top = store.top();
+
+        // Add trivial values to the fwd/ifwd memo tables
+        store.fwd_memo.extend(vec![
+            (store.zero, store.sp_store.zero()),
+            (store.one, store.sp_store.one()),
+        ]);
+        store.ifwd_memo.extend(vec![
+            (store.sp_store.zero(), store.zero),
+            (store.sp_store.one(), store.one),
+        ]);
+
         store
     }
 
@@ -91,6 +107,40 @@ impl SPPstore {
             self.nodes.len()
         );
         self.nodes[node_index]
+    }
+
+    // Computes the possible output packet set from applying the `SPP`
+    // TODO: add QuickCheck tests to check that `ifwd ∘ fwd = id`
+    pub fn fwd(&mut self, spp: SPP) -> SP {
+        // Check the memo table to see if fwd(spp) already exists
+        if let Some(&result) = self.fwd_memo.get(&spp) {
+            return result;
+        }
+        // We now know that we've got a non-trivial SPPnNde,
+        // so we don't need to handle 0 or 1 cases here
+
+        let SPPnode { x00, x01, x10, x11 } = self.get(spp);
+        let mut sp_store = self.sp_store.clone();
+
+        let x0 = sp_store.union(self.fwd(x00), self.fwd(x10));
+        let x1 = sp_store.union(self.fwd(x01), self.fwd(x11));
+        sp_store.mk(x0, x1)
+    }
+
+    // Left inverse of `fwd`, computes the SPP corresponding to the `sp`.
+    // - Note: `ifwd ∘ fwd = id`
+    pub fn ifwd(&mut self, sp: SP) -> SPP {
+        // Check the memo table to see if ifwd(spp) already exists
+        if let Some(&result) = self.ifwd_memo.get(&sp) {
+            return result;
+        }
+
+        let SPnode { x0, x1 } = self.sp_store.get(sp);
+        let x00 = self.ifwd(x0);
+        let x01 = self.ifwd(x1);
+        let x10 = self.ifwd(x0);
+        let x11 = self.ifwd(x1);
+        self.mk(x00, x01, x10, x11)
     }
 
     fn mk(&mut self, x00: SPP, x01: SPP, x10: SPP, x11: SPP) -> SPP {
@@ -409,6 +459,7 @@ impl SPPstore {
 
     /// Computes all packets that can be produced from this SPP.
     /// We give the answer as an SPP instead of an SP for convenience.
+    /// TODO: replace this with `self.fwd` once we've tested it
     pub fn forward(&mut self, spp: SPP) -> SPP {
         self.sequence(self.top, spp)
     }
