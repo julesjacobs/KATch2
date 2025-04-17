@@ -411,7 +411,7 @@ pub fn genax(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) 
                         p2_rhs.clone(),
                         Expr::union(
                             p1_rhs.clone(),
-                            Expr::ltl_next(Expr::ltl_release(p1_rhs, p2_rhs)),
+                            Expr::ltl_weak_next(Expr::ltl_release(p1_rhs, p2_rhs)),
                         ),
                     );
                     return flip_equality_rand(new_lhs, new_rhs);

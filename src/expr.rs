@@ -67,6 +67,9 @@ impl Expr {
     pub fn ltl_next(e: Exp) -> Exp {
         Box::new(Expr::LtlNext(e))
     }
+    pub fn ltl_weak_next(e: Exp) -> Exp {
+        Box::new(Expr::Union(Expr::ltl_next(e), Expr::end()))
+    }
     pub fn ltl_until(e1: Exp, e2: Exp) -> Exp {
         Box::new(Expr::LtlUntil(e1, e2))
     }
