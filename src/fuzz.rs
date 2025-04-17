@@ -72,6 +72,15 @@ fn get_distinct_fields(k: u32) -> (Field, Field) {
     (f1, f2)
 }
 
+fn flip_equality_rand(lhs: Exp, rhs: Exp) -> (Exp, Exp) {
+    let b = rand::random::<bool>();
+    if b {
+        (rhs, lhs)
+    } else {
+        (lhs, rhs)
+    }
+}
+
 // --- Main Fuzzing Function ---
 
 // The `genax(n, d, k)` function returns a random pair of semantically equivalent expressions.
@@ -240,99 +249,99 @@ pub fn genax(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) 
                     // KA-PLUS-ZERO: p + 0 = p
                     let new_lhs = Expr::union(lhs, Expr::zero());
                     let new_rhs = rhs;
-                    return (new_rhs, new_lhs); // Swap rhs & lhs
+                    return flip_equality_rand(new_lhs, new_rhs); // Swap rhs & lhs
                 }
                 1 => {
                     // KA-PLUS-IDEM: p + p = p
                     let new_lhs = Expr::union(lhs.clone(), lhs);
                     let new_rhs = rhs;
-                    return (new_rhs, new_lhs);
+                    return flip_equality_rand(new_lhs, new_rhs);
                 }
                 2 => {
                     // KA-ONE-SEQ: 1 . p = p
                     let new_lhs = Expr::sequence(Expr::one(), lhs);
                     let new_rhs = rhs;
-                    return (new_rhs, new_lhs);
+                    return flip_equality_rand(new_lhs, new_rhs);
                 }
                 3 => {
                     // KA-SEQ-ONE: p . 1 = p
                     let new_lhs = Expr::sequence(lhs, Expr::one());
                     let new_rhs = rhs;
-                    return (new_rhs, new_lhs);
+                    return flip_equality_rand(new_lhs, new_rhs);
                 }
                 4 => {
                     // KA-ZERO-SEQ: 0 . p = 0
                     let new_lhs = Expr::sequence(Expr::zero(), lhs);
                     let new_rhs = Expr::zero(); // rhs unused
-                    return (new_rhs, new_lhs);
+                    return flip_equality_rand(new_lhs, new_rhs);
                 }
                 5 => {
                     // KA-SEQ-ZERO: p . 0 = 0
                     let new_lhs = Expr::sequence(lhs, Expr::zero());
                     let new_rhs = Expr::zero(); // rhs unused
-                    return (new_rhs, new_lhs);
+                    return flip_equality_rand(new_lhs, new_rhs);
                 }
                 6 => {
                     // KA-UNROLL-L: 1 + p . p* = p*
                     let new_lhs =
                         Expr::union(Expr::one(), Expr::sequence(lhs.clone(), Expr::star(lhs)));
                     let new_rhs = Expr::star(rhs);
-                    return (new_rhs, new_lhs);
+                    return flip_equality_rand(new_lhs, new_rhs);
                 }
                 7 => {
                     // KA-UNROLL-R: 1 + p* . p = p*
                     let new_lhs =
                         Expr::union(Expr::one(), Expr::sequence(Expr::star(lhs.clone()), lhs));
                     let new_rhs = Expr::star(rhs);
-                    return (new_rhs, new_lhs);
+                    return flip_equality_rand(new_lhs, new_rhs);
                 }
                 8 => {
                     // BA-PLUS-ONE: a + T = T
                     let new_lhs = Expr::union(lhs, Expr::top());
                     let new_rhs = Expr::top(); // rhs unused
-                    return (new_rhs, new_lhs);
+                    return flip_equality_rand(new_lhs, new_rhs);
                 }
                 9 => {
                     // BA-EXCL-MID: a + ¬a = T
                     let new_lhs = Expr::union(lhs, Expr::complement(rhs));
                     let new_rhs = Expr::top();
-                    return (new_rhs, new_lhs);
+                    return flip_equality_rand(new_lhs, new_rhs);
                 }
                 10 => {
                     // BA-CONTRA: a & ¬a = 0
                     let new_lhs = Expr::intersect(lhs, Expr::complement(rhs));
                     let new_rhs = Expr::zero();
-                    return (new_rhs, new_lhs);
+                    return flip_equality_rand(new_lhs, new_rhs);
                 }
                 11 => {
                     // BA-SEQ-IDEM: a & a = a
                     let new_lhs = Expr::intersect(lhs.clone(), lhs);
                     let new_rhs = rhs;
-                    return (new_rhs, new_lhs);
+                    return flip_equality_rand(new_lhs, new_rhs);
                 }
                 12 => {
                     // !(F e) = G (!e)
                     let new_lhs = Expr::complement(Expr::ltl_finally(lhs));
                     let new_rhs = Expr::ltl_globally(Expr::complement(rhs));
-                    return (new_rhs, new_lhs);
+                    return flip_equality_rand(new_lhs, new_rhs);
                 }
                 13 => {
                     // !(G e) = F (!e)
                     let new_lhs = Expr::complement(Expr::ltl_globally(lhs));
                     let new_rhs = Expr::ltl_finally(Expr::complement(rhs));
-                    return (new_rhs, new_lhs);
+                    return flip_equality_rand(new_lhs, new_rhs);
                 }
                 14 => {
                     // !(X e) = End + X (!e)
                     let new_lhs = Expr::complement(Expr::ltl_next(lhs));
                     let new_rhs = Expr::union(Expr::end(), Expr::ltl_next(Expr::complement(rhs)));
-                    return (new_rhs, new_lhs);
+                    return flip_equality_rand(new_lhs, new_rhs);
                 }
                 15 => {
                     // F e = e + X (F e)
                     let new_lhs = Expr::ltl_finally(lhs);
                     let new_rhs = Expr::union(rhs.clone(), Expr::ltl_next(Expr::ltl_finally(rhs)));
-                    return (new_rhs, new_lhs);
+                    return flip_equality_rand(new_lhs, new_rhs);
                 }
                 16 => {
                     // G e = e & (End + X (G e))
@@ -341,7 +350,7 @@ pub fn genax(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) 
                         rhs.clone(),
                         Expr::union(Expr::end(), Expr::ltl_next(Expr::ltl_globally(rhs))),
                     );
-                    return (new_rhs, new_lhs);
+                    return flip_equality_rand(new_lhs, new_rhs);
                 }
                 _ => unreachable!(),
             }
@@ -354,25 +363,25 @@ pub fn genax(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) 
                     // KA-PLUS-COMM: p + q = q + p
                     let new_lhs = Expr::union(p1_lhs, p2_lhs);
                     let new_rhs = Expr::union(p2_rhs, p1_rhs);
-                    return (new_rhs, new_lhs);
+                    return flip_equality_rand(new_lhs, new_rhs);
                 }
                 1 => {
                     // BA-SEQ-COMM: a & b = b & a
                     let new_lhs = Expr::intersect(p1_lhs, p2_lhs);
                     let new_rhs = Expr::intersect(p2_rhs, p1_rhs);
-                    return (new_rhs, new_lhs);
+                    return flip_equality_rand(new_lhs, new_rhs);
                 }
                 2 => {
                     // X (e1 & e2) = X e1 & X e2
                     let new_lhs = Expr::ltl_next(Expr::intersect(p1_lhs, p2_lhs));
                     let new_rhs = Expr::intersect(Expr::ltl_next(p1_rhs), Expr::ltl_next(p2_rhs));
-                    return (new_rhs, new_lhs);
+                    return flip_equality_rand(new_lhs, new_rhs);
                 }
                 3 => {
                     // X (e1 + e2) = X e1 + X e2
                     let new_lhs = Expr::ltl_next(Expr::union(p1_lhs, p2_lhs));
                     let new_rhs = Expr::union(Expr::ltl_next(p1_rhs), Expr::ltl_next(p2_rhs));
-                    return (new_rhs, new_lhs);
+                    return flip_equality_rand(new_lhs, new_rhs);
                 }
                 4 => {
                     // e1 U e2 = e2 + (e1 & X (e1 U e2))
@@ -384,7 +393,7 @@ pub fn genax(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) 
                             Expr::ltl_next(Expr::ltl_until(p1_rhs, p2_rhs)),
                         ),
                     );
-                    return (new_rhs, new_lhs);
+                    return flip_equality_rand(new_lhs, new_rhs);
                 }
                 5 => {
                     // e1 R e2 = !(!e1 U !e2)
@@ -393,7 +402,7 @@ pub fn genax(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) 
                         Expr::complement(p1_rhs),
                         Expr::complement(p2_rhs),
                     ));
-                    return (new_rhs, new_lhs);
+                    return flip_equality_rand(new_lhs, new_rhs);
                 }
                 6 => {
                     // e1 R e2 = e2 & (e1 + X (e1 R e2))
@@ -405,14 +414,14 @@ pub fn genax(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) 
                             Expr::ltl_next(Expr::ltl_release(p1_rhs, p2_rhs)),
                         ),
                     );
-                    return (new_rhs, new_lhs);
+                    return flip_equality_rand(new_lhs, new_rhs);
                 }
                 7 => {
                     // !(e1 R e2) = !e1 U !e2
                     let new_lhs = Expr::complement(Expr::ltl_release(p1_lhs, p2_lhs));
                     let new_rhs =
                         Expr::ltl_until(Expr::complement(p1_rhs), Expr::complement(p2_rhs));
-                    return (new_rhs, new_lhs);
+                    return flip_equality_rand(new_lhs, new_rhs);
                 }
                 _ => unreachable!(),
             }
@@ -426,13 +435,13 @@ pub fn genax(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) 
                     // KA-PLUS-ASSOC: p + (q + r) = (p + q) + r
                     let new_lhs = Expr::union(p1_lhs, Expr::union(p2_lhs, p3_lhs));
                     let new_rhs = Expr::union(Expr::union(p1_rhs, p2_rhs), p3_rhs);
-                    return (new_rhs, new_lhs);
+                    return flip_equality_rand(new_lhs, new_rhs);
                 }
                 1 => {
                     // KA-SEQ-ASSOC: p . (q . r) = (p . q) . r
                     let new_lhs = Expr::sequence(p1_lhs, Expr::sequence(p2_lhs, p3_lhs));
                     let new_rhs = Expr::sequence(Expr::sequence(p1_rhs, p2_rhs), p3_rhs);
-                    return (new_rhs, new_lhs);
+                    return flip_equality_rand(new_lhs, new_rhs);
                 }
                 2 => {
                     // KA-SEQ-DIST-L: p . (q + r) = p . q + p . r
@@ -441,7 +450,7 @@ pub fn genax(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) 
                         Expr::sequence(p1_rhs.clone(), p2_rhs),
                         Expr::sequence(p1_rhs, p3_rhs),
                     );
-                    return (new_rhs, new_lhs);
+                    return flip_equality_rand(new_lhs, new_rhs);
                 }
                 3 => {
                     // KA-SEQ-DIST-R: (p + q) . r = p . r + q . r
@@ -450,7 +459,7 @@ pub fn genax(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) 
                         Expr::sequence(p1_rhs, p3_rhs.clone()),
                         Expr::sequence(p2_rhs, p3_rhs),
                     );
-                    return (new_rhs, new_lhs);
+                    return flip_equality_rand(new_lhs, new_rhs);
                 }
                 4 => {
                     // BA-PLUS-DIST: a + (b & c) = (a + b) & (a + c)
@@ -459,7 +468,7 @@ pub fn genax(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) 
                         Expr::union(p1_rhs.clone(), p2_rhs),
                         Expr::union(p1_rhs, p3_rhs),
                     );
-                    return (new_rhs, new_lhs);
+                    return flip_equality_rand(new_lhs, new_rhs);
                 }
                 _ => unreachable!(),
             }
