@@ -503,18 +503,28 @@ mod tests {
         let ax_depth = 3;
         let expr_depth = 1;
         let num_fields = 3;
-        let number = 10000;
-        for _ in 0..number {
-            let (e1, e2) = genax(ax_depth, expr_depth, num_fields);
-            println!("Checking xor of\n  {}\n   ===\n  {}\n", e1, e2);
-            let xor = Expr::xor(e1.clone(), e2.clone());
-            println!("XOR result = {}\n", xor);
-            let mut aut = Aut::new(num_fields);
-            let state = aut.expr_to_state(&xor);
-            if aut.is_empty(state) {
-                println!("Success!\n");
-            } else {
-                assert!(false, "Failure!\n");
+
+        // Max no. of trials to run
+        let max_trials = 10000;
+        let mut num_trials = 0;
+
+        // For each `n`, test whether the emptiness check
+        // passes for `max_trials` rounds
+        for n in 0..=ax_depth {
+            for _ in 0..max_trials {
+                println!("ax_depth n = {}\n", n);
+                let (e1, e2) = genax(n, expr_depth, num_fields);
+                println!("Checking xor of\n  {}\n   ===\n  {}\n", e1, e2);
+                let xor = Expr::xor(e1.clone(), e2.clone());
+                println!("XOR result = {}\n", xor);
+                let mut aut = Aut::new(num_fields);
+                let state = aut.expr_to_state(&xor);
+                if aut.is_empty(state) {
+                    println!("Success!\n");
+                    num_trials += 1;
+                } else {
+                    assert!(false, "Failure!\n");
+                }
             }
         }
     }
