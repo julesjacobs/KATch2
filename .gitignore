@@ -5,3 +5,8 @@ out/
 .DS_Store
 .cursorrules
 CLAUDE.md
+# AI assistant data
+ai_data/
+
+# API keys
+api_keys.json
