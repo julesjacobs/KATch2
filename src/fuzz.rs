@@ -361,7 +361,7 @@ pub fn genax(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) 
         2 => {
             let (p1_lhs, p1_rhs) = genax(ax_depth - 1, expr_depth, num_fields);
             let (p2_lhs, p2_rhs) = genax(ax_depth - 1, expr_depth, num_fields);
-            match rand::random_range(0..9) {
+            match rand::random_range(0..10) {
                 0 => {
                     // KA-PLUS-COMM: p + q = q + p
                     let new_lhs = Expr::union(p1_lhs, p2_lhs);
@@ -421,7 +421,7 @@ pub fn genax(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) 
                     return flip_equality_rand(new_lhs, new_rhs);
                 }
                 7 => {
-                    // e1 R e2 = e2 & (e1 + X (e1 R e2))
+                    // e1 R e2 = e2 & (e1 + X' (e1 R e2))
                     let new_lhs = Expr::ltl_release(p1_lhs, p2_lhs);
                     let new_rhs = Expr::intersect(
                         p2_rhs.clone(),
@@ -437,6 +437,20 @@ pub fn genax(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) 
                     let new_lhs = Expr::complement(Expr::ltl_release(p1_lhs, p2_lhs));
                     let new_rhs =
                         Expr::ltl_until(Expr::complement(p1_rhs), Expr::complement(p2_rhs));
+                    return flip_equality_rand(new_lhs, new_rhs);
+                }
+                9 => {
+                    // e1 S e2 = e2 & (e1 + X (e1 S e2))
+                    // Strong Release expansion law: e1 S e2 = (e1 R e2) ∧ F e2
+                    // Since (e1 R e2) = e2 & (e1 + X' (e1 R e2))
+                    // And F e2 = e2 + X (F e2)
+                    // We get: (e1 S e2) = (e2 & (e1 + X' (e1 R e2))) ∧ (e2 + X (F e2))
+                    let new_lhs = Expr::ltl_strong_release(p1_lhs, p2_lhs);
+                    
+                    // Using the definitions directly
+                    let release = Expr::ltl_release(p1_rhs.clone(), p2_rhs.clone());
+                    let finally = Expr::ltl_finally(p2_rhs.clone());
+                    let new_rhs = Expr::intersect(release, finally);
                     return flip_equality_rand(new_lhs, new_rhs);
                 }
                 _ => unreachable!(),
@@ -514,6 +528,113 @@ fn shrink_exp(exp: Exp) -> Vec<Exp> {
     }
 }
 
+/// Generates a pair of expressions where e1 <= e2 (i.e., e1 + e2 = e2)
+///
+/// - `n` (`ax_depth`): Controls the depth of recursion.
+/// - `d` (`expr_depth`): Controls the depth of the generated expression
+/// - `k` (`num_fields`): Controls the maximum number of distinct variables (fields `x0` to `xk-1`).
+pub fn gen_leq(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) {
+    assert!(
+        num_fields >= 2,
+        "num_fields must be >= 2 to generate distinct fields"
+    );
+    
+    if ax_depth == 0 {
+        // Base case: generate two random expressions where one is <= the other
+        let e = gen_random_expr(num_fields, expr_depth);
+        let random_expr = gen_random_expr(num_fields, expr_depth / 2);
+        
+        // e <= e + random_expr (by definition of <=)
+        return (e.clone(), Expr::union(e, random_expr));
+    }
+    
+    // Recursive step: choose a method to generate e1 <= e2
+    match rand::random_range(0..4) {
+        0 => {
+            // Method 1: Use genax to get equal expressions, then add something to rhs
+            let (e1, e2) = genax(ax_depth - 1, expr_depth, num_fields);
+            let random_expr = gen_random_expr(num_fields, expr_depth / 2);
+            
+            // If e1 = e2, then e1 <= e2 + random_expr
+            (e1, Expr::union(e2, random_expr))
+        }
+        1 => {
+            // Method 2: Use gen_leq recursively and add something to rhs
+            let (e1, e2) = gen_leq(ax_depth - 1, expr_depth, num_fields);
+            let random_expr = gen_random_expr(num_fields, expr_depth / 2);
+            
+            // If e1 <= e2, then e1 <= e2 + random_expr
+            (e1, Expr::union(e2, random_expr))
+        }
+        2 => {
+            // Method 3: Strong operators <= Weak operators
+            let e1 = gen_random_expr(num_fields, expr_depth);
+            let e2 = gen_random_expr(num_fields, expr_depth);
+            
+            match rand::random_range(0..3) {
+                0 => {
+                    // Strong until <= Weak until
+                    // e1 U e2 <= e1 W e2
+                    (
+                        Expr::ltl_until(e1.clone(), e2.clone()),
+                        Expr::ltl_weak_until(e1, e2)
+                    )
+                }
+                1 => {
+                    // Strong release >= Weak release (S is stronger than R)
+                    // e1 S e2 >= e1 R e2, so e1 S e2 <= e1 S e2 + random_expr
+                    let strong = Expr::ltl_strong_release(e1.clone(), e2.clone());
+                    let random_expr = gen_random_expr(num_fields, expr_depth / 2);
+                    (
+                        strong.clone(), 
+                        Expr::union(strong, random_expr)
+                    )
+                }
+                2 => {
+                    // Strong next <= Weak next
+                    // X e <= X' e
+                    (
+                        Expr::ltl_next(e1.clone()),
+                        Expr::ltl_weak_next(e1)
+                    )
+                }
+                _ => unreachable!(),
+            }
+        }
+        3 => {
+            // Method 4: Combine recursive gen_leq results
+            let (e1, e2) = gen_leq(ax_depth - 1, expr_depth, num_fields);
+            let (e3, e4) = gen_leq(ax_depth - 1, expr_depth, num_fields);
+            
+            match rand::random_range(0..3) {
+                0 => {
+                    // If e1 <= e2 and e3 <= e4, then e1 + e3 <= e2 + e4
+                    (
+                        Expr::union(e1, e3),
+                        Expr::union(e2, e4)
+                    )
+                }
+                1 => {
+                    // If e1 <= e2 and e3 <= e4, then e1 & e3 <= e2 & e4
+                    (
+                        Expr::intersect(e1, e3),
+                        Expr::intersect(e2, e4)
+                    )
+                }
+                2 => {
+                    // If e1 <= e2 and e3 <= e4, then e1;e3 <= e2;e4
+                    (
+                        Expr::sequence(e1, e3),
+                        Expr::sequence(e2, e4)
+                    )
+                }
+                _ => unreachable!(),
+            }
+        }
+        _ => unreachable!(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::aut::Aut;
@@ -566,6 +687,48 @@ mod tests {
                     num_trials += 1;
                 } else {
                     assert!(false, "Failure!\n");
+                }
+            }
+        }
+    }
+    
+    #[test]
+    fn fuzz_test_leq() {
+        // Enable backtrace for debugging failing tests
+        unsafe {
+            std::env::set_var("RUST_BACKTRACE", "1");
+        }
+
+        // Generate random expressions with e1 <= e2, and check if e1 + e2 = e2
+        let ax_depth = 3;
+        let expr_depth = 1;
+        let num_fields = 3;
+
+        // Max no. of trials to run
+        let max_trials = 10000;
+        let mut num_trials = 0;
+
+        // For each `n`, test whether the emptiness check
+        // passes for `max_trials` rounds
+        for n in 0..=ax_depth {
+            for _ in 0..max_trials {
+                println!("ax_depth n = {}\n", n);
+                let (e1, e2) = gen_leq(n, expr_depth, num_fields);
+                println!("Checking e1 <= e2 for\n  {}\n   <=\n  {}\n", e1, e2);
+                
+                // e1 <= e2 means e1 + e2 = e2
+                // So we need to check if (e1 + e2) xor e2 = 0
+                let e1_plus_e2 = Expr::union(e1.clone(), e2.clone());
+                let xor = Expr::xor(e1_plus_e2, e2.clone());
+                
+                println!("XOR result = {}\n", xor);
+                let mut aut = Aut::new(num_fields);
+                let state = aut.expr_to_state(&xor);
+                if aut.is_empty(state) {
+                    println!("Success!\n");
+                    num_trials += 1;
+                } else {
+                    assert!(false, "Failure for e1 <= e2!\n  e1 = {}\n  e2 = {}\n", e1, e2);
                 }
             }
         }
