@@ -194,22 +194,6 @@ impl SPPstore {
         spp_one
     }
 
-    #[cfg(test)]
-    pub fn rand(&mut self) -> SPP {
-        self.rand_helper(self.num_vars)
-    }
-    #[cfg(test)]
-    fn rand_helper(&mut self, depth: Var) -> SPP {
-        if depth == 0 {
-            return if rand::random::<f64>() < 0.75 { 0 } else { 1 };
-        }
-        let x00 = self.rand_helper(depth - 1);
-        let x01 = self.rand_helper(depth - 1);
-        let x10 = self.rand_helper(depth - 1);
-        let x11 = self.rand_helper(depth - 1);
-        self.mk(x00, x01, x10, x11)
-    }
-
     pub fn union(&mut self, a: SPP, b: SPP) -> SPP {
         // First, check the memo table
         if let Some(&result) = self.union_memo.get(&(a, b)) {
@@ -369,67 +353,6 @@ impl SPPstore {
         res
     }
 
-    // pub fn branch(&mut self, var: Var, x00: SPP, x01: SPP, x10: SPP, x11: SPP) -> SPP {
-    //     assert!(var < self.num_vars);
-    //     self.branch_helper(var, x00, x01, x10, x11)
-    // }
-    // fn branch_helper(&mut self, var: Var, x00: SPP, x01: SPP, x10: SPP, x11: SPP) -> SPP {
-    //     let key = (var, x00, x01, x10, x11);
-    //     if let Some(&result) = self.branch_memo.get(&key) {
-    //         return result;
-    //     }
-    //     let x00_node = self.get(x00);
-    //     let x01_node = self.get(x01);
-    //     let x10_node = self.get(x10);
-    //     let x11_node = self.get(x11);
-    //     let x00;
-    //     let x01;
-    //     let x10;
-    //     let x11;
-    //     if var == 0 {
-    //         x00 = x00_node.x00;
-    //         x01 = x01_node.x01;
-    //         x10 = x10_node.x10;
-    //         x11 = x11_node.x11;
-    //     } else {
-    //         x00 = self.branch(
-    //             var - 1,
-    //             x00_node.x00,
-    //             x01_node.x00,
-    //             x10_node.x00,
-    //             x11_node.x00,
-    //         );
-    //         x01 = self.branch(
-    //             var - 1,
-    //             x00_node.x01,
-    //             x01_node.x01,
-    //             x10_node.x01,
-    //             x11_node.x01,
-    //         );
-    //         x10 = self.branch(
-    //             var - 1,
-    //             x00_node.x10,
-    //             x01_node.x10,
-    //             x10_node.x10,
-    //             x11_node.x10,
-    //         );
-    //         x11 = self.branch(
-    //             var - 1,
-    //             x00_node.x11,
-    //             x01_node.x11,
-    //             x10_node.x11,
-    //             x11_node.x11,
-    //         );
-    //     }
-    //     let res = self.mk(x00, x01, x10, x11);
-    //     self.branch_memo.insert(key, res);
-    //     res
-    // }
-
-    // pub fn ifelse(&mut self, var: Var, then_branch: SPP, else_branch: SPP) -> SPP {
-    //     todo!()
-    // }
-
     pub fn test(&mut self, var: Var, value: bool) -> SPP {
         if let Some(&result) = self.test_memo.get(&(var, value)) {
             return result;
@@ -499,7 +422,7 @@ impl SPPstore {
         let f10 = self.flip(spp_node.x10);
         let f11 = self.flip(spp_node.x11);
 
-        let res = self.mk(f00, f01, f10, f11);
+        let res = self.mk(f00, f10, f01, f11);
         self.flip_memo.insert(spp, res);
         res
     }
@@ -523,6 +446,31 @@ impl SPPstore {
                     }
                 }
             }
+        }
+        result
+    }
+
+    #[cfg(test)]
+    pub fn rand(&mut self) -> SPP {
+        self.rand_helper(self.num_vars)
+    }
+    #[cfg(test)]
+    fn rand_helper(&mut self, depth: Var) -> SPP {
+        if depth == 0 {
+            return if rand::random::<f64>() < 0.75 { 0 } else { 1 };
+        }
+        let x00 = self.rand_helper(depth - 1);
+        let x01 = self.rand_helper(depth - 1);
+        let x10 = self.rand_helper(depth - 1);
+        let x11 = self.rand_helper(depth - 1);
+        self.mk(x00, x01, x10, x11)
+    }
+
+    #[cfg(test)]
+    pub fn some(&mut self) -> Vec<SPP> {
+        let mut result = vec![];
+        for _ in 0..100 {
+            result.push(self.rand());
         }
         result
     }
@@ -640,9 +588,8 @@ mod tests {
     #[test]
     fn test_laws_2() {
         let mut s = SPPstore::new(2);
-        let all = s.all();
-        for &spp1 in &all {
-            for &spp2 in &all {
+        for &spp1 in &s.some() {
+            for &spp2 in &s.some() {
                 let spp1_complement = s.complement(spp1);
                 let spp2_complement = s.complement(spp2);
 

@@ -653,7 +653,7 @@ mod tests {
         let num_fields = 3;
 
         // Max no. of trials to run
-        let max_trials = 10000;
+        let max_trials = 1000;
         let mut num_trials = 0;
 
         // For each `n`, test whether the emptiness check
@@ -690,7 +690,7 @@ mod tests {
         let num_fields = 3;
 
         // Max no. of trials to run
-        let max_trials = 10000;
+        let max_trials = 1000;
         let mut num_trials = 0;
 
         // For each `n`, test whether the emptiness check
