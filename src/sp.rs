@@ -8,6 +8,8 @@ use std::collections::HashMap;
 /// We use indices into the SP store to represent SPs.
 /// The zero SP is represented by 0 and the one SP is represented by 1.
 /// Indices into the store are the u32 value - 2.
+///
+/// TODO: turn this into a tuple struct so that we have typechecking
 pub type SP = u32;
 type Var = u32;
 
@@ -15,10 +17,12 @@ type Var = u32;
 #[derive(Debug, Clone)]
 pub struct SPstore {
     num_vars: Var, // Idea: it's ok to pick this larger than you need. Hash consing & memoization will handle it
+    // Note: 0 & 1 don't appear in `hc` or the arena `nodes`, they only appear in
+    // the other memo tables
     nodes: Vec<SPnode>,
     hc: HashMap<SPnode, SP>,
-    zero: SP,
-    one: SP,
+    pub zero: SP,
+    pub one: SP,
 
     // Memo tables for the operations
     union_memo: HashMap<(SP, SP), SP>,
@@ -28,6 +32,7 @@ pub struct SPstore {
 }
 
 /// A node in the SP store. Has two children, one for this variable being 0 and one for it being 1.
+/// An SPnode is a non-trivial SP (i.e. not zero and not one)
 #[derive(Debug, Eq, Hash, PartialEq, Clone, Copy)]
 pub struct SPnode {
     pub x0: SP,
@@ -73,7 +78,7 @@ impl SPstore {
         sp
     }
 
-    pub fn zero(&mut self) -> SP {
+    fn zero(&mut self) -> SP {
         // We must construct a zero SP of the right depth
         let mut sp = 0;
         for _ in 0..self.num_vars {
@@ -81,7 +86,7 @@ impl SPstore {
         }
         sp
     }
-    pub fn one(&mut self) -> SP {
+    fn one(&mut self) -> SP {
         // We must construct a one SP of the right depth
         let mut sp = 1;
         for _ in 0..self.num_vars {
@@ -146,6 +151,12 @@ impl SPstore {
         let res = self.mk(x0, x1);
         self.complement_memo.insert(a, res);
         res
+    }
+
+    /// Computes the difference of two SPPs using `sp1 - sp2 === sp1 & !sp2`
+    pub fn difference(&mut self, sp1: SP, sp2: SP) -> SP {
+        let not_sp2 = self.complement(sp2);
+        self.intersect(sp1, not_sp2)
     }
 
     pub fn ifelse(&mut self, var: Var, then_branch: SP, else_branch: SP) -> SP {

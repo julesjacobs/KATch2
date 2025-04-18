@@ -818,30 +818,33 @@ impl Aut {
     /// Checks if the given state is empty
     pub fn is_empty(&mut self, state: State) -> bool {
         // Todo: list of states to visit
-        let mut todo: Vec<(State, spp::SPP)> = vec![(state, self.spp.top)];
-        // Hashmap of SPPs for each state reachable from the given state
-        let mut spp_map = HashMap::new();
+        // Note: One = Top for SPs
+        let mut todo = vec![(state, self.spp.sp.one)];
+        // Hashmap of SPs for each state reachable from the given state
+        let mut sp_map = HashMap::new();
         while !todo.is_empty() {
-            let (state, spp) = todo.pop().unwrap();
+            let (state, sp) = todo.pop().unwrap();
             // Union the SPP into the map
-            let original_spp = spp_map.entry(state).or_insert(self.spp.zero);
-            let to_add = self.spp.difference(spp, *original_spp);
-            if to_add != self.spp.zero {
-                *original_spp = self.spp.union(*original_spp, to_add);
+            let original_sp = sp_map.entry(state).or_insert(self.spp.sp.zero);
+            let to_add = self.spp.sp.difference(sp, *original_sp);
+            if to_add != self.spp.sp.zero {
+                *original_sp = self.spp.sp.union(*original_sp, to_add);
                 // iterate over all transitions from the state
                 for (state2, spp2) in self.delta(state).transitions {
-                    let seq_spp = self.spp.sequence(to_add, spp2);
-                    let seq_forward = self.spp.forward(seq_spp);
+                    // let seq_spp = self.spp.sequence(to_add, spp2);
+                    // let seq_forward = self.spp.naive_forward(seq_spp);
+
+                    let seq_forward = self.spp.push(to_add, spp2);
                     todo.push((state2, seq_forward));
                 }
             }
         }
 
         // Check if the SPPs in the map when composed with the epsilon of the given state are empty
-        for (state, spp) in spp_map {
-            let epsilon_spp = self.epsilon(state);
-            let spp_composed = self.spp.sequence(spp, epsilon_spp);
-            if spp_composed != self.spp.zero {
+        for (state, sp) in sp_map {
+            let epsilon_spp: spp::SPP = self.epsilon(state);
+            let sp_composed = self.spp.push(sp, epsilon_spp);
+            if sp_composed != self.spp.sp.zero {
                 return false;
             }
         }
