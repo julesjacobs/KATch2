@@ -67,11 +67,19 @@ impl Expr {
     pub fn ltl_next(e: Exp) -> Exp {
         Box::new(Expr::LtlNext(e))
     }
+    /// Weak next operator `(X' e = X e \/ end)`
     pub fn ltl_weak_next(e: Exp) -> Exp {
         Box::new(Expr::Union(Expr::ltl_next(e), Expr::end()))
     }
     pub fn ltl_until(e1: Exp, e2: Exp) -> Exp {
         Box::new(Expr::LtlUntil(e1, e2))
+    }
+    /// Weak until operator `(e1 W e2 = e1 U e2 \/ G e1)`
+    pub fn ltl_weak_until(e1: Exp, e2: Exp) -> Exp {
+        Box::new(Expr::Union(
+            Expr::ltl_until(e1.clone(), e2),
+            Expr::ltl_globally(e1),
+        ))
     }
     pub fn end() -> Exp {
         Box::new(Expr::End)

@@ -149,7 +149,7 @@ impl Aut {
         }
 
         // Distribute intersections over unions
-        let mut distributed_states : Vec<Vec<State>> = vec![vec![]];
+        let mut distributed_states: Vec<Vec<State>> = vec![vec![]];
         for state in new_states {
             match self.get_expr(state) {
                 AExpr::Union(nested) => {
@@ -176,7 +176,7 @@ impl Aut {
         for distributed_state in distributed_states {
             intersections.push(self.mk_intersect_n_base(distributed_state));
         }
-        
+
         return self.mk_union_n(intersections);
     }
 
@@ -818,7 +818,7 @@ impl Aut {
     /// Checks if the given state is empty
     pub fn is_empty(&mut self, state: State) -> bool {
         // Todo: list of states to visit
-        let mut todo = vec![(state, self.spp.top)];
+        let mut todo: Vec<(State, spp::SPP)> = vec![(state, self.spp.top)];
         // Hashmap of SPPs for each state reachable from the given state
         let mut spp_map = HashMap::new();
         while !todo.is_empty() {

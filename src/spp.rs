@@ -115,8 +115,8 @@ impl SPPstore {
         if let Some(&result) = self.fwd_memo.get(&spp) {
             return result;
         }
-        // We now know that we've got a non-trivial SPPnNde,
-        // so we dcon't need to handle 0 or 1 cases here
+        // We now know that we've got a non-trivial SPPNode,
+        // so we con't need to handle 0 or 1 cases here
 
         let SPPnode { x00, x01, x10, x11 } = self.get(spp);
         let mut sp_store = self.sp_store.clone();
