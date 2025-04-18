@@ -480,7 +480,7 @@ impl SPPstore {
 mod tests {
     use super::*;
 
-    const N: Var = 1;
+    const N: Var = 2;
 
     /// Test that `naive_forward` and `fwd` behave the same
     #[test]
@@ -584,10 +584,9 @@ mod tests {
         }
     }
 
-    /// TODO: investigate why this test fails (issue involving `flip`)
     #[test]
     fn test_laws_2() {
-        let mut s = SPPstore::new(2);
+        let mut s = SPPstore::new(N);
         for &spp1 in &s.some() {
             for &spp2 in &s.some() {
                 let spp1_complement = s.complement(spp1);
@@ -610,7 +609,6 @@ mod tests {
                 assert_eq!(intersect, intersect_rev);
 
                 // flip of sequence is sequence of flipped
-                // TODO: double check whether this test is stated correctly
                 let seq = s.sequence(spp1, spp2);
                 let seq_flip = s.flip(seq);
                 let spp1_flip = s.flip(spp1);
