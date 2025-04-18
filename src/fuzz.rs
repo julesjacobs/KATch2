@@ -582,12 +582,10 @@ pub fn gen_leq(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp
                 }
                 1 => {
                     // Strong release >= Weak release (S is stronger than R)
-                    // e1 S e2 >= e1 R e2, so e1 S e2 <= e1 S e2 + random_expr
-                    let strong = Expr::ltl_strong_release(e1.clone(), e2.clone());
-                    let random_expr = gen_random_expr(num_fields, expr_depth / 2);
+                    // e1 R e2 <= e1 S e2  (weak release is weaker than strong release)
                     (
-                        strong.clone(), 
-                        Expr::union(strong, random_expr)
+                        Expr::ltl_release(e1.clone(), e2.clone()),
+                        Expr::ltl_strong_release(e1, e2)
                     )
                 }
                 2 => {
