@@ -442,7 +442,7 @@ pub fn genax(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) 
                 9 => {
                     // e1 S e2 = e2 & (e1 + X (e1 S e2))
                     let new_lhs = Expr::ltl_strong_release(p1_lhs, p2_lhs);
-                    
+
                     let new_rhs = Expr::intersect(
                         p2_rhs.clone(),
                         Expr::union(
@@ -537,23 +537,23 @@ pub fn gen_leq(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp
         num_fields >= 2,
         "num_fields must be >= 2 to generate distinct fields"
     );
-    
+
     if ax_depth == 0 {
         // Base case: generate two random expressions where one is <= the other
         let e = gen_random_expr(num_fields, expr_depth);
         let random_expr = gen_random_expr(num_fields, expr_depth / 2);
-        
+
         // e <= e + random_expr (by definition of <=)
         return (e.clone(), Expr::union(e, random_expr));
     }
-    
+
     // Recursive step: choose a method to generate e1 <= e2
     match rand::random_range(0..4) {
         0 => {
             // Method 1: Use genax to get equal expressions, then add something to rhs
             let (e1, e2) = genax(ax_depth - 1, expr_depth, num_fields);
             let random_expr = gen_random_expr(num_fields, expr_depth / 2);
-            
+
             // If e1 = e2, then e1 <= e2 + random_expr
             (e1, Expr::union(e2, random_expr))
         }
@@ -561,7 +561,7 @@ pub fn gen_leq(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp
             // Method 2: Use gen_leq recursively and add something to rhs
             let (e1, e2) = gen_leq(ax_depth - 1, expr_depth, num_fields);
             let random_expr = gen_random_expr(num_fields, expr_depth / 2);
-            
+
             // If e1 <= e2, then e1 <= e2 + random_expr
             (e1, Expr::union(e2, random_expr))
         }
@@ -569,14 +569,14 @@ pub fn gen_leq(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp
             // Method 3: Strong operators <= Weak operators
             let e1 = gen_random_expr(num_fields, expr_depth);
             let e2 = gen_random_expr(num_fields, expr_depth);
-            
+
             match rand::random_range(0..3) {
                 0 => {
                     // Strong until <= Weak until
                     // e1 U e2 <= e1 W e2
                     (
                         Expr::ltl_until(e1.clone(), e2.clone()),
-                        Expr::ltl_weak_until(e1, e2)
+                        Expr::ltl_weak_until(e1, e2),
                     )
                 }
                 1 => {
@@ -584,16 +584,13 @@ pub fn gen_leq(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp
                     // e1 R e2 <= e1 S e2  (weak release is weaker than strong release)
                     (
                         Expr::ltl_strong_release(e1.clone(), e2.clone()),
-                        Expr::ltl_release(e1, e2)
+                        Expr::ltl_release(e1, e2),
                     )
                 }
                 2 => {
                     // Strong next <= Weak next
                     // X' e <= X e
-                    (
-                        Expr::ltl_next(e1.clone()),
-                        Expr::ltl_weak_next(e1)
-                    )
+                    (Expr::ltl_next(e1.clone()), Expr::ltl_weak_next(e1))
                 }
                 _ => unreachable!(),
             }
@@ -602,28 +599,19 @@ pub fn gen_leq(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp
             // Method 4: Combine recursive gen_leq results
             let (e1, e2) = gen_leq(ax_depth - 1, expr_depth, num_fields);
             let (e3, e4) = gen_leq(ax_depth - 1, expr_depth, num_fields);
-            
+
             match rand::random_range(0..3) {
                 0 => {
                     // If e1 <= e2 and e3 <= e4, then e1 + e3 <= e2 + e4
-                    (
-                        Expr::union(e1, e3),
-                        Expr::union(e2, e4)
-                    )
+                    (Expr::union(e1, e3), Expr::union(e2, e4))
                 }
                 1 => {
                     // If e1 <= e2 and e3 <= e4, then e1 & e3 <= e2 & e4
-                    (
-                        Expr::intersect(e1, e3),
-                        Expr::intersect(e2, e4)
-                    )
+                    (Expr::intersect(e1, e3), Expr::intersect(e2, e4))
                 }
                 2 => {
                     // If e1 <= e2 and e3 <= e4, then e1;e3 <= e2;e4
-                    (
-                        Expr::sequence(e1, e3),
-                        Expr::sequence(e2, e4)
-                    )
+                    (Expr::sequence(e1, e3), Expr::sequence(e2, e4))
                 }
                 _ => unreachable!(),
             }
@@ -688,7 +676,7 @@ mod tests {
             }
         }
     }
-    
+
     #[test]
     fn fuzz_test_leq() {
         // Enable backtrace for debugging failing tests
@@ -712,12 +700,12 @@ mod tests {
                 println!("ax_depth n = {}\n", n);
                 let (e1, e2) = gen_leq(n, expr_depth, num_fields);
                 println!("Checking e1 <= e2 for\n  {}\n   <=\n  {}\n", e1, e2);
-                
+
                 // e1 <= e2 means e1 + e2 = e2
                 // So we need to check if (e1 + e2) xor e2 = 0
                 let e1_plus_e2 = Expr::union(e1.clone(), e2.clone());
                 let xor = Expr::xor(e1_plus_e2, e2.clone());
-                
+
                 println!("XOR result = {}\n", xor);
                 let mut aut = Aut::new(num_fields);
                 let state = aut.expr_to_state(&xor);
@@ -725,7 +713,11 @@ mod tests {
                     println!("Success!\n");
                     num_trials += 1;
                 } else {
-                    assert!(false, "Failure for e1 <= e2!\n  e1 = {}\n  e2 = {}\n", e1, e2);
+                    assert!(
+                        false,
+                        "Failure for e1 <= e2!\n  e1 = {}\n  e2 = {}\n",
+                        e1, e2
+                    );
                 }
             }
         }

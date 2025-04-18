@@ -117,8 +117,8 @@ impl Expr {
         let until_expr = Expr::ltl_until(not_e1, not_e2);
         Box::new(Expr::Complement(until_expr))
     }
-    
-    /// Strong release operator `(e1 S e2 = e1 R e2 /\ F e2)`
+
+    /// Strong release operator `(e1 M e2 = e1 R e2 /\ F e1)`
     pub fn ltl_strong_release(e1: Exp, e2: Exp) -> Exp {
         Box::new(Expr::Intersect(
             Expr::ltl_release(e1.clone(), e2),
