@@ -492,7 +492,14 @@ impl SPPstore {
             return result;
         }
         let spp_node = self.get(spp);
-        let res = self.mk(spp_node.x00, spp_node.x10, spp_node.x01, spp_node.x11);
+
+        // Recursively flip each of the children of `spp_node`
+        let f00 = self.flip(spp_node.x00);
+        let f01 = self.flip(spp_node.x01);
+        let f10 = self.flip(spp_node.x10);
+        let f11 = self.flip(spp_node.x11);
+
+        let res = self.mk(f00, f01, f10, f11);
         self.flip_memo.insert(spp, res);
         res
     }
@@ -632,7 +639,7 @@ mod tests {
     /// TODO: investigate why this test fails (issue involving `flip`)
     #[test]
     fn test_laws_2() {
-        let mut s = SPPstore::new(N);
+        let mut s = SPPstore::new(2);
         let all = s.all();
         for &spp1 in &all {
             for &spp2 in &all {
@@ -658,13 +665,13 @@ mod tests {
                 // flip of sequence is sequence of flipped
                 // TODO: double check whether this test is stated correctly
                 let seq = s.sequence(spp1, spp2);
-                let _seq_flip = s.flip(seq);
+                let seq_flip = s.flip(seq);
                 let spp1_flip = s.flip(spp1);
                 let spp2_flip = s.flip(spp2);
                 // Note: seq_flip = flip(spp1; spp2)
                 // Note: flip_seq = flip(spp2); flip(spp1)
-                let _flip_seq = s.sequence(spp2_flip, spp1_flip);
-                // assert_eq!(seq_flip, flip_seq);
+                let flip_seq = s.sequence(spp2_flip, spp1_flip);
+                assert_eq!(seq_flip, flip_seq);
             }
         }
     }
