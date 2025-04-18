@@ -28,7 +28,7 @@ fn compute_liveness(index: SPP, store: &SPPstore, liveness_map: &mut HashMap<SPP
     }
 
     // Base cases
-    let is_alive = match index {
+    let is_alive = match index.0 {
         0 => false, // Node 0 is never considered alive (cannot reach 1)
         1 => true,  // Node 1 is always alive
         _ => {
@@ -74,19 +74,19 @@ fn generate_dot_recursive(
         return;
     }
 
-    match index {
+    match index.0 {
         0 => {
             // Style for the bottom node (⊥)
             dot_string.push_str(&format!(
                 "  node{} [label=\"\", shape=circle, style=filled, fillcolor=black, width=0.1, height=0.1];\n",
-                index
+                index.0
             ));
         }
         1 => {
             // Style for the top node (⊤)
             dot_string.push_str(&format!(
                 "  node{} [label=\"\", shape=circle, style=filled, fillcolor=black, width=0.1, height=0.1];\n",
-                index
+                index.0
             ));
         }
         _ => {
@@ -96,7 +96,7 @@ fn generate_dot_recursive(
             // Style for internal nodes: small black circle
             dot_string.push_str(&format!(
                 "  node{} [label=\"\", shape=circle, style=filled, fillcolor=black, width=0.1, height=0.1];\n",
-                index
+                index.0
             ));
 
             let zero_edge_style = "style=dashed, arrowhead=none, color=red"; // Corresponds to 'f' or 0 output/input
@@ -119,7 +119,7 @@ fn generate_dot_recursive(
                 // Only draw the edge and intermediate node if the child is alive OR is node 0 (the sink)
                 let child_is_alive = liveness_map.get(&child_node).copied().unwrap_or(false);
                 if child_is_alive {
-                    let inter_id = format!("inter_{}_{}", index, suffix);
+                    let inter_id = format!("inter_{}_{}", index.0, suffix);
 
                     // Define the unique intermediate node
                     dot_string
@@ -128,13 +128,13 @@ fn generate_dot_recursive(
                     // Edge from parent to intermediate node (style based on input var)
                     dot_string.push_str(&format!(
                         "  node{} -> {} [{}];\n",
-                        index, inter_id, input_style
+                        index.0, inter_id, input_style
                     ));
 
                     // Edge from intermediate node to child node (style based on output var)
                     dot_string.push_str(&format!(
                         "  {} -> node{} [{}];\n",
-                        inter_id, child_node, output_style
+                        inter_id, child_node.0, output_style
                     ));
 
                     // Add child to the set for recursion (if not already visited)
@@ -175,8 +175,8 @@ pub fn render_spp(index: SPP, store: &SPPstore, output_dir: &Path) -> Result<()>
     dot_content.push_str("}\n");
 
     // Define file paths using the SPP index for uniqueness
-    let dot_path = output_dir.join(format!("spp_{}.dot", index));
-    let svg_path = output_dir.join(format!("spp_{}.svg", index));
+    let dot_path = output_dir.join(format!("spp_{}.dot", index.0));
+    let svg_path = output_dir.join(format!("spp_{}.svg", index.0));
 
     // Write the generated DOT content to a file
     fs::write(&dot_path, &dot_content).map_err(|e| {

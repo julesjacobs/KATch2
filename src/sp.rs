@@ -4,13 +4,34 @@
 // each path down the BDD has precisely the same depth, namely the number of variables, i.e. the packet size in bits.
 
 use std::collections::HashMap;
+use std::fmt;
 
 /// We use indices into the SP store to represent SPs.
-/// The zero SP is represented by 0 and the one SP is represented by 1.
+/// The zero SP is represented by SP(0) and the one SP is represented by SP(1).
 /// Indices into the store are the u32 value - 2.
-///
-/// TODO: turn this into a tuple struct so that we have typechecking
-pub type SP = u32;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct SP(pub u32);
+
+impl SP {
+    pub const fn new(value: u32) -> Self {
+        SP(value)
+    }
+    
+    pub fn as_u32(&self) -> u32 {
+        self.0
+    }
+    
+    pub fn as_usize(&self) -> usize {
+        self.0 as usize
+    }
+}
+
+impl fmt::Display for SP {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "SP({})", self.0)
+    }
+}
+
 type Var = u32;
 
 /// The store of SPs.
@@ -45,13 +66,26 @@ impl SPstore {
             num_vars,
             nodes: vec![],
             hc: HashMap::new(),
-            zero: 0,
-            one: 0, // Dummy values, will be set later
+            zero: SP::new(0),
+            one: SP::new(0), // Dummy values, will be set later
             // We prefill the memo tables with the results of the trivial cases
             // Need to benchmark if this is actually faster than checking these cases in the operations
-            union_memo: HashMap::from([((0, 0), 0), ((0, 1), 1), ((1, 0), 1), ((1, 1), 1)]),
-            intersect_memo: HashMap::from([((0, 0), 0), ((0, 1), 0), ((1, 0), 0), ((1, 1), 1)]),
-            complement_memo: HashMap::from([(0, 1), (1, 0)]),
+            union_memo: HashMap::from([
+                ((SP::new(0), SP::new(0)), SP::new(0)), 
+                ((SP::new(0), SP::new(1)), SP::new(1)), 
+                ((SP::new(1), SP::new(0)), SP::new(1)), 
+                ((SP::new(1), SP::new(1)), SP::new(1))
+            ]),
+            intersect_memo: HashMap::from([
+                ((SP::new(0), SP::new(0)), SP::new(0)), 
+                ((SP::new(0), SP::new(1)), SP::new(0)), 
+                ((SP::new(1), SP::new(0)), SP::new(0)), 
+                ((SP::new(1), SP::new(1)), SP::new(1))
+            ]),
+            complement_memo: HashMap::from([
+                (SP::new(0), SP::new(1)), 
+                (SP::new(1), SP::new(0))
+            ]),
             ifelse_memo: HashMap::new(),
         };
         store.zero = store.zero();
@@ -60,7 +94,7 @@ impl SPstore {
     }
 
     pub fn get(&self, sp: SP) -> SPnode {
-        self.nodes[sp as usize - 2]
+        self.nodes[sp.as_usize() - 2]
     }
 
     pub fn mk(&mut self, x0: SP, x1: SP) -> SP {
@@ -72,7 +106,7 @@ impl SPstore {
         }
 
         // Add the node to the store
-        let sp = self.nodes.len() as SP + 2;
+        let sp = SP::new(self.nodes.len() as u32 + 2);
         self.nodes.push(node);
         self.hc.insert(node, sp);
         sp
@@ -80,7 +114,7 @@ impl SPstore {
 
     fn zero(&mut self) -> SP {
         // We must construct a zero SP of the right depth
-        let mut sp = 0;
+        let mut sp = SP::new(0);
         for _ in 0..self.num_vars {
             sp = self.mk(sp, sp);
         }
@@ -88,7 +122,7 @@ impl SPstore {
     }
     fn one(&mut self) -> SP {
         // We must construct a one SP of the right depth
-        let mut sp = 1;
+        let mut sp = SP::new(1);
         for _ in 0..self.num_vars {
             sp = self.mk(sp, sp);
         }
@@ -100,7 +134,7 @@ impl SPstore {
     }
     fn rand_helper(&mut self, depth: Var) -> SP {
         if depth == 0 {
-            return if rand::random::<bool>() { 0 } else { 1 };
+            return if rand::random::<bool>() { SP::new(0) } else { SP::new(1) };
         }
         let x0 = self.rand_helper(depth - 1);
         let x1 = self.rand_helper(depth - 1);
@@ -199,7 +233,7 @@ impl SPstore {
     }
     pub fn all_helper(&mut self, depth: Var) -> Vec<SP> {
         if depth == 0 {
-            return vec![0, 1];
+            return vec![SP::new(0), SP::new(1)];
         }
         let all_rec = self.all_helper(depth - 1);
         let mut result = vec![];

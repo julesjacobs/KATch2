@@ -8,9 +8,31 @@ use crate::sp::{SPnode, SPstore, SP};
 use std::collections::HashMap;
 
 /// We use indices into the SPP store to represent SPPs.
-/// The zero SPP is represented by 0 and the one SPP is represented by 1.
+/// The zero SPP is represented by SPP(0) and the one SPP is represented by SPP(1).
 /// Indices into the store are the u32 value - 2.
-pub type SPP = u32;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct SPP(pub u32);
+
+impl SPP {
+    pub const fn new(value: u32) -> Self {
+        SPP(value)
+    }
+    
+    pub fn as_u32(&self) -> u32 {
+        self.0
+    }
+    
+    pub fn as_usize(&self) -> usize {
+        self.0 as usize
+    }
+}
+
+impl std::fmt::Display for SPP {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "SPP({})", self.0)
+    }
+}
+
 pub type Var = u32;
 
 /// The store of SPPs. (store = arena + memo tables)
@@ -56,27 +78,67 @@ impl SPPstore {
             num_vars,
             nodes: vec![],
             hc: HashMap::new(),
-            zero: 0,
-            one: 0,
-            top: 0, // Dummy values, will be set later
+            zero: SPP::new(0),
+            one: SPP::new(0),
+            top: SPP::new(0), // Dummy values, will be set later
             // We prefill the memo tables with the results of the trivial cases
             // Need to benchmark if this is actually faster than checking these cases in the operations
-            union_memo: HashMap::from([((0, 0), 0), ((0, 1), 1), ((1, 0), 1), ((1, 1), 1)]),
-            intersect_memo: HashMap::from([((0, 0), 0), ((0, 1), 0), ((1, 0), 0), ((1, 1), 1)]),
-            xor_memo: HashMap::from([((0, 0), 0), ((0, 1), 1), ((1, 0), 1), ((1, 1), 0)]),
-            difference_memo: HashMap::from([((0, 0), 0), ((0, 1), 0), ((1, 0), 1), ((1, 1), 0)]),
-            sequence_memo: HashMap::from([((0, 0), 0), ((0, 1), 0), ((1, 0), 0), ((1, 1), 1)]),
-            star_memo: HashMap::from([(0, 1), (1, 1)]),
-            complement_memo: HashMap::from([(0, 1), (1, 0)]),
+            union_memo: HashMap::from([
+                ((SPP::new(0), SPP::new(0)), SPP::new(0)), 
+                ((SPP::new(0), SPP::new(1)), SPP::new(1)), 
+                ((SPP::new(1), SPP::new(0)), SPP::new(1)), 
+                ((SPP::new(1), SPP::new(1)), SPP::new(1))
+            ]),
+            intersect_memo: HashMap::from([
+                ((SPP::new(0), SPP::new(0)), SPP::new(0)), 
+                ((SPP::new(0), SPP::new(1)), SPP::new(0)), 
+                ((SPP::new(1), SPP::new(0)), SPP::new(0)), 
+                ((SPP::new(1), SPP::new(1)), SPP::new(1))
+            ]),
+            xor_memo: HashMap::from([
+                ((SPP::new(0), SPP::new(0)), SPP::new(0)), 
+                ((SPP::new(0), SPP::new(1)), SPP::new(1)), 
+                ((SPP::new(1), SPP::new(0)), SPP::new(1)), 
+                ((SPP::new(1), SPP::new(1)), SPP::new(0))
+            ]),
+            difference_memo: HashMap::from([
+                ((SPP::new(0), SPP::new(0)), SPP::new(0)), 
+                ((SPP::new(0), SPP::new(1)), SPP::new(0)), 
+                ((SPP::new(1), SPP::new(0)), SPP::new(1)), 
+                ((SPP::new(1), SPP::new(1)), SPP::new(0))
+            ]),
+            sequence_memo: HashMap::from([
+                ((SPP::new(0), SPP::new(0)), SPP::new(0)), 
+                ((SPP::new(0), SPP::new(1)), SPP::new(0)), 
+                ((SPP::new(1), SPP::new(0)), SPP::new(0)), 
+                ((SPP::new(1), SPP::new(1)), SPP::new(1))
+            ]),
+            star_memo: HashMap::from([
+                (SPP::new(0), SPP::new(1)), 
+                (SPP::new(1), SPP::new(1))
+            ]),
+            complement_memo: HashMap::from([
+                (SPP::new(0), SPP::new(1)), 
+                (SPP::new(1), SPP::new(0))
+            ]),
             // branch_memo: HashMap::new(),
             test_memo: HashMap::new(),
             assign_memo: HashMap::new(),
-            flip_memo: HashMap::from([(0, 0), (1, 1)]),
+            flip_memo: HashMap::from([
+                (SPP::new(0), SPP::new(0)), 
+                (SPP::new(1), SPP::new(1))
+            ]),
             sp: SPstore::new(num_vars),
 
             // in the memo tables, we only want the base cases for 0 and 1
-            fwd_memo: HashMap::from([(0, 0), (1, 1)]),
-            ifwd_memo: HashMap::from([(0, 0), (1, 1)]),
+            fwd_memo: HashMap::from([
+                (SPP::new(0), SP::new(0)), 
+                (SPP::new(1), SP::new(1))
+            ]),
+            ifwd_memo: HashMap::from([
+                (SP::new(0), SPP::new(0)), 
+                (SP::new(1), SPP::new(1))
+            ]),
         };
         store.zero = store.zero();
         store.one = store.one();
@@ -89,8 +151,8 @@ impl SPPstore {
     /// Panics if the index is 0, 1, or out of bounds.
     /// Assumes the caller ensures the index represents an internal node.
     pub fn get(&self, spp: SPP) -> SPPnode {
-        assert!(spp >= 2, "Cannot call get on SPP 0 or 1");
-        let node_index = (spp - 2) as usize;
+        assert!(spp.as_u32() >= 2, "Cannot call get on SPP 0 or 1");
+        let node_index = (spp.as_u32() - 2) as usize;
         // Use the variable to make the assertion clearer
         assert!(
             node_index < self.nodes.len(),
@@ -161,7 +223,7 @@ impl SPPstore {
         }
 
         // Add the node to the store
-        let spp = self.nodes.len() as SPP + 2;
+        let spp = SPP::new(self.nodes.len() as u32 + 2);
         self.nodes.push(node);
         self.hc.insert(node, spp);
         spp
@@ -169,7 +231,7 @@ impl SPPstore {
 
     fn zero(&mut self) -> SPP {
         // We must construct a zero SPP of the right depth
-        let mut spp = 0;
+        let mut spp = SPP::new(0);
         for _ in 0..self.num_vars {
             spp = self.mk(spp, spp, spp, spp);
         }
@@ -177,7 +239,7 @@ impl SPPstore {
     }
     fn top(&mut self) -> SPP {
         // We must construct a top SPP of the right depth
-        let mut spp = 1;
+        let mut spp = SPP::new(1);
         for _ in 0..self.num_vars {
             spp = self.mk(spp, spp, spp, spp);
         }
@@ -185,8 +247,8 @@ impl SPPstore {
     }
     fn one(&mut self) -> SPP {
         // We must construct a one SPP of the right depth
-        let mut spp_one = 1;
-        let mut spp_zero = 0;
+        let mut spp_one = SPP::new(1);
+        let mut spp_zero = SPP::new(0);
         for _ in 0..self.num_vars {
             spp_one = self.mk(spp_one, spp_zero, spp_zero, spp_one);
             spp_zero = self.mk(spp_zero, spp_zero, spp_zero, spp_zero);
@@ -357,8 +419,8 @@ impl SPPstore {
         if let Some(&result) = self.test_memo.get(&(var, value)) {
             return result;
         }
-        let mut res = 1;
-        let mut zero = 0;
+        let mut res = SPP::new(1);
+        let mut zero = SPP::new(0);
         for i in (0..self.num_vars).rev() {
             if i == var {
                 if value {
@@ -379,8 +441,8 @@ impl SPPstore {
         if let Some(&result) = self.assign_memo.get(&(var, value)) {
             return result;
         }
-        let mut res = 1;
-        let mut zero = 0;
+        let mut res = SPP::new(1);
+        let mut zero = SPP::new(0);
         for i in (0..self.num_vars).rev() {
             if i == var {
                 if value {
@@ -434,7 +496,7 @@ impl SPPstore {
     #[cfg(test)]
     fn all_helper(&mut self, depth: Var) -> Vec<SPP> {
         if depth == 0 {
-            return vec![0, 1];
+            return vec![SPP::new(0), SPP::new(1)];
         }
         let all_rec = self.all_helper(depth - 1);
         let mut result = vec![];
@@ -457,7 +519,7 @@ impl SPPstore {
     #[cfg(test)]
     fn rand_helper(&mut self, depth: Var) -> SPP {
         if depth == 0 {
-            return if rand::random::<f64>() < 0.75 { 0 } else { 1 };
+            return if rand::random::<f64>() < 0.75 { SPP::new(0) } else { SPP::new(1) };
         }
         let x00 = self.rand_helper(depth - 1);
         let x01 = self.rand_helper(depth - 1);
@@ -503,7 +565,7 @@ mod tests {
         for sp in s.sp.all() {
             let ifwd_sp: SPP = s.ifwd(sp);
             let result: SP = s.fwd(ifwd_sp);
-            assert_eq!(sp, result, "{} and {} are different SPs", sp, result);
+            assert_eq!(sp, result, "{:?} and {:?} are different SPs", sp, result);
         }
     }
 
