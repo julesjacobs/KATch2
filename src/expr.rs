@@ -121,8 +121,8 @@ impl Expr {
     /// Strong release operator `(e1 S e2 = e1 R e2 /\ F e2)`
     pub fn ltl_strong_release(e1: Exp, e2: Exp) -> Exp {
         Box::new(Expr::Intersect(
-            Expr::ltl_release(e1, e2.clone()),
-            Expr::ltl_finally(e2),
+            Expr::ltl_release(e1.clone(), e2),
+            Expr::ltl_finally(e1),
         ))
     }
 }

@@ -441,16 +441,15 @@ pub fn genax(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) 
                 }
                 9 => {
                     // e1 S e2 = e2 & (e1 + X (e1 S e2))
-                    // Strong Release expansion law: e1 S e2 = (e1 R e2) ∧ F e2
-                    // Since (e1 R e2) = e2 & (e1 + X' (e1 R e2))
-                    // And F e2 = e2 + X (F e2)
-                    // We get: (e1 S e2) = (e2 & (e1 + X' (e1 R e2))) ∧ (e2 + X (F e2))
                     let new_lhs = Expr::ltl_strong_release(p1_lhs, p2_lhs);
                     
-                    // Using the definitions directly
-                    let release = Expr::ltl_release(p1_rhs.clone(), p2_rhs.clone());
-                    let finally = Expr::ltl_finally(p2_rhs.clone());
-                    let new_rhs = Expr::intersect(release, finally);
+                    let new_rhs = Expr::intersect(
+                        p2_rhs.clone(),
+                        Expr::union(
+                            p1_rhs.clone(),
+                            Expr::ltl_next(Expr::ltl_strong_release(p1_rhs, p2_rhs)),
+                        ),
+                    );
                     return flip_equality_rand(new_lhs, new_rhs);
                 }
                 _ => unreachable!(),
@@ -584,13 +583,13 @@ pub fn gen_leq(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp
                     // Strong release >= Weak release (S is stronger than R)
                     // e1 R e2 <= e1 S e2  (weak release is weaker than strong release)
                     (
-                        Expr::ltl_release(e1.clone(), e2.clone()),
-                        Expr::ltl_strong_release(e1, e2)
+                        Expr::ltl_strong_release(e1.clone(), e2.clone()),
+                        Expr::ltl_release(e1, e2)
                     )
                 }
                 2 => {
                     // Strong next <= Weak next
-                    // X e <= X' e
+                    // X' e <= X e
                     (
                         Expr::ltl_next(e1.clone()),
                         Expr::ltl_weak_next(e1)
