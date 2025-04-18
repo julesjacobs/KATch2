@@ -109,15 +109,14 @@ impl SPPstore {
         self.nodes[node_index]
     }
 
-    // Computes the possible output packet set from applying the `SPP`
-    // TODO: add QuickCheck tests to check that `ifwd ∘ fwd = id`
+    /// Computes the possible output packet set from applying the `SPP`
     pub fn fwd(&mut self, spp: SPP) -> SP {
         // Check the memo table to see if fwd(spp) already exists
         if let Some(&result) = self.fwd_memo.get(&spp) {
             return result;
         }
         // We now know that we've got a non-trivial SPPnNde,
-        // so we don't need to handle 0 or 1 cases here
+        // so we dcon't need to handle 0 or 1 cases here
 
         let SPPnode { x00, x01, x10, x11 } = self.get(spp);
         let mut sp_store = self.sp_store.clone();
@@ -127,8 +126,15 @@ impl SPPstore {
         sp_store.mk(x0, x1)
     }
 
-    // Left inverse of `fwd`, computes the SPP corresponding to the `sp`.
-    // - Note: `ifwd ∘ fwd = id`
+    /// Computes the set of packets, which when input to the `spp`,
+    /// produce some non-empty set of packets as output
+    pub fn bwd(&mut self, spp: SPP) -> SP {
+        let flipped_spp = self.flip(spp);
+        self.fwd(flipped_spp)
+    }
+
+    /// Computes the SPP corresponding to the `sp` returned by `fwd`.     
+    /// - `ifwd` is the left inverse of `fwd`, i.e. `ifwd ∘ fwd = id`
     pub fn ifwd(&mut self, sp: SP) -> SPP {
         // Check the memo table to see if ifwd(spp) already exists
         if let Some(&result) = self.ifwd_memo.get(&sp) {
@@ -141,6 +147,13 @@ impl SPPstore {
         let x10 = self.ifwd(x0);
         let x11 = self.ifwd(x1);
         self.mk(x00, x01, x10, x11)
+    }
+
+    /// Computes the SPP corresponding to the `sp` returned by `bwd`.            
+    /// - `ibwd` is the left inverse of `bwd`, i.e. `ibwd ∘ bwd = id`
+    pub fn ibwd(&mut self, sp: SP) -> SPP {
+        let spp = self.ifwd(sp);
+        self.flip(spp)
     }
 
     fn mk(&mut self, x00: SPP, x01: SPP, x10: SPP, x11: SPP) -> SPP {
