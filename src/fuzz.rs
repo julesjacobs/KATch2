@@ -5,6 +5,8 @@ use rand::Rng; // Use Rng trait directly
 // --- Random Expression Generation ---
 
 // Note: Generic over R: Rng to fix 'dyn Rng' errors
+
+/// Generates a random field value in the range [0..k]
 fn gen_random_field(k: u32) -> Field {
     // k must be > 0 for this to be called meaningfully
     if k == 0 {
@@ -13,11 +15,12 @@ fn gen_random_field(k: u32) -> Field {
     rand::random_range(0..k)
 }
 
+/// Generates a random boolean (binary field)
 fn gen_random_value() -> Value {
     rand::random::<bool>()
 }
 
-// Generates a random expression.
+/// Generates a random NetKAT expression.
 fn gen_random_expr(num_fields: u32, max_depth: usize) -> Exp {
     // Base case: terminals or depth limit reached
     if max_depth == 0 {
@@ -142,6 +145,7 @@ fn flip_equality_rand(lhs: Exp, rhs: Exp) -> (Exp, Exp) {
 // *   `(xi <- v) . (xi <- v') = xi <- v'` *(PA-MOD-MOD)* -- Sequential modifications to the same variable; the last one prevails
 // *   `(xi = 0) . (xi = 1) = 0` *(PA-CONTRA) -- A variable cannot be both 0 and 1 simultaneously
 // *   `(xi = 0) + (xi = 1) = 1` *(PA-MATCH-ALL) -- A binary variable must be either 0 or 1
+// *    LTL equivalences (see corresponding write-up for full list)
 
 // The following axioms are not used in the current implementation.
 // *   `q + p . r <= r => p* . q <= r` *(KA-LFP-L - Left Induction)* (UNUSED)
@@ -698,14 +702,6 @@ pub fn gen_leq(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp
     }
 }
 
-// TODO: add non-equivalence tests
-// - G (e1 + e2) !== G e1 + G e2     (where e1 and e2 can't have a top-level F)
-// - F (e1 & e2) !== F e1 & F e2
-
-// Citations
-// - Principles of Model Checking (Baier & Katoen), chapter 5
-// - https://www.inf.ed.ac.uk/teaching/courses/fv/slides/slides02.pdf
-
 #[cfg(test)]
 mod tests {
     use crate::aut::Aut;
@@ -723,6 +719,25 @@ mod tests {
         for _ in 0..number {
             let (e1, e2) = genax(ax_depth, expr_depth, num_fields);
             println!("  {}\n   ===\n  {}\n", e1, e2);
+        }
+    }
+
+    /// Generates random exprs, wraps them in the `Expr::ltl_inally` smart
+    /// constructor, and checks that `Expr::has_top_level_finally` returns true
+    #[test]
+    fn test_top_level_finally_true() {
+        let expr_depth = 1;
+        let num_fields = 3;
+
+        let num_trials = 100;
+        for _ in 0..num_trials {
+            let inner_expr = gen_random_expr(num_fields, expr_depth);
+            let e = Expr::ltl_finally(inner_expr);
+            assert!(
+                e.has_top_level_finally(),
+                "Expected {} to have top-level F",
+                e
+            )
         }
     }
 

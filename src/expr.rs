@@ -99,6 +99,21 @@ impl Expr {
         }
     }
 
+    /// Checks whether an `Expr` contains a top-level `F e`,
+    /// i.e. whether we have (⊤ U e) at the top-level
+    pub fn has_top_level_finally(&self) -> bool {
+        match self {
+            Expr::LtlUntil(e1, _) => {
+                if let Expr::Top = **e1 {
+                    true
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        }
+    }
+
     /// Helper function for constructing `F e` using the equivalence `F e ≡ true U e`
     pub fn ltl_finally(e: Exp) -> Exp {
         Box::new(Expr::LtlUntil(Expr::top(), e))
