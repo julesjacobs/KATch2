@@ -662,6 +662,25 @@ pub fn gen_leq(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp
     }
 }
 
+// TODO: add non-equivalence tests
+// - G (e1 + e2) !== G e1 + G e2     (where e1 and e2 can't have a top-level F)
+// - F (e1 & e2) !== F e1 & F e2
+
+// TODO: add some more equivalences:
+
+// Interaction of G and F:
+// - G (F (G e)) = F (G e) (absorption)
+// - F (G (F e)) = G (F e) (absroption)
+// - G (F e1 \/ F e2) = G (F e1) \/ G (F e2)
+
+// More idempotency laws;
+// - e1 U (e1 U e2) = e1 U e2
+// - (e1 U e2) U e2 = e1 U e2
+
+// Citations
+// - Principles of Model Checking (Baier & Katoen), chapter 5
+// - https://www.inf.ed.ac.uk/teaching/courses/fv/slides/slides02.pdf
+
 #[cfg(test)]
 mod tests {
     use crate::aut::Aut;
