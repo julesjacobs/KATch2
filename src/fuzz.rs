@@ -702,6 +702,40 @@ pub fn gen_leq(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp
     }
 }
 
+/// Generates a pair of expressions that are guaranteed to be not equivalent
+/// TODO: fix this generator (right now, it it possible of generating
+/// two exprs that simplify to Top on both sides)
+pub fn gen_neq(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) {
+    // Keep generating pairs of semantically equivalent `(e1, e2)`
+    // until both are guaranteed to *not* have top-level `F`
+    let (mut e1, mut e2);
+    loop {
+        (e1, e2) = genax(ax_depth, expr_depth, num_fields);
+        if !e1.has_top_level_finally() && !e2.has_top_level_finally() {
+            break;
+        }
+    }
+    if (e1.has_top_level_finally()) {
+        panic!("{} has top-level finally", e1);
+    } else if (e2.has_top_level_finally()) {
+        panic!("{} has top-level finally", e2)
+    }
+    let b = rand::random::<bool>();
+    if b {
+        // G (e1 + e2) !== G e1 + G e2
+        // when both e1, e2 don't have top-level F
+        let lhs = Expr::ltl_globally(Expr::union(e1.clone(), e2.clone()));
+        let rhs = Expr::union(Expr::ltl_globally(e1), Expr::ltl_globally(e2));
+        (lhs, rhs)
+    } else {
+        // F (e1 & e2) !== F e1 & F e2
+        // when both e1, e2 don't have top-level F
+        let lhs = Expr::ltl_finally(Expr::intersect(e1.clone(), e2.clone()));
+        let rhs = Expr::intersect(Expr::ltl_finally(e1), Expr::ltl_finally(e2));
+        (lhs, rhs)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::aut::Aut;
@@ -740,6 +774,47 @@ mod tests {
             )
         }
     }
+
+    /// Tests that the emptiness check fails for two expressions that
+    /// are guaranteed to be not equivalent
+    /// - TODO: fix this test! (this test fails for now since the generator
+    /// `gen_neq` can generate two exprs that simplify to Top on both sides)
+    // #[test]
+    // fn fuzz_test_neq() {
+    //     // Enable backtrace for debugging failing tests
+    //     unsafe {
+    //         std::env::set_var("RUST_BACKTRACE", "1");
+    //     }
+
+    //     // Generate random expressions, create the xor, and check if the automaton is empty
+    //     let ax_depth = 3;
+    //     let expr_depth = 1;
+    //     let num_fields = 3;
+
+    //     // Max no. of trials to run
+    //     let max_trials = 1000;
+    //     let mut num_trials = 0;
+
+    //     // For each `n`, test whether the emptiness check
+    //     // fails for `max_trials` rounds
+    //     for n in 0..=ax_depth {
+    //         while num_trials <= max_trials {
+    //             println!("ax_depth n = {}\n", n);
+    //             let (e1, e2) = gen_neq(n, expr_depth, num_fields);
+    //             println!("Checking XOR of {} and {} is non-empty", e1, e2);
+    //             let xor = Expr::xor(e1.clone(), e2.clone());
+    //             println!("XOR result = {}\n", xor);
+    //             let mut aut = Aut::new(num_fields);
+    //             let state = aut.expr_to_state(&xor);
+    //             if !aut.is_empty(state) {
+    //                 println!("Success!\n");
+    //                 num_trials += 1;
+    //             } else {
+    //                 assert!(false, "Failure! Expected XOR result to be non-empty \n");
+    //             }
+    //         }
+    //     }
+    // }
 
     #[test]
     fn fuzz_test() {
