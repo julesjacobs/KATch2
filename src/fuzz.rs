@@ -247,7 +247,7 @@ pub fn genax(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) 
         }
         1 => {
             let (lhs, rhs) = genax(ax_depth - 1, expr_depth, num_fields);
-            match rand::random_range(0..19) {
+            match rand::random_range(0..21) {
                 0 => {
                     // KA-PLUS-ZERO: p + 0 = p
                     let new_lhs = Expr::union(lhs, Expr::zero());
@@ -365,6 +365,18 @@ pub fn genax(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) 
                     // G (G e) = G e
                     let new_lhs = Expr::ltl_globally(Expr::ltl_globally(lhs));
                     let new_rhs = Expr::ltl_globally(rhs);
+                    return flip_equality_rand(new_lhs, new_rhs);
+                }
+                19 => {
+                    // G (F (G e) = F (G e)
+                    let new_lhs = Expr::ltl_globally(Expr::ltl_finally(Expr::ltl_globally(lhs)));
+                    let new_rhs = Expr::ltl_finally(Expr::ltl_globally(rhs));
+                    return flip_equality_rand(new_lhs, new_rhs);
+                }
+                20 => {
+                    // F (G (F e)) = G (F e)
+                    let new_lhs = Expr::ltl_finally(Expr::ltl_globally(Expr::ltl_finally(lhs)));
+                    let new_rhs = Expr::ltl_globally(Expr::ltl_finally(rhs));
                     return flip_equality_rand(new_lhs, new_rhs);
                 }
                 _ => unreachable!(),
