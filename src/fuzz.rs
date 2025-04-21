@@ -373,7 +373,7 @@ pub fn genax(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) 
         2 => {
             let (p1_lhs, p1_rhs) = genax(ax_depth - 1, expr_depth, num_fields);
             let (p2_lhs, p2_rhs) = genax(ax_depth - 1, expr_depth, num_fields);
-            match rand::random_range(0..10) {
+            match rand::random_range(0..12) {
                 0 => {
                     // KA-PLUS-COMM: p + q = q + p
                     let new_lhs = Expr::union(p1_lhs, p2_lhs);
@@ -424,12 +424,10 @@ pub fn genax(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) 
                     return flip_equality_rand(new_lhs, new_rhs);
                 }
                 6 => {
-                    // e1 R e2 = !(!e1 U !e2)
-                    let new_lhs = Expr::ltl_release(p1_lhs, p2_lhs);
-                    let new_rhs = Expr::complement(Expr::ltl_until(
-                        Expr::complement(p1_rhs),
-                        Expr::complement(p2_rhs),
-                    ));
+                    // !(e1 U e2) = !e1 R !e2
+                    let new_lhs = Expr::complement(Expr::ltl_until(p1_lhs, p2_lhs));
+                    let new_rhs =
+                        Expr::ltl_release(Expr::complement(p1_rhs), Expr::complement(p2_rhs));
                     return flip_equality_rand(new_lhs, new_rhs);
                 }
                 7 => {
@@ -452,7 +450,7 @@ pub fn genax(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) 
                     return flip_equality_rand(new_lhs, new_rhs);
                 }
                 9 => {
-                    // e1 S e2 = e2 & (e1 + X (e1 S e2))
+                    // e1 M e2 = e2 & (e1 + X (e1 M e2))
                     let new_lhs = Expr::ltl_strong_release(p1_lhs, p2_lhs);
 
                     let new_rhs = Expr::intersect(
@@ -461,6 +459,22 @@ pub fn genax(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) 
                             p1_rhs.clone(),
                             Expr::ltl_next(Expr::ltl_strong_release(p1_rhs, p2_rhs)),
                         ),
+                    );
+                    return flip_equality_rand(new_lhs, new_rhs);
+                }
+                10 => {
+                    // !(e1 M e2) = !e1 W !e2
+                    let new_lhs = Expr::complement(Expr::ltl_strong_release(p1_lhs, p2_lhs));
+                    let new_rhs =
+                        Expr::ltl_weak_until(Expr::complement(p1_rhs), Expr::complement(p2_rhs));
+                    return flip_equality_rand(new_lhs, new_rhs);
+                }
+                11 => {
+                    // !(e1 W e2) = !e1 M !e2
+                    let new_lhs = Expr::complement(Expr::ltl_weak_until(p1_lhs, p2_lhs));
+                    let new_rhs = Expr::ltl_strong_release(
+                        Expr::complement(p1_rhs),
+                        Expr::complement(p2_rhs),
                     );
                     return flip_equality_rand(new_lhs, new_rhs);
                 }
