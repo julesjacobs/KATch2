@@ -835,7 +835,7 @@ mod tests {
         // For each `n`, test whether the emptiness check
         // passes for `max_trials` rounds
         for n in 0..=ax_depth {
-            for _ in 0..max_trials {
+            while num_trials <= max_trials {
                 println!("ax_depth n = {}\n", n);
                 let (e1, e2) = genax(n, expr_depth, num_fields);
                 println!("Checking xor of\n  {}\n   ===\n  {}\n", e1, e2);
@@ -872,7 +872,7 @@ mod tests {
         // For each `n`, test whether the emptiness check
         // passes for `max_trials` rounds
         for n in 0..=ax_depth {
-            for _ in 0..max_trials {
+            while num_trials <= max_trials {
                 println!("ax_depth n = {}\n", n);
                 let (e1, e2) = gen_leq(n, expr_depth, num_fields);
                 println!("Checking e1 <= e2 for\n  {}\n   <=\n  {}\n", e1, e2);
