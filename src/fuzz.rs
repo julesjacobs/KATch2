@@ -385,7 +385,7 @@ pub fn genax(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) 
         2 => {
             let (p1_lhs, p1_rhs) = genax(ax_depth - 1, expr_depth, num_fields);
             let (p2_lhs, p2_rhs) = genax(ax_depth - 1, expr_depth, num_fields);
-            match rand::random_range(0..15) {
+            match rand::random_range(0..16) {
                 0 => {
                     // KA-PLUS-COMM: p + q = q + p
                     let new_lhs = Expr::union(p1_lhs, p2_lhs);
@@ -507,6 +507,18 @@ pub fn genax(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) 
                     // X (e1 U e2) = (X e1) U (X e2)
                     let new_lhs = Expr::ltl_next(Expr::ltl_until(p1_lhs, p2_lhs));
                     let new_rhs = Expr::ltl_until(Expr::ltl_next(p1_rhs), Expr::ltl_next(p2_rhs));
+                    return flip_equality_rand(new_lhs, new_rhs);
+                }
+                15 => {
+                    // G (F e1 \/ F e2) = G (F e1) \/ G (F e2)
+                    let new_lhs = Expr::ltl_globally(Expr::union(
+                        Expr::ltl_finally(p1_lhs),
+                        Expr::ltl_finally(p2_lhs),
+                    ));
+                    let new_rhs = Expr::union(
+                        Expr::ltl_globally(Expr::ltl_finally(p1_rhs)),
+                        Expr::ltl_globally(Expr::ltl_finally(p2_rhs)),
+                    );
                     return flip_equality_rand(new_lhs, new_rhs);
                 }
                 _ => unreachable!(),
@@ -679,11 +691,6 @@ pub fn gen_leq(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp
 // - F (e1 & e2) !== F e1 & F e2
 
 // TODO: add some more equivalences:
-
-// Interaction of G and F:
-// - G (F (G e)) = F (G e) (absorption)
-// - F (G (F e)) = G (F e) (absroption)
-// - G (F e1 \/ F e2) = G (F e1) \/ G (F e2)
 
 // More idempotency laws;
 // - e1 U (e1 U e2) = e1 U e2
