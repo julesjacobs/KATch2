@@ -504,7 +504,7 @@ pub fn genax(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) 
             let (p1_lhs, p1_rhs) = genax(ax_depth - 1, expr_depth, num_fields);
             let (p2_lhs, p2_rhs) = genax(ax_depth - 1, expr_depth, num_fields);
             let (p3_lhs, p3_rhs) = genax(ax_depth - 1, expr_depth, num_fields);
-            match rand::random_range(0..5) {
+            match rand::random_range(0..7) {
                 0 => {
                     // KA-PLUS-ASSOC: p + (q + r) = (p + q) + r
                     let new_lhs = Expr::union(p1_lhs, Expr::union(p2_lhs, p3_lhs));
@@ -519,7 +519,7 @@ pub fn genax(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) 
                 }
                 2 => {
                     // KA-SEQ-DIST-L: p . (q + r) = p . q + p . r
-                    let new_lhs = Expr::sequence(p1_lhs.clone(), Expr::union(p2_lhs, p3_lhs));
+                    let new_lhs = Expr::sequence(p1_lhs, Expr::union(p2_lhs, p3_lhs));
                     let new_rhs = Expr::union(
                         Expr::sequence(p1_rhs.clone(), p2_rhs),
                         Expr::sequence(p1_rhs, p3_rhs),
@@ -528,7 +528,7 @@ pub fn genax(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) 
                 }
                 3 => {
                     // KA-SEQ-DIST-R: (p + q) . r = p . r + q . r
-                    let new_lhs = Expr::sequence(Expr::union(p1_lhs, p2_lhs), p3_lhs.clone());
+                    let new_lhs = Expr::sequence(Expr::union(p1_lhs, p2_lhs), p3_lhs);
                     let new_rhs = Expr::union(
                         Expr::sequence(p1_rhs, p3_rhs.clone()),
                         Expr::sequence(p2_rhs, p3_rhs),
@@ -537,10 +537,28 @@ pub fn genax(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) 
                 }
                 4 => {
                     // BA-PLUS-DIST: a + (b & c) = (a + b) & (a + c)
-                    let new_lhs = Expr::union(p1_lhs.clone(), Expr::intersect(p2_lhs, p3_lhs));
+                    let new_lhs = Expr::union(p1_lhs, Expr::intersect(p2_lhs, p3_lhs));
                     let new_rhs = Expr::intersect(
                         Expr::union(p1_rhs.clone(), p2_rhs),
                         Expr::union(p1_rhs, p3_rhs),
+                    );
+                    return flip_equality_rand(new_lhs, new_rhs);
+                }
+                5 => {
+                    // e1 U (e2 + e3) = (e1 U e2) + (e1 U e3)
+                    let new_lhs = Expr::ltl_until(p1_lhs, Expr::union(p2_lhs, p3_lhs));
+                    let new_rhs = Expr::union(
+                        Expr::ltl_until(p1_rhs.clone(), p2_rhs),
+                        Expr::ltl_until(p1_rhs, p3_rhs),
+                    );
+                    return flip_equality_rand(new_lhs, new_rhs);
+                }
+                6 => {
+                    // (e1 & e2) U e3 = (e1 U e3) & (e2 U e3)
+                    let new_lhs = Expr::ltl_until(Expr::intersect(p1_lhs, p2_lhs), p3_lhs);
+                    let new_rhs = Expr::intersect(
+                        Expr::ltl_until(p1_rhs, p3_rhs.clone()),
+                        Expr::ltl_until(p2_rhs, p3_rhs),
                     );
                     return flip_equality_rand(new_lhs, new_rhs);
                 }
@@ -604,8 +622,8 @@ pub fn gen_leq(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp
                     )
                 }
                 1 => {
-                    // Strong release >= Weak release (S is stronger than R)
-                    // e1 R e2 <= e1 S e2  (weak release is weaker than strong release)
+                    // Strong release >= Weak release (M is stronger than R)
+                    // e1 R e2 <= e1 M e2  (weak release is weaker than strong release)
                     (
                         Expr::ltl_strong_release(e1.clone(), e2.clone()),
                         Expr::ltl_release(e1, e2),
