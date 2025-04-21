@@ -385,7 +385,7 @@ pub fn genax(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) 
         2 => {
             let (p1_lhs, p1_rhs) = genax(ax_depth - 1, expr_depth, num_fields);
             let (p2_lhs, p2_rhs) = genax(ax_depth - 1, expr_depth, num_fields);
-            match rand::random_range(0..16) {
+            match rand::random_range(0..18) {
                 0 => {
                     // KA-PLUS-COMM: p + q = q + p
                     let new_lhs = Expr::union(p1_lhs, p2_lhs);
@@ -519,6 +519,18 @@ pub fn genax(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) 
                         Expr::ltl_globally(Expr::ltl_finally(p1_rhs)),
                         Expr::ltl_globally(Expr::ltl_finally(p2_rhs)),
                     );
+                    return flip_equality_rand(new_lhs, new_rhs);
+                }
+                16 => {
+                    // e1 U (e1 U e2) = e1 U e2
+                    let new_lhs = Expr::ltl_until(p1_lhs.clone(), Expr::ltl_until(p1_lhs, p2_lhs));
+                    let new_rhs = Expr::ltl_until(p1_rhs, p2_rhs);
+                    return flip_equality_rand(new_lhs, new_rhs);
+                }
+                17 => {
+                    // (e1 U e2) U e2 = e1 U e2
+                    let new_lhs = Expr::ltl_until(Expr::ltl_until(p1_lhs, p2_lhs.clone()), p2_lhs);
+                    let new_rhs = Expr::ltl_until(p1_rhs, p2_rhs);
                     return flip_equality_rand(new_lhs, new_rhs);
                 }
                 _ => unreachable!(),
@@ -689,12 +701,6 @@ pub fn gen_leq(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp
 // TODO: add non-equivalence tests
 // - G (e1 + e2) !== G e1 + G e2     (where e1 and e2 can't have a top-level F)
 // - F (e1 & e2) !== F e1 & F e2
-
-// TODO: add some more equivalences:
-
-// More idempotency laws;
-// - e1 U (e1 U e2) = e1 U e2
-// - (e1 U e2) U e2 = e1 U e2
 
 // Citations
 // - Principles of Model Checking (Baier & Katoen), chapter 5
