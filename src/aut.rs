@@ -831,9 +831,8 @@ impl Aut {
                 *original_sp = self.spp.sp.union(*original_sp, to_add);
                 // iterate over all transitions from the state
                 for (state2, spp2) in self.delta(state).transitions {
-                    // let seq_spp = self.spp.sequence(to_add, spp2);
-                    // let seq_forward = self.spp.naive_forward(seq_spp);
-
+                    // NB: `push(to_add, spp2) === naive_forward(to_add; spp2)`,
+                    // where `;` is sequential composition
                     let seq_forward = self.spp.push(to_add, spp2);
                     todo.push((state2, seq_forward));
                 }
