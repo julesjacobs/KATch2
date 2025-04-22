@@ -727,40 +727,6 @@ pub fn gen_leq(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp
     }
 }
 
-/// Generates a pair of expressions that are guaranteed to be not equivalent
-/// TODO: fix this generator (right now, it it possible of generating
-/// two exprs that simplify to Expr::top() on both sides)
-pub fn gen_neq(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) {
-    // Keep generating pairs of semantically equivalent `(e1, e2)`
-    // until both are guaranteed to *not* have top-level `F`
-    let (mut e1, mut e2);
-    loop {
-        (e1, e2) = genax(ax_depth, expr_depth, num_fields);
-        if !e1.has_top_level_finally() && !e2.has_top_level_finally() {
-            break;
-        }
-    }
-    if (e1.has_top_level_finally()) {
-        panic!("{} has top-level finally", e1);
-    } else if (e2.has_top_level_finally()) {
-        panic!("{} has top-level finally", e2)
-    }
-    let b = rand::random::<bool>();
-    if b {
-        // G (e1 + e2) !== G e1 + G e2
-        // when both e1, e2 don't have top-level F
-        let lhs = Expr::ltl_globally(Expr::union(e1.clone(), e2.clone()));
-        let rhs = Expr::union(Expr::ltl_globally(e1), Expr::ltl_globally(e2));
-        (lhs, rhs)
-    } else {
-        // F (e1 & e2) !== F e1 & F e2
-        // when both e1, e2 don't have top-level F
-        let lhs = Expr::ltl_finally(Expr::intersect(e1.clone(), e2.clone()));
-        let rhs = Expr::intersect(Expr::ltl_finally(e1), Expr::ltl_finally(e2));
-        (lhs, rhs)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use crate::aut::Aut;
@@ -800,25 +766,6 @@ mod tests {
                     println!("{:?} != {:?}", e1, e2);
                 }
             }
-        }
-    }
-
-    /// Generates random exprs, wraps them in the `Expr::ltl_inally` smart
-    /// constructor, and checks that `Expr::has_top_level_finally` returns true
-    #[test]
-    fn test_top_level_finally_true() {
-        let expr_depth = 1;
-        let num_fields = 3;
-
-        let num_trials = 100;
-        for _ in 0..num_trials {
-            let inner_expr = gen_random_expr(num_fields, expr_depth);
-            let e = Expr::ltl_finally(inner_expr);
-            assert!(
-                e.has_top_level_finally(),
-                "Expected {} to have top-level F",
-                e
-            )
         }
     }
 
