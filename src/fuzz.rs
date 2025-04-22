@@ -24,7 +24,7 @@ fn gen_random_value() -> Value {
 fn gen_random_expr(num_fields: u32, max_depth: usize) -> Exp {
     // Base case: terminals or depth limit reached
     if max_depth == 0 {
-        match rand::random_range(0..5) {
+        match rand::random_range(0..7) {
             0 => Expr::zero(),
             1 => Expr::one(),
             2 => Expr::top(),
@@ -37,10 +37,11 @@ fn gen_random_expr(num_fields: u32, max_depth: usize) -> Exp {
                 // Test (only reachable if k > 0)
                 Expr::test(gen_random_field(num_fields), gen_random_value())
             }
+            6 => Expr::end(),
             _ => unreachable!(),
         }
     } else {
-        match rand::random_range(0..6) {
+        match rand::random_range(0..15) {
             0 => gen_random_expr(num_fields, max_depth - 1),
             1 => Expr::star(gen_random_expr(num_fields, max_depth - 1)),
             2 => Expr::complement(gen_random_expr(num_fields, max_depth - 1)),
@@ -57,11 +58,26 @@ fn gen_random_expr(num_fields: u32, max_depth: usize) -> Exp {
                 gen_random_expr(num_fields, max_depth - 1),
             ),
             6 => Expr::ltl_next(gen_random_expr(num_fields, max_depth - 1)),
-            7 => Expr::ltl_until(
+            7 => Expr::ltl_weak_next(gen_random_expr(num_fields, max_depth - 1)),
+            8 => Expr::ltl_until(
                 gen_random_expr(num_fields, max_depth - 1),
                 gen_random_expr(num_fields, max_depth - 1),
             ),
-            8 => Expr::xor(
+            9 => Expr::ltl_weak_until(
+                gen_random_expr(num_fields, max_depth - 1),
+                gen_random_expr(num_fields, max_depth - 1),
+            ),
+            10 => Expr::ltl_finally(gen_random_expr(num_fields, max_depth - 1)),
+            11 => Expr::ltl_globally(gen_random_expr(num_fields, max_depth - 1)),
+            12 => Expr::ltl_release(
+                gen_random_expr(num_fields, max_depth - 1),
+                gen_random_expr(num_fields, max_depth - 1),
+            ),
+            13 => Expr::ltl_strong_release(
+                gen_random_expr(num_fields, max_depth - 1),
+                gen_random_expr(num_fields, max_depth - 1),
+            ),
+            14 => Expr::xor(
                 gen_random_expr(num_fields, max_depth - 1),
                 gen_random_expr(num_fields, max_depth - 1),
             ),
@@ -860,7 +876,7 @@ mod tests {
         let num_fields = 3;
 
         // Max no. of trials to run
-        let max_trials = 1000;
+        let max_trials = 5000;
         let mut num_trials = 0;
 
         // For each `n`, test whether the emptiness check
@@ -897,7 +913,7 @@ mod tests {
         let num_fields = 3;
 
         // Max no. of trials to run
-        let max_trials = 1000;
+        let max_trials = 5000;
         let mut num_trials = 0;
 
         // For each `n`, test whether the emptiness check
