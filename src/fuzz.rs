@@ -20,7 +20,7 @@ fn gen_random_value() -> Value {
     rand::random::<bool>()
 }
 
-/// Generates a random NetKAT expression.
+/// Generates a random expression
 fn gen_random_expr(num_fields: u32, max_depth: usize) -> Exp {
     // Base case: terminals or depth limit reached
     if max_depth == 0 {
@@ -30,11 +30,11 @@ fn gen_random_expr(num_fields: u32, max_depth: usize) -> Exp {
             2 => Expr::top(),
             3 => Expr::dup(),
             4 => {
-                // Assign (only reachable if k > 0)
+                // Assign (only reachable if num_fields > 0)
                 Expr::assign(gen_random_field(num_fields), gen_random_value())
             }
             5 => {
-                // Test (only reachable if k > 0)
+                // Test (only reachable if num_fields > 0)
                 Expr::test(gen_random_field(num_fields), gen_random_value())
             }
             6 => Expr::end(),
@@ -136,12 +136,12 @@ fn flip_equality_rand(lhs: Exp, rhs: Exp) -> (Exp, Exp) {
 // *   `¬a`: Negation of predicate `a`.
 // *   `0`: The policy/predicate that drops/rejects all packets (false).
 // *   `1`: The policy/predicate that passes/accepts all packets unmodified (true).
-// *   `+`: Union / Disjunction.
+// *   `+`: Expr::union / Disjunction.
 // *   `.`: Sequential Composition / Conjunction.
-// *   `*`: Kleene Star (iteration).
-// *   `xi = v`: Test if field `xi` equals value `v`.
+// *   `*`: Kleene Expr::star (iteration).
+// *   `xi = v`: Expr::test if field `xi` equals value `v`.
 // *   `xi <- v`: Modification setting field `xi` to value `v`.
-// *   `dup`: Duplication policy (records current packet state in history).
+// *   `dup`: Expr::dup()lication policy (records current packet state in history).
 
 // *   `p + (q + r) = (p + q) + r` *(KA-PLUS-ASSOC)*
 // *   `p + q = q + p` *(KA-PLUS-COMM)*
@@ -729,7 +729,7 @@ pub fn gen_leq(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp
 
 /// Generates a pair of expressions that are guaranteed to be not equivalent
 /// TODO: fix this generator (right now, it it possible of generating
-/// two exprs that simplify to Top on both sides)
+/// two exprs that simplify to Expr::top() on both sides)
 pub fn gen_neq(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) {
     // Keep generating pairs of semantically equivalent `(e1, e2)`
     // until both are guaranteed to *not* have top-level `F`
@@ -781,9 +781,9 @@ mod tests {
         }
     }
 
-    /// Get QuickCheck to generate non-equivalent NetKAT terms for us
+    /// Generates pairs of non-equivalent terms and prints them to stdout
     #[test]
-    fn print_non_equivalent_terms() {
+    fn print_random_non_equivalent_terms() {
         let ax_depth = 2;
         let expr_depth = 1;
         let num_fields = 3;
@@ -797,7 +797,7 @@ mod tests {
                 let mut aut = Aut::new(num_fields);
                 let state = aut.expr_to_state(&xor);
                 if !aut.is_empty(state) {
-                    println!("{} != {}", e1, e2);
+                    println!("{:?} != {:?}", e1, e2);
                 }
             }
         }
@@ -821,47 +821,6 @@ mod tests {
             )
         }
     }
-
-    /// Tests that the emptiness check fails for two expressions that
-    /// are guaranteed to be not equivalent
-    /// - TODO: fix this test! (this test fails for now since the generator
-    /// `gen_neq` can generate two exprs that simplify to Top on both sides)
-    // #[test]
-    // fn fuzz_test_neq() {
-    //     // Enable backtrace for debugging failing tests
-    //     unsafe {
-    //         std::env::set_var("RUST_BACKTRACE", "1");
-    //     }
-
-    //     // Generate random expressions, create the xor, and check if the automaton is empty
-    //     let ax_depth = 3;
-    //     let expr_depth = 1;
-    //     let num_fields = 3;
-
-    //     // Max no. of trials to run
-    //     let max_trials = 1000;
-    //     let mut num_trials = 0;
-
-    //     // For each `n`, test whether the emptiness check
-    //     // fails for `max_trials` rounds
-    //     for n in 0..=ax_depth {
-    //         while num_trials <= max_trials {
-    //             println!("ax_depth n = {}\n", n);
-    //             let (e1, e2) = gen_neq(n, expr_depth, num_fields);
-    //             println!("Checking XOR of {} and {} is non-empty", e1, e2);
-    //             let xor = Expr::xor(e1.clone(), e2.clone());
-    //             println!("XOR result = {}\n", xor);
-    //             let mut aut = Aut::new(num_fields);
-    //             let state = aut.expr_to_state(&xor);
-    //             if !aut.is_empty(state) {
-    //                 println!("Success!\n");
-    //                 num_trials += 1;
-    //             } else {
-    //                 assert!(false, "Failure! Expected XOR result to be non-empty \n");
-    //             }
-    //         }
-    //     }
-    // }
 
     #[test]
     fn fuzz_test() {
@@ -942,6 +901,97 @@ mod tests {
                         e1, e2
                     );
                 }
+            }
+        }
+    }
+
+    /// Regression test: confirms that the emptiness check fails for two terms
+    /// that are not equivalent (taken from a corpus of known inequivalent terms)
+    #[test]
+    fn test_neq() {
+        let num_fields = 3;
+        let non_equivalent_terms = vec![
+            (Expr::complement(Expr::one()), Expr::ltl_next(Expr::top())),
+            (
+                Expr::ltl_until(Expr::dup(), Expr::dup()),
+                Expr::complement(Expr::ltl_until(Expr::top(), Expr::complement(Expr::dup()))),
+            ),
+            (
+                Expr::ltl_until(Expr::top(), Expr::top()),
+                Expr::sequence(Expr::test(2, false), Expr::top()),
+            ),
+            (
+                Expr::star(Expr::zero()),
+                Expr::complement(Expr::assign(1, false)),
+            ),
+            (
+                Expr::union(
+                    Expr::ltl_until(Expr::dup(), Expr::dup()),
+                    Expr::complement(Expr::ltl_until(Expr::top(), Expr::complement(Expr::dup()))),
+                ),
+                Expr::sequence(Expr::top(), Expr::test(0, true)),
+            ),
+            (
+                Expr::star(Expr::one()),
+                Expr::complement(Expr::ltl_until(Expr::top(), Expr::complement(Expr::zero()))),
+            ),
+            (
+                Expr::intersect(
+                    Expr::complement(Expr::ltl_until(
+                        Expr::complement(Expr::end()),
+                        Expr::complement(Expr::zero()),
+                    )),
+                    Expr::ltl_until(Expr::top(), Expr::end()),
+                ),
+                Expr::xor(Expr::top(), Expr::zero()),
+            ),
+            (
+                Expr::complement(Expr::ltl_until(
+                    Expr::complement(Expr::zero()),
+                    Expr::complement(Expr::assign(1, false)),
+                )),
+                Expr::union(Expr::test(0, false), Expr::one()),
+            ),
+            (
+                Expr::ltl_until(Expr::zero(), Expr::top()),
+                Expr::intersect(
+                    Expr::complement(Expr::ltl_until(
+                        Expr::complement(Expr::one()),
+                        Expr::complement(Expr::test(1, false)),
+                    )),
+                    Expr::ltl_until(Expr::top(), Expr::one()),
+                ),
+            ),
+            (
+                Expr::union(Expr::ltl_next(Expr::zero()), Expr::end()),
+                Expr::xor(Expr::one(), Expr::test(1, true)),
+            ),
+            (
+                Expr::sequence(Expr::top(), Expr::assign(1, true)),
+                Expr::ltl_until(Expr::top(), Expr::assign(2, false)),
+            ),
+            (
+                Expr::union(Expr::test(2, false), Expr::one()),
+                Expr::ltl_until(Expr::zero(), Expr::zero()),
+            ),
+            (Expr::top(), Expr::complement(Expr::assign(0, false))),
+        ];
+
+        // For each `n`, test whether the emptiness check
+        // fails for `max_trials` rounds
+        for (e1, e2) in non_equivalent_terms {
+            let xor = Expr::xor(e1.clone(), e2.clone());
+            println!("XOR result = {}\n", xor);
+            let mut aut = Aut::new(num_fields);
+            let state = aut.expr_to_state(&xor);
+            if !aut.is_empty(state) {
+                println!("Success!\n");
+            } else {
+                assert!(
+                    false,
+                    "Failure! Expected XOR of {} and {} to be non-empty \n",
+                    e1, e2
+                );
             }
         }
     }
