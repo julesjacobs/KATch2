@@ -756,8 +756,7 @@ mod tests {
         }
     }
 
-    /// Get QuickCheck to generate non-equivalent terms for us
-    /// TODO: investigate why nothing is printed to stdout when this test runs
+    /// Get QuickCheck to generate non-equivalent NetKAT terms for us
     #[test]
     fn print_non_equivalent_terms() {
         let ax_depth = 2;
@@ -766,15 +765,13 @@ mod tests {
 
         let max_trials = 5;
         for n in 0..=ax_depth {
-            let mut num_trials = 0;
-            while num_trials <= max_trials {
-                let (e1, e2) = genax(n, expr_depth, num_fields);
-                println!("generated {}, {}", e1, e2);
+            for _ in 0..=max_trials {
+                let e1 = gen_random_expr(num_fields, expr_depth);
+                let e2 = gen_random_expr(num_fields, expr_depth);
                 let xor = Expr::xor(e1.clone(), e2.clone());
                 let mut aut = Aut::new(num_fields);
                 let state = aut.expr_to_state(&xor);
                 if !aut.is_empty(state) {
-                    num_trials += 1;
                     println!("{} != {}", e1, e2);
                 }
             }
