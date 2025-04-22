@@ -56,6 +56,15 @@ fn gen_random_expr(num_fields: u32, max_depth: usize) -> Exp {
                 gen_random_expr(num_fields, max_depth - 1),
                 gen_random_expr(num_fields, max_depth - 1),
             ),
+            6 => Expr::ltl_next(gen_random_expr(num_fields, max_depth - 1)),
+            7 => Expr::ltl_until(
+                gen_random_expr(num_fields, max_depth - 1),
+                gen_random_expr(num_fields, max_depth - 1),
+            ),
+            8 => Expr::xor(
+                gen_random_expr(num_fields, max_depth - 1),
+                gen_random_expr(num_fields, max_depth - 1),
+            ),
             _ => unreachable!(),
         }
     }
