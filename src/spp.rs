@@ -539,6 +539,7 @@ impl SPPstore {
         self.mk(x00, x01, x10, x11)
     }
 
+    /// Generates a list containing 100 random SPPs
     #[cfg(test)]
     pub fn some(&mut self) -> Vec<SPP> {
         let mut result = vec![];

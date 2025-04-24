@@ -251,6 +251,15 @@ impl SPstore {
         }
         result
     }
+
+    /// Generates a list containing 100 random SPs
+    pub fn some(&mut self) -> Vec<SP> {
+        let mut result = vec![];
+        for _ in 0..100 {
+            result.push(self.rand());
+        }
+        result
+    }
 }
 
 #[cfg(test)]
