@@ -16,11 +16,11 @@ impl SP {
     pub const fn new(value: u32) -> Self {
         SP(value)
     }
-    
+
     pub fn as_u32(&self) -> u32 {
         self.0
     }
-    
+
     pub fn as_usize(&self) -> usize {
         self.0 as usize
     }
@@ -71,21 +71,18 @@ impl SPstore {
             // We prefill the memo tables with the results of the trivial cases
             // Need to benchmark if this is actually faster than checking these cases in the operations
             union_memo: HashMap::from([
-                ((SP::new(0), SP::new(0)), SP::new(0)), 
-                ((SP::new(0), SP::new(1)), SP::new(1)), 
-                ((SP::new(1), SP::new(0)), SP::new(1)), 
-                ((SP::new(1), SP::new(1)), SP::new(1))
+                ((SP::new(0), SP::new(0)), SP::new(0)),
+                ((SP::new(0), SP::new(1)), SP::new(1)),
+                ((SP::new(1), SP::new(0)), SP::new(1)),
+                ((SP::new(1), SP::new(1)), SP::new(1)),
             ]),
             intersect_memo: HashMap::from([
-                ((SP::new(0), SP::new(0)), SP::new(0)), 
-                ((SP::new(0), SP::new(1)), SP::new(0)), 
-                ((SP::new(1), SP::new(0)), SP::new(0)), 
-                ((SP::new(1), SP::new(1)), SP::new(1))
+                ((SP::new(0), SP::new(0)), SP::new(0)),
+                ((SP::new(0), SP::new(1)), SP::new(0)),
+                ((SP::new(1), SP::new(0)), SP::new(0)),
+                ((SP::new(1), SP::new(1)), SP::new(1)),
             ]),
-            complement_memo: HashMap::from([
-                (SP::new(0), SP::new(1)), 
-                (SP::new(1), SP::new(0))
-            ]),
+            complement_memo: HashMap::from([(SP::new(0), SP::new(1)), (SP::new(1), SP::new(0))]),
             ifelse_memo: HashMap::new(),
         };
         store.zero = store.zero();
@@ -129,12 +126,19 @@ impl SPstore {
         sp
     }
 
+    /// Generates a random SP with `num_vars` variables
     pub fn rand(&mut self) -> SP {
         self.rand_helper(self.num_vars)
     }
+
+    /// Helper function for `rand`: generates a random SP with a certain `depth`
     fn rand_helper(&mut self, depth: Var) -> SP {
         if depth == 0 {
-            return if rand::random::<bool>() { SP::new(0) } else { SP::new(1) };
+            return if rand::random::<bool>() {
+                SP::new(0)
+            } else {
+                SP::new(1)
+            };
         }
         let x0 = self.rand_helper(depth - 1);
         let x1 = self.rand_helper(depth - 1);
@@ -228,9 +232,12 @@ impl SPstore {
         }
     }
 
+    /// Enumerates all possible SPs with `num_vars` fields
     pub fn all(&mut self) -> Vec<SP> {
         return self.all_helper(self.num_vars);
     }
+
+    /// Helper function for `all`: enumerates all SPs with `depth` fields
     pub fn all_helper(&mut self, depth: Var) -> Vec<SP> {
         if depth == 0 {
             return vec![SP::new(0), SP::new(1)];
