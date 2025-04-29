@@ -197,7 +197,7 @@ pub fn genax(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) 
         // Number of recursive calls
         0 => {
             // --- PA Axioms --- (No recursive calls needed)
-            match rand::random_range(0..8) {
+            match rand::random_range(0..9) {
                 0 => {
                     // PA-MOD-MOD-COMM: `xi <- v . xj <- v' = xj <- v' . xi <- v`
                     let (xi, xj) = get_distinct_fields(num_fields);
@@ -270,6 +270,15 @@ pub fn genax(ax_depth: usize, expr_depth: usize, num_fields: u32) -> (Exp, Exp) 
                         Expr::union(Expr::test(xi, false), Expr::test(xi, true)),
                         Expr::one(),
                     );
+                }
+                8 => {
+                    // ⊤ = End; (Dup; End)*
+                    let lhs = Expr::top();
+                    let rhs = Expr::sequence(
+                        Expr::end(),
+                        Expr::star(Expr::sequence(Expr::dup(), Expr::end())),
+                    );
+                    return (lhs, rhs);
                 }
                 _ => unreachable!(),
             }
@@ -782,7 +791,7 @@ mod tests {
         let num_fields = 3;
 
         // Max no. of trials to run
-        let max_trials = 5000;
+        let max_trials = 10000;
         let mut num_trials = 0;
 
         // For each `n`, test whether the emptiness check
@@ -819,7 +828,7 @@ mod tests {
         let num_fields = 3;
 
         // Max no. of trials to run
-        let max_trials = 5000;
+        let max_trials = 10000;
         let mut num_trials = 0;
 
         // For each `n`, test whether the emptiness check
