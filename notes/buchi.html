@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Omega Regex to Büchi Automaton</title>
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <style>
+        body { font-family: sans-serif; margin: 20px; }
+        #network { width: 100%; height: 500px; border: 1px solid lightgray; }
+        textarea { width: 100%; min-height: 60px; margin-bottom: 10px; box-sizing: border-box; }
+        button { padding: 10px 15px; }
+        pre { background-color: #f0f0f0; padding: 10px; border-radius: 5px; }
+        .error { color: red; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>Omega Regular Expression to Büchi Automaton</h1>
+    <p>Enter an omega regular expression of the form <code>U(V)^omega</code> or <code>UV^omega</code> (e.g., <code>a(bc)^omega</code>, <code>(a|b)^*c^omega</code>, <code>x^omega</code>). Use <code>eps</code> or <code>epsilon</code> for the empty string.</p>
+    <textarea id="regexInput" placeholder="e.g., a(b|c)^omega"></textarea>
+    <button onclick="convertORE()">Convert to Büchi Automaton</button>
+    <div id="messageArea"></div>
+    <div id="network"></div>
+
+    <script>
+        const EPSILON = 'ε'; // Using Greek epsilon for display
+        let stateCounter = 0;
+
+        function newState() {
+            return stateCounter++;
+        }
+
+        // --- 1. Shunting-Yard Algorithm (Infix to Postfix) ---
+        function preprocessRegex(regex) {
+            let output = '';
+            for (let i = 0; i < regex.length; i++) {
+                output += regex[i];
+                if (i < regex.length - 1) {
+                    const char1 = regex[i];
+                    const char2 = regex[i+1];
+                    // Insert explicit concatenation operator '.'
+                    if ( (isLiteral(char1) || char1 === ')' || char1 === '*') &&
+                         (isLiteral(char2) || char2 === '(') ) {
+                        output += '.';
+                    }
+                }
+            }
+            return output;
+        }
+
+        function isLiteral(char) {
+            return /^[a-zA-Z0-9]$/.test(char) || char === EPSILON;
+        }
+
+        function getPrecedence(op) {
+            if (op === '|') return 1;
+            if (op === '.') return 2; // Concatenation
+            if (op === '*') return 3; // Kleene star
+            return 0;
+        }
+
+        function infixToPostfix(infix) {
+            infix = infix.replace(/epsilon/g, EPSILON).replace(/eps/g, EPSILON);
+            infix = preprocessRegex(infix);
+            
+            const outputQueue = [];
+            const operatorStack = [];
+
+            for (const token of infix) {
+                if (isLiteral(token)) {
+                    outputQueue.push(token);
+                } else if (token === '(') {
+                    operatorStack.push(token);
+                } else if (token === ')') {
+                    while (operatorStack.length > 0 && operatorStack[operatorStack.length - 1] !== '(') {
+                        outputQueue.push(operatorStack.pop());
+                    }
+                    if (operatorStack.length === 0 || operatorStack[operatorStack.length - 1] !== '(') {
+                        throw new Error("Mismatched parentheses in regex.");
+                    }
+                    operatorStack.pop(); // Pop '('
+                } else { // Operator
+                    while (operatorStack.length > 0 &&
+                           operatorStack[operatorStack.length - 1] !== '(' &&
+                           getPrecedence(operatorStack[operatorStack.length - 1]) >= getPrecedence(token)) {
+                        outputQueue.push(operatorStack.pop());
+                    }
+                    operatorStack.push(token);
+                }
+            }
+
+            while (operatorStack.length > 0) {
+                if (operatorStack[operatorStack.length - 1] === '(') {
+                    throw new Error("Mismatched parentheses in regex.");
+                }
+                outputQueue.push(operatorStack.pop());
+            }
+            return outputQueue;
+        }
+
+        // --- 2. Postfix to NFA (Thompson's Construction) ---
+        // NFA fragment: { start, end, transitions, states }
+        function postfixToNfa(postfix) {
+            const nfaStack = [];
+            let localStateCounterOffset = stateCounter; // Use global stateCounter for unique states across U and V NFAs
+
+            for (const token of postfix) {
+                if (isLiteral(token)) {
+                    const s0 = newState();
+                    const s1 = newState();
+                    nfaStack.push({
+                        start: s0,
+                        end: s1,
+                        transitions: [{ from: s0, to: s1, on: token }],
+                        states: new Set([s0, s1])
+                    });
+                } else if (token === '.') { // Concatenation
+                    if (nfaStack.length < 2) throw new Error("Invalid regex for concatenation.");
+                    const nfa2 = nfaStack.pop();
+                    const nfa1 = nfaStack.pop();
+                    // Connect end of nfa1 to start of nfa2 with epsilon
+                    nfa1.transitions.push({ from: nfa1.end, to: nfa2.start, on: EPSILON });
+                    const combinedStates = new Set([...nfa1.states, ...nfa2.states]);
+                    nfaStack.push({
+                        start: nfa1.start,
+                        end: nfa2.end,
+                        transitions: nfa1.transitions.concat(nfa2.transitions),
+                        states: combinedStates
+                    });
+                } else if (token === '|') { // Union
+                    if (nfaStack.length < 2) throw new Error("Invalid regex for union.");
+                    const nfa2 = nfaStack.pop();
+                    const nfa1 = nfaStack.pop();
+                    const s0 = newState();
+                    const s1 = newState();
+                    const transitions = [
+                        { from: s0, to: nfa1.start, on: EPSILON },
+                        { from: s0, to: nfa2.start, on: EPSILON },
+                        { from: nfa1.end, to: s1, on: EPSILON },
+                        { from: nfa2.end, to: s1, on: EPSILON }
+                    ].concat(nfa1.transitions, nfa2.transitions);
+                    const combinedStates = new Set([...nfa1.states, ...nfa2.states, s0, s1]);
+                    nfaStack.push({
+                        start: s0,
+                        end: s1,
+                        transitions: transitions,
+                        states: combinedStates
+                    });
+                } else if (token === '*') { // Kleene Star
+                    if (nfaStack.length < 1) throw new Error("Invalid regex for Kleene star.");
+                    const nfa = nfaStack.pop();
+                    const s0 = newState();
+                    const s1 = newState();
+                    const transitions = [
+                        { from: s0, to: nfa.start, on: EPSILON },
+                        { from: nfa.end, to: s1, on: EPSILON },
+                        { from: nfa.end, to: nfa.start, on: EPSILON }, // Loop back
+                        { from: s0, to: s1, on: EPSILON } // Skip
+                    ].concat(nfa.transitions);
+                    const combinedStates = new Set([...nfa.states, s0, s1]);
+                    nfaStack.push({
+                        start: s0,
+                        end: s1,
+                        transitions: transitions,
+                        states: combinedStates
+                    });
+                }
+            }
+
+            if (nfaStack.length !== 1) throw new Error("Invalid postfix expression processed.");
+            const finalNfaFragment = nfaStack[0];
+            
+            // Consolidate into a more standard NFA structure
+            return {
+                initialState: finalNfaFragment.start,
+                finalStates: new Set([finalNfaFragment.end]),
+                states: finalNfaFragment.states,
+                transitions: finalNfaFragment.transitions,
+                alphabet: new Set(finalNfaFragment.transitions.map(t => t.on).filter(s => s !== EPSILON))
+            };
+        }
+        
+        // Helper for empty regex (epsilon NFA)
+        function createEpsilonNfa() {
+            const s0 = newState();
+            const s1 = newState();
+            return {
+                initialState: s0,
+                finalStates: new Set([s1]),
+                states: new Set([s0, s1]),
+                transitions: [{ from: s0, to: s1, on: EPSILON }],
+                alphabet: new Set()
+            };
+        }
+
+
+        // --- 3. ORE Parser and Büchi Automaton Construction ---
+        function oreToBuchi(oreString) {
+            stateCounter = 0; // Reset global state counter for each conversion
+            let u_regex_str = "";
+            let v_regex_str = "";
+
+            const omegaKeyword = "^omega";
+            const omegaIndex = oreString.lastIndexOf(omegaKeyword);
+
+            if (omegaIndex === -1) {
+                throw new Error(`Expression must contain '${omegaKeyword}'. Form: U(V)${omegaKeyword} or UV${omegaKeyword}.`);
+            }
+
+            const partBeforeOmega = oreString.substring(0, omegaIndex);
+            
+            // Try to parse V: could be (complex_expr) or simple_literal
+            let vPartStartIndex = -1;
+            if (partBeforeOmega.endsWith(")")) {
+                let balance = 0;
+                for (let i = partBeforeOmega.length - 1; i >= 0; i--) {
+                    if (partBeforeOmega[i] === ')') balance++;
+                    else if (partBeforeOmega[i] === '(') balance--;
+                    if (balance === 0 && partBeforeOmega[i] === '(') {
+                        vPartStartIndex = i;
+                        break;
+                    }
+                }
+                if (vPartStartIndex === -1) throw new Error("Mismatched parentheses for V part.");
+                v_regex_str = partBeforeOmega.substring(vPartStartIndex + 1, partBeforeOmega.length - 1);
+                u_regex_str = partBeforeOmega.substring(0, vPartStartIndex);
+
+            } else { // V is a simple literal (or sequence of literals, if no operators)
+                // This is a simplification: assumes V is a single literal if not parenthesized
+                // A more robust parser would be needed for V like "ab" in "c(ab)^omega" vs "cab^omega"
+                // For now, let's assume if not '()', V is the last non-operator char sequence.
+                // Find last operator or start of string for U/V split. This is tricky.
+                // A simpler approach for demo: if last char before ^omega is literal, that's V.
+                let lastCharIndex = partBeforeOmega.length - 1;
+                if (lastCharIndex < 0) throw new Error("V part cannot be empty before ^omega.");
+                
+                // A very basic heuristic for V as a single char or 'eps'/'epsilon'
+                const potentialV = partBeforeOmega.substring(lastCharIndex); // Single char
+                const potentialVLonger = partBeforeOmega.substring(Math.max(0, partBeforeOmega.length - "epsilon".length));
+
+                if (isLiteral(partBeforeOmega[lastCharIndex]) && !['(','*','|','.'].includes(partBeforeOmega[lastCharIndex])) {
+                     v_regex_str = partBeforeOmega[lastCharIndex];
+                     u_regex_str = partBeforeOmega.substring(0, lastCharIndex);
+                } else if (potentialVLonger.toLowerCase() === "epsilon" || potentialVLonger.toLowerCase() === "eps") {
+                     v_regex_str = potentialVLonger;
+                     u_regex_str = partBeforeOmega.substring(0, partBeforeOmega.length - potentialVLonger.length);
+                }
+                else {
+                     throw new Error("V part must be a literal or parenthesized expression, e.g., a^omega or (ab)^omega");
+                }
+
+            }
+            
+            if (v_regex_str.trim() === "" || v_regex_str.toLowerCase() === "eps" || v_regex_str.toLowerCase() === "epsilon") {
+                throw new Error("The V part of V^omega must represent a language containing at least one non-empty word.");
+            }
+
+
+            let nfaU, nfaV;
+            if (u_regex_str.trim() === "" || u_regex_str.toLowerCase() === "eps" || u_regex_str.toLowerCase() === "epsilon") {
+                nfaU = createEpsilonNfa(); // U is effectively epsilon
+            } else {
+                const u_postfix = infixToPostfix(u_regex_str);
+                nfaU = postfixToNfa(u_postfix);
+            }
+
+            const v_postfix = infixToPostfix(v_regex_str);
+            nfaV = postfixToNfa(v_postfix); // stateCounter continues from nfaU
+
+            // Combine NFAs into a Büchi Automaton
+            const buchiStates = new Set([...nfaU.states, ...nfaV.states]);
+            const buchiInitialState = nfaU.initialState;
+            // Accepting states for Büchi: the initial state of NFA_V.
+            // This signifies starting an iteration of V.
+            const buchiAcceptingStates = new Set([nfaV.initialState]); 
+            
+            let buchiTransitions = [...nfaU.transitions, ...nfaV.transitions];
+            
+            // Connect final states of U to initial state of V
+            for (const finalU of nfaU.finalStates) {
+                buchiTransitions.push({ from: finalU, to: nfaV.initialState, on: EPSILON });
+            }
+
+            // Loop final states of V back to initial state of V
+            for (const finalV of nfaV.finalStates) {
+                buchiTransitions.push({ from: finalV, to: nfaV.initialState, on: EPSILON });
+            }
+            
+            const buchiAlphabet = new Set([...nfaU.alphabet, ...nfaV.alphabet]);
+
+            return {
+                initialState: buchiInitialState,
+                acceptingStates: buchiAcceptingStates,
+                states: buchiStates,
+                transitions: buchiTransitions,
+                alphabet: buchiAlphabet,
+                nfaU_states: nfaU.states, // For coloring
+                nfaV_states: nfaV.states  // For coloring/identifying accepting part
+            };
+        }
+
+        // --- 4. Visualization ---
+        let network = null;
+        function drawAutomaton(buchiAutomaton) {
+            const nodes = [];
+            buchiAutomaton.states.forEach(stateId => {
+                let color = '#97C2FC'; // Default (U part or general)
+                let shape = 'ellipse';
+                let borderWidth = 1;
+
+                if (buchiAutomaton.acceptingStates.has(stateId)) {
+                    color = '#FFD700'; // Gold for accepting states
+                    // Make accepting states visually distinct (e.g. double border in NFA, here just color)
+                    // Vis.js doesn't directly support double border on ellipse, use shape or color
+                    shape = 'ellipse'; // Could use 'diamond', 'star' etc.
+                }
+                if (stateId === buchiAutomaton.initialState) {
+                    // color = '#90EE90'; // Light green for initial, might override accepting color
+                    borderWidth = 3; // Thicker border for initial state
+                }
+
+                nodes.push({
+                    id: stateId,
+                    label: 'q' + stateId,
+                    color: color,
+                    shape: shape,
+                    borderWidth: borderWidth
+                });
+            });
+
+            const edges = [];
+            buchiAutomaton.transitions.forEach((trans, index) => {
+                edges.push({
+                    id: `e${index}`,
+                    from: trans.from,
+                    to: trans.to,
+                    label: trans.on,
+                    arrows: 'to',
+                    font: {align: 'horizontal'} // align: 'top', 'middle', 'bottom', 'horizontal'
+                });
+            });
+            
+            // Create an invisible node for initial state arrow
+            if (nodes.find(n => n.id === buchiAutomaton.initialState)) { // if initial state exists
+                const initArrowNodeId = stateCounter++; // A new unique ID
+                nodes.push({id: initArrowNodeId, label: '', shape: 'text', hidden: true }); // invisible
+                edges.push({
+                    id: `init_arrow`,
+                    from: initArrowNodeId,
+                    to: buchiAutomaton.initialState,
+                    arrows: 'to',
+                    color: {color: 'black', highlight: 'black'},
+                    length: 50 // Adjust as needed
+                });
+            }
+
+
+            const container = document.getElementById('network');
+            const data = { nodes: new vis.DataSet(nodes), edges: new vis.DataSet(edges) };
+            const options = {
+                layout: {
+                    hierarchical: {
+                        enabled: false, // Set to true for hierarchical layout if preferred
+                        direction: 'LR', // Left to Right
+                        sortMethod: 'directed'
+                    }
+                },
+                edges: {
+                    smooth: {
+                        type: 'curvedCW', // Makes parallel edges more visible
+                        roundness: 0.2
+                    },
+                    font: {
+                       size: 14,
+                       strokeWidth: 0 // no border around text
+                    }
+                },
+                nodes: {
+                    font: {
+                        size: 16
+                    }
+                },
+                physics: {
+                  enabled: true, // Turn off for faster rendering of large graphs if needed
+                  solver: 'barnesHut', // 'forceAtlas2Based' is another good one
+                  barnesHut: {
+                    gravitationalConstant: -3000, // Adjust for spread
+                    springLength: 150,
+                    springConstant: 0.05
+                  }
+                },
+                interaction: {
+                    dragNodes: true,
+                    dragView: true,
+                    zoomView: true
+                }
+            };
+
+            if (network) {
+                network.destroy();
+            }
+            network = new vis.Network(container, data, options);
+        }
+
+        function convertORE() {
+            const oreString = document.getElementById('regexInput').value.trim();
+            const messageArea = document.getElementById('messageArea');
+            messageArea.innerHTML = ''; // Clear previous messages
+
+            if (!oreString) {
+                messageArea.innerHTML = '<p class="error">Please enter an omega regular expression.</p>';
+                if (network) network.destroy();
+                document.getElementById('network').innerHTML = '';
+                return;
+            }
+
+            try {
+                const buchi = oreToBuchi(oreString);
+                drawAutomaton(buchi);
+                messageArea.innerHTML = `<p>Büchi Automaton generated for: <code>${oreString}</code></p>
+                                         <p>Initial state: q${buchi.initialState}</p>
+                                         <p>Accepting state(s) (must be visited infinitely often): {${Array.from(buchi.acceptingStates).map(s => 'q'+s).join(', ')}}</p>
+                                         <p><small>Note: Gold states are Büchi accepting states. States with thicker borders are initial states.</small></p>`;
+            } catch (e) {
+                console.error("Conversion Error:", e);
+                messageArea.innerHTML = `<p class="error">Error: ${e.message}</p>`;
+                if (network) network.destroy();
+                document.getElementById('network').innerHTML = '';
+            }
+        }
+
+        // Example on load
+        // document.getElementById('regexInput').value = "a(b|c)^*d^omega";
+        // convertORE();
+
+    </script>
+</body>
+</html>
