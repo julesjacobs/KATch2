@@ -15,7 +15,7 @@ mod parser;
 mod pre;
 mod sp;
 mod spp;
-mod ui;
+// mod ui; // ui.rs is kept but not used by main.rs for now
 mod viz;
 /// KATch2: A symbolic automata toolkit for NetKAT expressions
 #[derive(Parser, Debug)]
@@ -27,13 +27,13 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    /// Run the interactive web UI
-    #[command(name = "webui")]
-    WebUI {
-        /// Port to run the web server on
-        #[arg(short, long, default_value = "8080")]
-        port: u16,
-    },
+    // /// Run the interactive web UI
+    // #[command(name = "webui")]
+    // WebUI {
+    //     /// Port to run the web server on
+    //     #[arg(short, long, default_value = "8080")]
+    //     port: u16,
+    // },
 
     /// Parse and process NetKAT expressions from a file or directory
     Parse {
@@ -47,13 +47,13 @@ async fn main() {
     let cli = Cli::parse();
 
     match &cli.command {
-        Commands::WebUI { port } => {
-            println!("Starting web UI server on port {}", port);
-            if let Err(e) = ui::start_ui(*port).await {
-                eprintln!("Error running web server: {}", e);
-                std::process::exit(1);
-            }
-        }
+        // Commands::WebUI { port } => {
+        //     println!("Starting web UI server on port {}", port);
+        //     if let Err(e) = ui::start_ui(*port).await {
+        //         eprintln!("Error running web server: {}", e);
+        //         std::process::exit(1);
+        //     }
+        // }
         Commands::Parse { path } => {
             // Traditional file processing mode
             if !path.exists() {
