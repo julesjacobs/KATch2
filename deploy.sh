@@ -13,6 +13,17 @@ PKG_DIR="$SCRIPT_DIR/pkg"
 
 echo "Deploying KATch2 WASM UI to $TARGET_DIR..."
 
+# Navigate to the script directory (project root) for wasm-pack
+echo "Navigating to project root: $SCRIPT_DIR"
+cd "$SCRIPT_DIR"
+
+# Build the WASM package
+echo "Building WASM package..."
+wasm-pack build --target web
+# If your wasm crate is not at the root, you might need to add a path to wasm-pack build
+# e.g., wasm-pack build path/to/wasm-crate --target web
+# or cd to the crate first.
+
 # Clean previous deployment of these specific subdirectories to avoid stale files
 # This assumes $TARGET_DIR itself should persist if it contains other things.
 # If $TARGET_DIR is exclusively for this app, you could `rm -rf "$TARGET_DIR" && mkdir -p "$TARGET_DIR"` instead.

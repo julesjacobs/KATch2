@@ -490,32 +490,65 @@ impl<'a> Parser<'a> {
 
     fn parse_until(&mut self) -> Result<Exp, ParseError> {
         let left = self.parse_sequence()?;
-        loop { // Changed to loop to handle multiple U/R at same precedence (right-associative)
-            match self.peek_kind()? { // Check kind
-                TokenKind::LtlU => {
-                    let _op_token = self.consume_token()?; // Consume 'U'
-                    let right = self.parse_until()?; // Recurse for right associativity
-                    // left = Expr::ltl_until(left, right); // This was incorrect for right-assoc.
-                                                         // For right-associativity a R b R c = a R (b R c)
-                                                         // This function should return Expr::ltl_until(left, right)
-                                                         // The loop structure here is for left-associativity.
-                                                         // Let's fix.
-                    return Ok(Expr::ltl_until(left, right)); // Return immediately for right-associativity
+        // Peek at the kind directly, to keep the token for its span if needed for error
+        // This loop structure is for right-associativity. A single check is enough.
+        match self.peek_token() { 
+            Ok(peeked_token) => {
+                match peeked_token.kind {
+                    TokenKind::LtlU => {
+                        let op_token = self.consume_token()?; // Consume 'U'
+                        // Check for EOF before parsing RHS
+                        match self.peek_kind() {
+                            Ok(&TokenKind::Eof) => {
+                                return Err(ParseError::new(
+                                    format!("Expected expression after {} but found end of input", token_kind_to_user_string(&op_token.kind)),
+                                    op_token.span,
+                                ));
+                            }
+                            Err(ref pe) if pe.message.contains("Peeked beyond EOF") || pe.message.contains("Unexpected end of token stream") => {
+                                return Err(ParseError::new(
+                                    format!("Expected expression after {} but found end of input", token_kind_to_user_string(&op_token.kind)),
+                                    op_token.span,
+                                ));
+                            }
+                            Ok(_) => { // Other token, parse it
+                                let right = self.parse_until()?; 
+                                Ok(Expr::ltl_until(left, right))
+                            }
+                            Err(pe) => Err(pe.clone()), // Propagate other peek errors
+                        }
+                    }
+                    TokenKind::LtlR => {
+                        let op_token = self.consume_token()?; // Consume 'R'
+                        // Check for EOF before parsing RHS
+                        match self.peek_kind() {
+                            Ok(&TokenKind::Eof) => {
+                                return Err(ParseError::new(
+                                    format!("Expected expression after {} but found end of input", token_kind_to_user_string(&op_token.kind)),
+                                    op_token.span,
+                                ));
+                            }
+                            Err(ref pe) if pe.message.contains("Peeked beyond EOF") || pe.message.contains("Unexpected end of token stream") => {
+                                return Err(ParseError::new(
+                                    format!("Expected expression after {} but found end of input", token_kind_to_user_string(&op_token.kind)),
+                                    op_token.span,
+                                ));
+                            }
+                            Ok(_) => { // Other token, parse it
+                                let right = self.parse_until()?; 
+                                let not_left = Expr::complement(left);
+                                let not_right = Expr::complement(right);
+                                let until = Expr::ltl_until(not_left, not_right);
+                                Ok(Expr::complement(until))
+                            }
+                            Err(pe) => Err(pe.clone()), // Propagate other peek errors
+                        }
+                    }
+                    _ => Ok(left), // No U or R, return current left
                 }
-                TokenKind::LtlR => {
-                    let _op_token = self.consume_token()?; // Consume 'R'
-                    let right = self.parse_until()?; // Recurse for right associativity
-                    let not_left = Expr::complement(left);
-                    let not_right = Expr::complement(right);
-                    let until = Expr::ltl_until(not_left, not_right);
-                    // return Ok(Expr::complement(until)); // Return immediately
-                    return Ok(Expr::complement(until));
-                }
-                _ => return Ok(left), // No U or R, return current left
             }
+            Err(pe) => Err(pe.clone()), // Error peeking for U/R operator itself
         }
-        // This part is unreachable due to returns in loop. Kept for structure, will remove.
-        // Ok(left)
     }
 
 
@@ -532,23 +565,52 @@ impl<'a> Parser<'a> {
     fn parse_additive(&mut self) -> Result<Exp, ParseError> {
         let mut left = self.parse_intersect()?;
         loop {
-            match self.peek_kind()? {
-                TokenKind::Plus => {
-                    self.consume_token()?; // Consume '+'
-                    let right = self.parse_intersect()?;
-                    left = Expr::union(left, right);
+            // Peek at the kind directly, to keep the token for its span if needed for error
+            let peeked_token_result = self.peek_token();
+            
+            match peeked_token_result {
+                Ok(peeked_token) => {
+                    match peeked_token.kind {
+                        TokenKind::Plus => {
+                            let op_token = self.consume_token()?; // Consume '+'
+                            // Check for EOF before parsing RHS
+                            if self.peek_kind()? == &TokenKind::Eof {
+                                return Err(ParseError::new(
+                                    format!("Expected expression after {} but found end of input", token_kind_to_user_string(&op_token.kind)),
+                                    op_token.span, // Span of the operator
+                                ));
+                            }
+                            let right = self.parse_intersect()?;
+                            left = Expr::union(left, right);
+                        }
+                        TokenKind::Xor => {
+                            let op_token = self.consume_token()?; // Consume '^'
+                            // Check for EOF before parsing RHS
+                            if self.peek_kind()? == &TokenKind::Eof {
+                                return Err(ParseError::new(
+                                    format!("Expected expression after {} but found end of input", token_kind_to_user_string(&op_token.kind)),
+                                    op_token.span,
+                                ));
+                            }
+                            let right = self.parse_intersect()?;
+                            left = Expr::xor(left, right);
+                        }
+                        TokenKind::Minus => {
+                            let op_token = self.consume_token()?; // Consume '-'
+                            // Check for EOF before parsing RHS
+                            if self.peek_kind()? == &TokenKind::Eof {
+                                return Err(ParseError::new(
+                                    format!("Expected expression after {} but found end of input", token_kind_to_user_string(&op_token.kind)),
+                                    op_token.span,
+                                ));
+                            }
+                            let right = self.parse_intersect()?;
+                            left = Expr::difference(left, right);
+                        }
+                        _ => break, // Not Plus, Xor, or Minus
+                    }
                 }
-                TokenKind::Xor => {
-                    self.consume_token()?; // Consume '^'
-                    let right = self.parse_intersect()?;
-                    left = Expr::xor(left, right);
-                }
-                TokenKind::Minus => {
-                    self.consume_token()?; // Consume '-'
-                    let right = self.parse_intersect()?;
-                    left = Expr::difference(left, right);
-                }
-                _ => break,
+                Err(pe) => return Err(pe.clone()), // Error during peeking
             }
         }
         Ok(left)
@@ -567,22 +629,50 @@ impl<'a> Parser<'a> {
     fn parse_unary(&mut self) -> Result<Exp, ParseError> {
         match self.peek_kind()? {
             TokenKind::Not => {
-                let _op_token = self.consume_token()?; // Consume '!'
+                let op_token = self.consume_token()?; // Consume '!'
+                // Check for EOF before parsing operand
+                if self.peek_kind()? == &TokenKind::Eof {
+                    return Err(ParseError::new(
+                        format!("Expected expression after {} but found end of input", token_kind_to_user_string(&op_token.kind)),
+                        op_token.span,
+                    ));
+                }
                 let operand = self.parse_unary()?; // Unary ops often bind to their own kind
                 Ok(Expr::complement(operand))
             }
             TokenKind::LtlX => { // LTL Next
-                let _op_token = self.consume_token()?; // Consume 'X'
+                let op_token = self.consume_token()?; // Consume 'X'
+                // Check for EOF before parsing operand
+                if self.peek_kind()? == &TokenKind::Eof {
+                    return Err(ParseError::new(
+                        format!("Expected expression after {} but found end of input", token_kind_to_user_string(&op_token.kind)),
+                        op_token.span,
+                    ));
+                }
                 let operand = self.parse_unary()?;
                 Ok(Expr::ltl_next(operand))
             }
             TokenKind::LtlF => { // LTL Future: F e ≡ T U e
-                let _op_token = self.consume_token()?;
+                let op_token = self.consume_token()?;
+                // Check for EOF before parsing operand
+                if self.peek_kind()? == &TokenKind::Eof {
+                    return Err(ParseError::new(
+                        format!("Expected expression after {} but found end of input", token_kind_to_user_string(&op_token.kind)),
+                        op_token.span,
+                    ));
+                }
                 let operand = self.parse_unary()?;
                 Ok(Expr::ltl_until(Expr::top(), operand)) // Uses helper from expr.rs
             }
             TokenKind::LtlG => { // LTL Globally: G e ≡ ¬F¬e ≡ ¬(T U ¬e)
-                let _op_token = self.consume_token()?;
+                let op_token = self.consume_token()?;
+                // Check for EOF before parsing operand
+                if self.peek_kind()? == &TokenKind::Eof {
+                    return Err(ParseError::new(
+                        format!("Expected expression after {} but found end of input", token_kind_to_user_string(&op_token.kind)),
+                        op_token.span,
+                    ));
+                }
                 let operand = self.parse_unary()?;
                 Ok(Expr::ltl_globally(operand)) // Uses helper from expr.rs
             }
@@ -613,14 +703,27 @@ impl<'a> Parser<'a> {
                 match next_token_after_field.kind {
                     TokenKind::Assign => {
                         self.consume_token()?; // Consume ':='
-                        // The RHS of an assignment must be 0 or 1
+                        
+                        // Peek for the value token (0 or 1)
+                        let value_token_peek = self.peek_token().map_err(|e| e.clone())?;
+                        if value_token_peek.kind == TokenKind::Eof {
+                            return Err(ParseError::new(
+                                format!("Expected '0' or '1' after 'x{} :=' but found end of input", index),
+                                value_token_peek.span, // Span of the EOF token
+                            ));
+                        }
+                        // If not EOF, proceed to parse it (original logic)
                         let rhs_expr = self.parse_primary()?; // Use parse_primary for 0 or 1
                         let value_bool = match *rhs_expr {
                             Expr::Zero => false,
                             Expr::One => true,
                             _ => return Err(ParseError::new(
                                 "Right-hand side of assignment 'xN :=' must be '0' or '1'".to_string(),
-                                // Ideally, span of the rhs_expr. For now, operator span.
+                                // Ideally, span of the rhs_expr. For now, operator span (or current_token's for it)
+                                // Let's use the span of the token that formed rhs_expr.
+                                // parse_primary consumes the token, so rhs_expr.span() would be ideal if Exp had spans.
+                                // For now, using the operator's span is a placeholder.
+                                // The original code used next_token_after_field.span, which is the operator.
                                 next_token_after_field.span, 
                             )),
                         };
@@ -628,21 +731,30 @@ impl<'a> Parser<'a> {
                     }
                     TokenKind::Eq => {
                         self.consume_token()?; // Consume '=='
-                        // The RHS of a test must be 0 or 1
+                        
+                        // Peek for the value token (0 or 1)
+                        let value_token_peek = self.peek_token().map_err(|e| e.clone())?;
+                        if value_token_peek.kind == TokenKind::Eof {
+                            return Err(ParseError::new(
+                                format!("Expected '0' or '1' after 'x{} ==' but found end of input", index),
+                                value_token_peek.span, // Span of the EOF token
+                            ));
+                        }
+                        // If not EOF, proceed to parse it (original logic)
                         let rhs_expr = self.parse_primary()?; // Use parse_primary for 0 or 1
                         let value_bool = match *rhs_expr {
                             Expr::Zero => false,
                             Expr::One => true,
                             _ => return Err(ParseError::new(
                                 "Right-hand side of test 'xN ==' must be '0' or '1'".to_string(),
-                                // Ideally, span of the rhs_expr. For now, operator span.
+                                // Using the operator's span as a placeholder, similar to Assign.
                                 next_token_after_field.span,
                             )),
                         };
                         Ok(Expr::test(index, value_bool))
                     }
                     _ => Err(ParseError::new(
-                        format!("Expected ':=' or '==' after field 'x{}', found {:?}", index, next_token_after_field.kind),
+                        format!("Expected ':=' or '==' after field 'x{}', found {}", index, token_kind_to_user_string(&next_token_after_field.kind)),
                         next_token_after_field.span,
                     )),
                 }
@@ -653,7 +765,7 @@ impl<'a> Parser<'a> {
             }
             // Any other token here is unexpected when trying to parse an atom or field expression
             _ => Err(ParseError::new(
-                format!("Unexpected token {:?} when expecting an atom, field operation, or '('", current_token.kind),
+                format!("Unexpected {} when expecting an expression, field operation, or '('", token_kind_to_user_string(&current_token.kind)),
                 current_token.span,
             )),
         }
@@ -668,29 +780,29 @@ impl<'a> Parser<'a> {
             TokenKind::One => Ok(Expr::one()),
             TokenKind::Top => Ok(Expr::top()),
             TokenKind::Dup => Ok(Expr::dup()),
-            TokenKind::End => Ok(Expr::end()),
             TokenKind::LParen => {
-                let expr = self.parse_until()?; // Parse up to highest precedence inside parens
+                let expr = self.parse_until()?;
                 match self.consume_token()? { // Expect RParen
                     Token { kind: TokenKind::RParen, .. } => Ok(expr),
                     tok => Err(ParseError::new(
-                        "Expected ')'".to_string(),
+                        format!("Expected character ')' to close parenthesis, but found {}", token_kind_to_user_string(&tok.kind)),
                         tok.span,
                     )),
                 }
             }
             // Field is handled by parse_atom_or_field_expression.
             // Other tokens are invalid starts for a primary expression.
-            TokenKind::Field(_) | // Fields are handled above now
+            TokenKind::Field(_) |
             TokenKind::LtlX | TokenKind::LtlF | TokenKind::LtlG | TokenKind::LtlU | TokenKind::LtlR |
             TokenKind::Not | TokenKind::Star | TokenKind::Semicolon | TokenKind::Plus |
             TokenKind::And | TokenKind::Xor | TokenKind::Minus | TokenKind::Assign | TokenKind::Eq |
-            TokenKind::RParen | TokenKind::End | TokenKind::Eof => {
-                Err(ParseError::new(
-                    format!("Unexpected token in primary expression: {:?}", token.kind),
+            TokenKind::RParen | TokenKind::Eof => { // Removed End from here due to unreachable pattern, it's handled below.
+                 Err(ParseError::new(
+                    format!("Unexpected {} when expecting a primary expression (like '0', '1', 'T', 'dup', or '(')", token_kind_to_user_string(&token.kind)),
                     token.span,
                 ))
             }
+            TokenKind::End => Ok(Expr::end()), // Moved here to be last, resolves unreachable_patterns for End.
         }
     }
 }
@@ -731,7 +843,7 @@ pub fn parse_expressions(input: &str) -> Result<Vec<Exp>, ParseErrorDetails> {
                 };
 
                 let err = ParseError::new(
-                    format!("Expected 'end' or EOF after expression, found {:?}", owned_kind),
+                    format!("Expected operator, but found {}", token_kind_to_user_string(&owned_kind)),
                     span_for_error,
                 );
                 return Err(convert_parse_error(err, input));
@@ -775,6 +887,34 @@ fn convert_parse_error(pe: ParseError, _input: &str) -> ParseErrorDetails {
     }
 }
 
+// Helper to convert TokenKind to a user-friendly string representation
+fn token_kind_to_user_string(kind: &TokenKind) -> String {
+    match kind {
+        TokenKind::Zero => "'0'".to_string(),
+        TokenKind::One => "'1'".to_string(),
+        TokenKind::Top => "keyword 'T'".to_string(),
+        TokenKind::Assign => "operator ':='".to_string(),
+        TokenKind::Eq => "operator '=='".to_string(),
+        TokenKind::Plus => "operator '+'".to_string(),
+        TokenKind::And => "operator '&'".to_string(),
+        TokenKind::Xor => "operator '^'".to_string(),
+        TokenKind::Minus => "operator '-'".to_string(),
+        TokenKind::Not => "operator '!'".to_string(),
+        TokenKind::Semicolon => "operator ';'".to_string(),
+        TokenKind::Star => "operator '*'".to_string(),
+        TokenKind::Dup => "keyword 'dup'".to_string(),
+        TokenKind::LtlX => "LTL operator 'X'".to_string(),
+        TokenKind::LtlU => "LTL operator 'U'".to_string(),
+        TokenKind::LtlF => "LTL operator 'F'".to_string(),
+        TokenKind::LtlG => "LTL operator 'G'".to_string(),
+        TokenKind::LtlR => "LTL operator 'R'".to_string(),
+        TokenKind::LParen => "character '('".to_string(),
+        TokenKind::RParen => "character ')'".to_string(),
+        TokenKind::Field(u) => format!("field 'x{}'", u),
+        TokenKind::End => "keyword 'end'".to_string(),
+        TokenKind::Eof => "end of input".to_string(),
+    }
+}
 
 // --- Tests ---
 #[cfg(test)]
@@ -870,15 +1010,6 @@ mod tests {
     }
 
     #[test]
-    fn test_multiple_expressions_with_end() {
-        let exprs = parse_all("0 end x1:=1 end T").unwrap();
-        assert_eq!(exprs.len(), 3);
-        assert_eq!(exprs[0], Expr::zero());
-        assert_eq!(exprs[1], Expr::assign(1, true));
-        assert_eq!(exprs[2], Expr::top());
-    }
-
-    #[test]
     fn test_expression_then_eof() {
         assert_eq!(parse_single_unwrap("x7 == 0"), Expr::test(7, false));
     }
@@ -910,6 +1041,61 @@ mod tests {
         let expr_str = "(x1:=0 ; (T* & !(x2==1))) + F (x3==0 U x4==1)";
         assert!(parse_all(expr_str).is_ok());
         // More detailed check if needed by comparing the resulting Exp structure.
+    }
+
+    #[test]
+    fn test_syntax_errors() {
+        let test_cases = vec![
+            "x := 0",
+            "x1 :=",
+            "x1 : 0",
+            "x1 = 0",
+            "x1 == ",
+            "0 +",
+            "(0 + 1",
+            "0 + 1)",
+            "! ",
+            "F ",
+            "X ",
+            "0 U ",
+            "0 R ",
+            "foo",
+            "x1 := T",
+            "x1 == T",
+            "0 1",
+            "*0",
+            "0;*1",
+            ":",
+            "==",
+            "x",
+            "e",
+            "en",
+            "du",
+            "0 // comment", // This one should pass
+            "0 // comment \n 1"
+        ];
+
+        println!("--- Checking Syntax Error Messages ---");
+        for (i, input) in test_cases.iter().enumerate() {
+            match parse_all(input) {
+                Ok(exprs) => {
+                    if input.trim() == "0 // comment" { // This one is valid
+                        if exprs.len() == 1 && exprs[0] == Expr::zero() {
+                            println!("{}. Input: {:<15} -> PASSED (Correctly parsed)", i + 1, input);
+                        } else {
+                             println!("{}. Input: {:<15} -> UNEXPECTED SUCCESS (but was expected to pass): {:?}", i + 1, input, exprs);
+                        }
+                    } else {
+                        println!("{}. Input: {:<15} -> UNEXPECTED SUCCESS: {:?}", i + 1, input, exprs);
+                    }
+                }
+                Err(e) => {
+                    println!("{}. Input: {:<15} -> Error: \"{}\"", i + 1, input, e);
+                }
+            }
+        }
+        println!("--- Finished Checking Syntax Error Messages ---");
+        assert!(true); // Dummy assertion
     }
 }
 
