@@ -83,7 +83,7 @@ async function run() {
         });
 
         const editor = monacoInstance.editor.create(editorContainer, {
-            value: '// Example NetKAT expression\nx0:=0; x1:=0; ((x0==0; x0:=1 + x0==1; x1:=1); dup)*; x0==0; x1==1', // Initial value with a comment
+            value: '// Example NetKAT expression\nx0:=0; x1:=0;\n((x0==0; x0:=1 + x0==1; x1:=1); dup)*;\nx0==0; x1==1', // Initial value with a comment
             language: 'netkat',
             automaticLayout: true,
             minimap: { enabled: false },
