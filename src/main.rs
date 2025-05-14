@@ -7,6 +7,7 @@ use expr::Expr;
 use std::fs;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
+use regex::Regex;
 
 mod aut;
 mod expr;
@@ -42,8 +43,8 @@ enum Commands {
     },
 }
 
-#[tokio::main]
-async fn main() {
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> std::io::Result<()> {
     let cli = Cli::parse();
 
     match &cli.command {
@@ -74,6 +75,7 @@ async fn main() {
             }
         }
     }
+    Ok(())
 }
 
 fn process_directory(dir_path: &Path) {

@@ -3,37 +3,129 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Katch2 WASM UI - Expression Analyzer</title>
+    <title>KATch2 WASM UI</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.23.0/min/vs/editor/editor.main.css">
     <style>
-        body { font-family: sans-serif; margin: 20px; background-color: #f0f2f5; color: #333; display: flex; flex-direction: column; align-items: center; }
-        .container { background-color: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); width: 100%; max-width: 600px; }
-        h1 { color: #1a73e8; text-align: center;}
-        label { display: block; margin-bottom: 8px; font-weight: bold; color: #5f6368; }
-        input[type="text"] { width: calc(100% - 22px); padding: 10px; margin-bottom: 20px; border: 1px solid #dadce0; border-radius: 4px; font-size: 16px; }
-        input[type="text"]:focus { border-color: #1a73e8; outline: none; box-shadow: 0 0 0 2px rgba(26,115,232,0.2); }
-        .output-area { margin-top: 15px; padding: 15px; border: 1px solid #e0e0e0; border-radius: 4px; background-color: #f9f9f9; min-height: 50px; }
-        .output-area p { margin: 5px 0; }
-        #status { font-weight: bold; }
-        #errors { color: #d93025; font-style: italic; }
-        .initial-message { color: #5f6368; text-align: center; margin-bottom: 20px;}
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f6f8;
+            color: #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .container {
+            background-color: #fff;
+            padding: 25px;
+            border-radius: 8px;
+            box-shadow: 0 6px 12px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 850px; /* Increased width */
+            display: flex;
+            flex-direction: column;
+        }
+        h1 {
+            color: #000; /* Darker, more professional blue */
+            text-align: center;
+            margin-top: 0;
+            margin-bottom: 20px;
+            font-size: 1.8em;
+        }
+        h1 img {
+            vertical-align: middle;
+            margin-right: -50px;
+            margin-bottom: -10px;
+            width: 100px;
+            height: 100px;
+        }
+        .initial-message {
+            color: #555;
+            text-align: center;
+            margin-bottom: 25px;
+            font-size: 0.95em;
+        }
+        #editorContainer {
+            width: 100%;
+            height: 350px; /* Slightly taller editor */
+            /* border: 1px solid #f0f0f0; */ /* Removed - will control via theme or let shadow define edge */
+            border: none; /* Let's try explicitly removing it */
+            border-radius: 4px; /* Rounded corners for editor */
+            margin-bottom: 20px;
+            box-shadow: 0 3px 7px rgba(0,0,0,0.15); /* Stronger, slightly larger shadow */
+            overflow: hidden; /* Ensure child elements respect the border radius */
+        }
+        .output-area {
+            margin-top: 20px; /* Keep some space */
+            padding: 12px 15px; /* Adjust padding */
+            border: 1px solid #ddd; /* Default border */
+            border-left-width: 5px; /* Add a thicker left border for emphasis */
+            border-radius: 4px;
+            background-color: #f9fafb;
+            width: 100%; 
+            box-sizing: border-box; 
+            transition: border-color 0.3s ease-in-out, color 0.3s ease-in-out; /* Smooth transition for border and text color */
+        }
+        .output-area p#analysisResultText { /* Style the paragraph directly */
+            margin: 0; /* Remove default paragraph margin */
+            font-size: 0.95em; /* Slightly larger font */
+            line-height: 1.6; /* Better line spacing */
+            font-weight: 500; /* Slightly bolder text for readability */
+        }
+        /* CSS classes for dynamic styling */
+        .analysis-success {
+            border-left-color: #27ae60 !important; /* Green left border for success */
+        }
+        .analysis-success p#analysisResultText {
+            color: #1a7441 !important; /* Darker green text for success */
+        }
+        .analysis-error {
+            border-left-color: #c0392b !important; /* Red left border for error */
+        }
+        .analysis-error p#analysisResultText {
+            color: #a32317 !important; /* Darker red text for error */
+        }
+        .analysis-neutral {
+            border-left-color: #7f8c8d !important; /* Grey left border for neutral/waiting */
+        }
+        .analysis-neutral p#analysisResultText {
+             color: #555 !important; /* Default text color for neutral */
+        }
+        /* Remove #status and #errors specific styles */
+        /*
+        #status {
+            font-weight: bold;
+            color: #27ae60; 
+        }
+        #errors {
+            color: #c0392b; 
+            font-style: italic;
+        }
+        #errors:empty::before {
+            content: "None";
+            color: #777;
+            font-style: normal;
+        }
+        */
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>NetKAT Expression Analyzer</h1>
-        <p class="initial-message">Enter a NetKAT expression below. The status and syntax errors will update live.</p>
+        <h1>
+            <img src="katch2-logo-black.png" alt="KATch2 Logo">
+            KATch<sup style="font-size: 0.6em">2</sup> NetKAT Analyzer
+        </h1>
+        
+        <p class="initial-message">Enter a NetKAT expression into the editor below. The emptiness analysis will be done as you type.</p>
 
-        <div>
-            <label for="expressionInput">Expression:</label>
-            <input type="text" id="expressionInput" placeholder="e.g., (srcip=1.2.3.4 ; dstport=80) + (srcip=5.6.7.8 ; azione=drop)">
-        </div>
-
-        <div class="output-area">
-            <p>Status: <span id="status">Waiting for input...</span></p>
-            <p>Syntax Errors: <span id="errors">None</span></p>
+        <div id="editorContainer" style="width: 100%; height: 200px; border: 1px solid grey;"></div>
+        <div class="output-area analysis-neutral" id="outputArea">
+            <p id="analysisResultText"><strong>Analysis:</strong> Waiting for input...</p>
         </div>
     </div>
 
-    <script type="module" src="./main.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.23.0/min/vs/loader.min.js"></script>
+    <script type="module" src="main.js"></script>
 </body>
 </html> 

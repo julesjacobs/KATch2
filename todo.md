@@ -41,6 +41,9 @@
 **IV. Integration and Refinement**
     *   [x] In `wasm-ui/main.js`, call the `analyze_expression` WASM function whenever the input changes.
     *   [x] Use the returned result to update the status and error display elements on the webpage.
-    *   [ ] Ensure the live updates are working correctly and efficiently.
+    *   [x] Monaco Editor Integration:
+        *   [x] Modify `index.html` to include the Monaco editor (remove old input, add container div, add script tags for loader).
+        *   [x] Modify `main.js` to initialize the Monaco editor.
+        *   [x] Update `main.js` to get the expression from Monaco and listen to its content change events.
     *   [ ] Add basic styling to the HTML elements for better presentation.
     *   [ ] Perform thorough testing with various expressions, including valid ones, invalid ones, empty ones, and non-empty ones. 

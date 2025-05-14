@@ -11,11 +11,13 @@ pub mod sp;
 pub mod spp;
 pub mod viz;
 
+/// The result of analyzing a NetKAT expression.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct AnalysisResult {
-    pub status: String, 
-    pub error_message: Option<String>,
-    // pub parsed_expression: Option<String>, // Can be added later
+    pub status: String,            // e.g., "Empty", "Non-empty", "Syntax Error"
+    pub error: Option<parser::ParseErrorDetails>, // Contains error message and optional span
+    // We could also include the string representation of the parsed expression here if useful
+    // pub parsed_expr_string: Option<String>,
 }
 
 #[wasm_bindgen]
@@ -32,44 +34,50 @@ pub fn init_panic_hook() {
 pub fn analyze_expression(expr_str: &str) -> JsValue {
     if expr_str.trim().is_empty() {
         return serde_wasm_bindgen::to_value(&AnalysisResult {
-            status: "Waiting for input...".to_string(),
-            error_message: None,
-        }).unwrap_or(JsValue::NULL);
+            status: "Empty (no input)".to_string(),
+            error: None,
+        })
+        .unwrap();
     }
 
     match parser::parse_expressions(expr_str) {
         Ok(expressions) => {
             if expressions.is_empty() {
+                // This case should ideally be handled by the parser returning an error
+                // or by the initial trim().is_empty() check.
                 return serde_wasm_bindgen::to_value(&AnalysisResult {
-                    status: "No expression found".to_string(),
-                    error_message: None,
-                }).unwrap_or(JsValue::NULL);
+                    status: "Empty (parsed as no expressions)".to_string(),
+                    error: None, 
+                })
+                .unwrap();
             }
-            
-            let first_expr = &expressions[0];
 
-            // Determine num_fields (assuming Expr has a method for this)
-            // This might need adjustment based on actual Expr structure
-            let num_fields = first_expr.num_fields(); 
-            let mut aut = aut::Aut::new(num_fields);
-            let state_id = aut.expr_to_state(first_expr);
-            
-            let is_empty_result = if aut.is_empty(state_id) {
+            // For now, we analyze the first expression if multiple are parsed (e.g. separated by comments)
+            // Later, the UI might only allow/send single expressions or handle multiple.
+            let first_expr = &expressions[0];
+            let num_fields = first_expr.num_fields();
+            let mut aut_handler = aut::Aut::new(num_fields);
+            let state_id = aut_handler.expr_to_state(first_expr.as_ref());
+            let is_empty = aut_handler.is_empty(state_id);
+
+            let status = if is_empty {
                 "Empty".to_string()
             } else {
                 "Non-empty".to_string()
             };
 
             serde_wasm_bindgen::to_value(&AnalysisResult {
-                status: is_empty_result,
-                error_message: None,
-            }).unwrap_or(JsValue::NULL)
+                status,
+                error: None,
+            })
+            .unwrap()
         }
-        Err(parse_err) => {
+        Err(err_details) => {
             serde_wasm_bindgen::to_value(&AnalysisResult {
                 status: "Syntax Error".to_string(),
-                error_message: Some(parse_err),
-            }).unwrap_or(JsValue::NULL)
+                error: Some(err_details),
+            })
+            .unwrap()
         }
     }
 }

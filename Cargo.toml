@@ -30,5 +30,12 @@ console_error_panic_hook = "0.1.7"
 serde-wasm-bindgen = "0.6.5"
 getrandom = { version = "0.3.2", features = ["wasm_js"] }
 
+# Dependencies for non-WASM targets (e.g., your native binary that uses tokio)
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio = { version = "1.36.0", default-features = false, features = ["macros", "rt"] }
+
 # The following are optional but can be useful for WASM development:
 # getrandom = { version = "0.2", features = ["js"] } # if rand needs it for wasm32-unknown-unknown
+
+[dev-dependencies]
+katch2 = { path = ".", version = "0.1.0" }
