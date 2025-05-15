@@ -15,8 +15,8 @@ async function run() {
         return;
     }
 
-    // Configure Monaco Editor loader
-    require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.23.0/min/vs' }});
+    // Configure Monaco Editor loader to use version 0.52.2
+    require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.2/min/vs' }});
 
     require(['vs/editor/editor.main'], function (monacoInstance) {
         // Register a new language
@@ -103,22 +103,45 @@ async function run() {
             lineDecorationsWidth: 5 // Reduce space next to line numbers
         });
 
-        // Listen for content changes
-        editor.onDidChangeModelContent(() => {
-            const currentExpression = editor.getValue();
-            const model = editor.getModel();
-            if (!model) return;
+        // --- START DEBOUNCING LOGIC ---
+        let isAnalysisInProgress = false;
+        let needsAnalysis = false; // Flag to indicate if changes occurred requiring analysis
+        let analysisTriggerCount = 0; // For debugging/observing
+
+        async function processAnalysisQueue() {
+            analysisTriggerCount++;
+            console.log(`processAnalysisQueue called (${analysisTriggerCount}). InProgress: ${isAnalysisInProgress}, NeedsAnalysis: ${needsAnalysis}`);
+
+            if (isAnalysisInProgress) {
+                console.log("Analysis already in progress. Pending changes will be picked up after current finishes.");
+                return;
+            }
+
+            if (!needsAnalysis) {
+                console.log("No pending analysis needed.");
+                return; // No work to do
+            }
+
+            isAnalysisInProgress = true;
+            const currentExpressionToAnalyze = editor.getValue(); // Get fresh editor state RIGHT BEFORE analysis
+            needsAnalysis = false; // Reset flag, we are processing this set of changes now
+
+            console.log(`Starting analysis for: "${currentExpressionToAnalyze.substring(0, 50)}..."`);
+            analysisResultTextElement.innerHTML = `<strong>Analysis:</strong> Processing...`;
+            outputAreaElement.className = 'output-area analysis-neutral'; // Indicate processing
 
             try {
-                const result = analyze_expression(currentExpression);
-                console.log("Analysis Result:", JSON.stringify(result, null, 2)); // Detailed log of the whole result
-                if (result.error) {
-                    console.log("Error Object:", JSON.stringify(result.error, null, 2));
-                    console.log("Error Message:", result.error.message);
-                    console.log("Error Span:", JSON.stringify(result.error.span, null, 2));
-                } else {
-                    console.log("No error object in result.");
+                // Simulate async work if analyze_expression is very fast, otherwise it's already async if it's a proper WASM call
+                // await new Promise(resolve => setTimeout(resolve, 0)); // Uncomment for testing if WASM is too fast
+                
+                const result = analyze_expression(currentExpressionToAnalyze);
+                const model = editor.getModel();
+                if (!model) {
+                    isAnalysisInProgress = false;
+                    return;
                 }
+                
+                console.log("Analysis Result:", JSON.stringify(result, null, 2));
 
                 if (result.error) {
                     let errorString = `<strong>Syntax error:</strong> ${result.error.message}`;
@@ -154,59 +177,35 @@ async function run() {
                 console.error("Error calling analyze_expression:", e);
                 analysisResultTextElement.innerHTML = `<strong>Frontend error:</strong> ${e.message}`;
                 outputAreaElement.className = 'output-area analysis-error';
+                const model = editor.getModel();
                 if (model) {
                     monacoInstance.editor.setModelMarkers(model, 'katch2-parser', []);
                 }
+            } finally {
+                isAnalysisInProgress = false;
+                console.log("Analysis finished. Checking queue again.");
+                // IMPORTANT: Call processAnalysisQueue again to handle any content changes that occurred *during* this analysis
+                // Use a microtask (Promise.resolve().then()) or setTimeout to avoid potential deep recursion if analyses are extremely fast
+                // and to allow the UI to update before the next potential analysis.
+                Promise.resolve().then(processAnalysisQueue); 
             }
+        }
+        // --- END DEBOUNCING LOGIC ---
+
+        // Listen for content changes
+        editor.onDidChangeModelContent(() => {
+            // Completely empty for testing paste performance -- REVERTING THIS FOR NOW
+            // Restoring previous optimal logic:
+            console.log("onDidChangeModelContent triggered.");
+            needsAnalysis = true; // Mark that content has changed
+            processAnalysisQueue(); // Attempt to process
         });
 
         // Initial analysis
         function performInitialAnalysis() {
-            const initialExpression = editor.getValue();
-            const model = editor.getModel();
-            if (!model) return;
-
-            const initialAnalysisResult = analyze_expression(initialExpression);
-            console.log("Initial Analysis Result:", JSON.stringify(initialAnalysisResult, null, 2)); // Detailed log
-            if (initialAnalysisResult.error) {
-                console.log("Initial Error Object:", JSON.stringify(initialAnalysisResult.error, null, 2));
-                console.log("Initial Error Message:", initialAnalysisResult.error.message);
-                console.log("Initial Error Span:", JSON.stringify(initialAnalysisResult.error.span, null, 2));
-            } else {
-                console.log("No error object in initial result.");
-            }
-
-            if (initialAnalysisResult.error) {
-                let errorString = `<strong>Syntax error:</strong> ${initialAnalysisResult.error.message}`;
-                if (initialAnalysisResult.error.span) {
-                    errorString += ` (line ${initialAnalysisResult.error.span.start_line}, column ${initialAnalysisResult.error.span.start_column})`;
-                }
-                analysisResultTextElement.innerHTML = errorString;
-                outputAreaElement.className = 'output-area analysis-error';
-
-                if (initialAnalysisResult.error.span) {
-                    const markers = [{
-                        message: initialAnalysisResult.error.message,
-                        severity: monacoInstance.MarkerSeverity.Error,
-                        startLineNumber: initialAnalysisResult.error.span.start_line,
-                        startColumn: initialAnalysisResult.error.span.start_column,
-                        endLineNumber: initialAnalysisResult.error.span.end_line,
-                        endColumn: initialAnalysisResult.error.span.end_column
-                    }];
-                    monacoInstance.editor.setModelMarkers(model, 'katch2-parser', markers);
-                } else {
-                    monacoInstance.editor.setModelMarkers(model, 'katch2-parser', []);
-                }
-            } else {
-                analysisResultTextElement.innerHTML = `<strong>Analysis result:</strong> ${initialAnalysisResult.status}`;
-                // Check for neutral status for initial load if it's "Waiting for input..." or similar default
-                if (analysisResultTextElement.textContent === "Analysis: Waiting for input..." || (initialAnalysisResult.status && initialAnalysisResult.status.includes("Empty (no input)"))) {
-                     outputAreaElement.className = 'output-area analysis-neutral';
-                } else {
-                    outputAreaElement.className = 'output-area analysis-success';
-                }
-                monacoInstance.editor.setModelMarkers(model, 'katch2-parser', []);
-            }
+            console.log("Performing initial analysis...");
+            needsAnalysis = true; // Mark for initial analysis
+            processAnalysisQueue(); // Use the new debounced function
         }
         
         // Set initial class for output area based on its default text

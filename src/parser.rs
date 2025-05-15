@@ -275,7 +275,7 @@ impl<'a> Lexer<'a> {
                         } else {
                             // A single '=' is not a valid token start on its own if '==' is expected
                             return Err(ParseError::new(
-                                "Expected '==' for equality test".to_string(),
+                                "Expected '==' for equality test or ':=' for assignment".to_string(),
                                 Span::new(start_pos, self.current_pos),
                             ));
                         }
@@ -765,7 +765,7 @@ impl<'a> Parser<'a> {
             }
             // Any other token here is unexpected when trying to parse an atom or field expression
             _ => Err(ParseError::new(
-                format!("Unexpected {} when expecting an expression, field operation, or '('", token_kind_to_user_string(&current_token.kind)),
+                format!("Unexpected {} when expecting an expression", token_kind_to_user_string(&current_token.kind)),
                 current_token.span,
             )),
         }
