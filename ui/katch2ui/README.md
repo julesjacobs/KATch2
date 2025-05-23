@@ -73,6 +73,36 @@ x0 := 0; x1 := 1
 </netkat>
 ```
 
+### Target Editor Feature (Two-Column Layout)
+Create clickable examples that load into a target editor:
+
+```html
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+    <div>
+        <h3>Examples:</h3>
+        
+        <!-- Clickable examples (read-only) -->
+        <h4>Basic:</h4>
+        <netkat target="main-editor">x0 := 1</netkat>
+        
+        <h4>Advanced:</h4>
+        <netkat target="main-editor" lines="3">
+x0 := 0; x1 := 0;
+((x0 == 0; x0 := 1 + x0 == 1; x1 := 1); dup)*;
+x0 == 0; x1 == 1
+        </netkat>
+    </div>
+    
+    <div>
+        <h3>Live Editor:</h3>
+        <!-- Target editor (editable, shows analysis) -->
+        <netkat id="main-editor" lines="8" line-numbers="true">
+// Click examples to load them here
+        </netkat>
+    </div>
+</div>
+```
+
 ### Multiple Examples on One Page
 ```html
 <h2>Example 1: Basic</h2>
@@ -124,6 +154,8 @@ await editor.init({
 |-----------|-------------|---------|
 | `lines` | Set editor height in lines | `<netkat lines="5">code</netkat>` |
 | `line-numbers` | Show line numbers (default: false) | `<netkat line-numbers="true">code</netkat>` |
+| `target` | Target editor ID (makes this a clickable example) | `<netkat target="main-editor">code</netkat>` |
+| `id` | Editor ID (makes this a target for examples) | `<netkat id="main-editor">code</netkat>` |
 
 ## 🎯 Features
 
@@ -135,6 +167,7 @@ await editor.init({
 - ✅ **Responsive**: Works on desktop, tablet, and mobile
 - ✅ **Self-Contained**: No external dependencies except Monaco CDN
 - ✅ **Multiple Editors**: Supports unlimited editors on one page
+- ✅ **Target Editor**: Clickable examples that load into target editors (perfect for tutorials)
 
 ## 🌐 Browser Compatibility
 

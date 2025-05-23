@@ -55,6 +55,36 @@ dup
     <p>This should show error highlighting:</p>
     <netkat>x0 := // missing value</netkat>
 
+    <h2>Test 7: Target Editor Feature</h2>
+    <p>Example editors on the left that load into the target editor on the right:</p>
+    
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0;">
+        <div>
+            <h3>Examples (click to load):</h3>
+            
+            <h4>Basic Assignment:</h4>
+            <netkat target="main-editor">x0 := 1</netkat>
+            
+            <h4>Sequential Composition:</h4>
+            <netkat target="main-editor">x0 := 0; x1 := 1</netkat>
+            
+            <h4>Complex Example:</h4>
+            <netkat target="main-editor" lines="4">// Complex NetKAT program
+x0 := 0; x1 := 0;
+((x0 == 0; x0 := 1 + x0 == 1; x1 := 1); dup)*;
+x0 == 0; x1 == 1</netkat>
+        </div>
+        
+        <div>
+            <h3>Live Editor:</h3>
+            <netkat id="main-editor" lines="8" line-numbers="true">
+// Click examples on the left to load them here
+// Or write your own NetKAT expressions
+x0 := 0
+            </netkat>
+        </div>
+    </div>
+
     <hr>
     <p><strong>Usage:</strong> To use this in your own website, just:</p>
     <ol>
@@ -63,6 +93,8 @@ dup
         <li>Add <code>&lt;netkat&gt;your code&lt;/netkat&gt;</code> elements</li>
         <li>Optionally add <code>lines="5"</code> attribute to control height</li>
         <li>Optionally add <code>line-numbers="true"</code> to show line numbers</li>
+        <li>Use <code>target="editor-id"</code> to create clickable examples that load into a target editor</li>
+        <li>Use <code>id="editor-id"</code> to mark an editor as a target for examples</li>
     </ol>
     
     <p><strong>See example:</strong> <a href="katch2ui/example.html">katch2ui/example.html</a></p>

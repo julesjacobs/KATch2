@@ -225,19 +225,46 @@ class KATch2Editor {
                 // Check for line numbers option
                 const showLineNumbers = this.getAttribute('line-numbers') === 'true';
                 
-                // Initialize editor when library is ready
-                if (self.isInitialized) {
-                    self.createEditor(container, resultArea, code, showLineNumbers);
+                // Check for target attribute
+                const target = this.getAttribute('target');
+                const id = this.getAttribute('id');
+                
+                if (target) {
+                    // This is an example editor - replace with example editor
+                    this.innerHTML = ''; // Clear again for example editor
+                    
+                    if (self.isInitialized) {
+                        self.replaceWithExampleEditor(this, code, lines, showLineNumbers, target);
+                    } else {
+                        const checkInit = () => {
+                            if (self.isInitialized) {
+                                self.replaceWithExampleEditor(this, code, lines, showLineNumbers, target);
+                            } else {
+                                setTimeout(checkInit, 100);
+                            }
+                        };
+                        checkInit();
+                    }
                 } else {
-                    // Wait for initialization
-                    const checkInit = () => {
-                        if (self.isInitialized) {
-                            self.createEditor(container, resultArea, code, showLineNumbers);
-                        } else {
-                            setTimeout(checkInit, 100);
-                        }
-                    };
-                    checkInit();
+                    // Regular editor
+                    if (id) {
+                        this.id = id; // Set ID on the custom element
+                    }
+                    
+                    // Initialize editor when library is ready
+                    if (self.isInitialized) {
+                        self.createEditor(container, resultArea, code, showLineNumbers, false, id);
+                    } else {
+                        // Wait for initialization
+                        const checkInit = () => {
+                            if (self.isInitialized) {
+                                self.createEditor(container, resultArea, code, showLineNumbers, false, id);
+                            } else {
+                                setTimeout(checkInit, 100);
+                            }
+                        };
+                        checkInit();
+                    }
                 }
             }
         }
@@ -262,11 +289,21 @@ class KATch2Editor {
             // Check for line numbers option
             const showLineNumbers = element.getAttribute('line-numbers') === 'true';
             
-            this.replaceWithEditor(element, code, lines, showLineNumbers);
+            // Check for target attribute (for example editors)
+            const target = element.getAttribute('target');
+            const id = element.getAttribute('id');
+            
+            if (target) {
+                // This is an example editor that points to a target
+                this.replaceWithExampleEditor(element, code, lines, showLineNumbers, target);
+            } else {
+                // This is a regular editor (might be a target)
+                this.replaceWithEditor(element, code, lines, showLineNumbers, id);
+            }
         });
     }
 
-    replaceWithEditor(element, initialCode, lines = 1, showLineNumbers = false) {
+    replaceWithEditor(element, initialCode, lines = 1, showLineNumbers = false, id = null) {
         // Calculate height based on lines (approximately 22px per line + padding)
         // Monaco default line height is ~19px, but we need extra space to prevent scrollbars
         const height = Math.max(50, lines * 22 + 30);
@@ -296,21 +333,130 @@ class KATch2Editor {
         
         // Replace the original element
         const wrapper = document.createElement('div');
+        if (id) {
+            wrapper.id = id; // Set ID on wrapper for target editors
+        }
         wrapper.appendChild(container);
         wrapper.appendChild(resultArea);
         element.parentNode.replaceChild(wrapper, element);
         
         // Create the editor
-        this.createEditor(container, resultArea, initialCode, showLineNumbers);
+        this.createEditor(container, resultArea, initialCode, showLineNumbers, false, id);
     }
 
-    createEditor(container, resultArea, initialCode, showLineNumbers = false) {
+    replaceWithExampleEditor(element, initialCode, lines = 1, showLineNumbers = false, target) {
+        // Calculate height based on lines (approximately 22px per line + padding)
+        const height = Math.max(50, lines * 22 + 30);
+        
+        // Create wrapper with relative positioning for button placement
+        const wrapper = document.createElement('div');
+        wrapper.style.cssText = `
+            position: relative;
+            margin-bottom: 10px;
+        `;
+        
+        // Create editor container
+        const container = document.createElement('div');
+        container.style.cssText = `
+            width: 100%; 
+            height: ${height}px; 
+            border: 1px solid #ddd; 
+            border-radius: 4px; 
+            box-shadow: 0 3px 7px rgba(0,0,0,0.15);
+            transition: border-color 0.3s ease, box-shadow 0.3s ease;
+        `;
+        
+        // Create analyze button in top right corner
+        const analyzeButton = document.createElement('button');
+        analyzeButton.innerHTML = 'Analyze →';
+        analyzeButton.style.cssText = `
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            z-index: 10;
+            background: linear-gradient(135deg, #007acc, #005a9e);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 6px 12px;
+            font-size: 12px;
+            font-weight: 600;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,122,204,0.3);
+            transition: all 0.2s ease;
+            opacity: 0.9;
+        `;
+        
+        // Add button hover effects
+        analyzeButton.addEventListener('mouseenter', () => {
+            analyzeButton.style.opacity = '1';
+            analyzeButton.style.transform = 'translateY(-1px)';
+            analyzeButton.style.boxShadow = '0 3px 8px rgba(0,122,204,0.4)';
+            container.style.borderColor = '#007acc';
+            container.style.boxShadow = '0 3px 7px rgba(0,122,204,0.25)';
+        });
+        
+        analyzeButton.addEventListener('mouseleave', () => {
+            analyzeButton.style.opacity = '0.9';
+            analyzeButton.style.transform = 'translateY(0)';
+            analyzeButton.style.boxShadow = '0 2px 4px rgba(0,122,204,0.3)';
+            container.style.borderColor = '#ddd';
+            container.style.boxShadow = '0 3px 7px rgba(0,0,0,0.15)';
+        });
+        
+        // Add success state styling
+        const showSuccess = () => {
+            analyzeButton.innerHTML = 'Loaded ✓';
+            analyzeButton.style.background = 'linear-gradient(135deg, #27ae60, #219a52)';
+            setTimeout(() => {
+                analyzeButton.innerHTML = 'Analyze →';
+                analyzeButton.style.background = 'linear-gradient(135deg, #007acc, #005a9e)';
+            }, 2000);
+        };
+        
+        // Replace the original element
+        wrapper.appendChild(container);
+        wrapper.appendChild(analyzeButton);
+        element.parentNode.replaceChild(wrapper, element);
+        
+        // Create the read-only editor
+        const editor = this.createEditor(container, null, initialCode, showLineNumbers, true);
+        
+        // Add click handler to load content into target
+        const loadIntoTarget = () => {
+            const targetElement = document.getElementById(target);
+            if (targetElement) {
+                // Find the Monaco editor in the target element
+                const targetEditors = this.editorInstances.filter(instance => {
+                    return targetElement.contains(instance.editor.getDomNode());
+                });
+                
+                if (targetEditors.length > 0) {
+                    const targetEditor = targetEditors[0].editor;
+                    targetEditor.setValue(initialCode);
+                    targetEditor.focus();
+                    
+                    // Visual feedback
+                    showSuccess();
+                } else {
+                    console.warn(`Target editor with id "${target}" not found or not initialized`);
+                }
+            } else {
+                console.warn(`Target element with id "${target}" not found`);
+            }
+        };
+        
+        analyzeButton.addEventListener('click', loadIntoTarget);
+    }
+
+    createEditor(container, resultArea, initialCode, showLineNumbers = false, readOnly = false, id = null) {
         const monaco = this.monacoInstance;
         
         const editor = monaco.editor.create(container, {
             value: initialCode || '// Enter your NetKAT expression here\n',
             language: 'netkat',
-            automaticLayout: true,
+            automaticLayout: false, // Disabled to prevent infinite resize loop
             minimap: { enabled: false },
             scrollBeyondLastLine: false,
             fontSize: 14,
@@ -323,13 +469,16 @@ class KATch2Editor {
             overviewRulerBorder: false,
             lineNumbers: showLineNumbers ? 'on' : 'off',
             lineNumbersMinChars: showLineNumbers ? 3 : 0,
-            lineDecorationsWidth: showLineNumbers ? 5 : 0
+            lineDecorationsWidth: showLineNumbers ? 5 : 0,
+            readOnly: readOnly
         });
 
-        // Setup analysis logic
-        this.setupAnalysis(editor, resultArea);
+        // Setup analysis logic only for non-readonly editors with result areas
+        if (!readOnly && resultArea) {
+            this.setupAnalysis(editor, resultArea);
+        }
         
-        this.editorInstances.push({ editor, resultArea });
+        this.editorInstances.push({ editor, resultArea, id });
         return editor;
     }
 
