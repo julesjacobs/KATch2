@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KATch2 UI Deployment Test</title>
+    <style>
+        body {
+            font-family: system-ui, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .success { 
+            background: #d4edda; 
+            color: #155724; 
+            padding: 10px; 
+            border-radius: 4px; 
+            margin: 20px 0; 
+        }
+        h1 { color: #333; }
+    </style>
+</head>
+<body>
+    <h1>🚀 KATch2 UI Deployment Test</h1>
+    
+    <div class="success">
+        <strong>✅ Success!</strong> If you can see interactive editors below, 
+        the self-contained katch2ui directory is working correctly.
+    </div>
+
+    <h2>Test 1: Basic Assignment</h2>
+    <p>This should show a working NetKAT editor:</p>
+    <netkat>x0 := 1</netkat>
+
+    <h2>Test 2: Sequential Composition</h2>
+    <netkat>x0 := 0; x1 := 1</netkat>
+
+    <h2>Test 3: Complex Expression</h2>
+    <netkat>x0 := 0; x1 := 0;
+((x0 == 0; x0 := 1 + x0 == 1; x1 := 1); dup)*;
+x0 == 0; x1 == 1</netkat>
+
+    <h2>Test 4: Custom Lines Attribute</h2>
+    <netkat lines="5">
+// This should be 5 lines tall
+dup
+    </netkat>
+
+    <h2>Test 5: With Line Numbers</h2>
+    <netkat line-numbers="true">x0 := 0; x1 := 1</netkat>
+
+    <h2>Test 6: Syntax Error</h2>
+    <p>This should show error highlighting:</p>
+    <netkat>x0 := // missing value</netkat>
+
+    <hr>
+    <p><strong>Usage:</strong> To use this in your own website, just:</p>
+    <ol>
+        <li>Copy the <code>katch2ui/</code> directory to your website</li>
+        <li>Add <code>&lt;script type="module" src="katch2ui/katch2-editor.js"&gt;&lt;/script&gt;</code> to your HTML</li>
+        <li>Add <code>&lt;netkat&gt;your code&lt;/netkat&gt;</code> elements</li>
+        <li>Optionally add <code>lines="5"</code> attribute to control height</li>
+        <li>Optionally add <code>line-numbers="true"</code> to show line numbers</li>
+    </ol>
+    
+    <p><strong>See example:</strong> <a href="katch2ui/example.html">katch2ui/example.html</a></p>
+
+    <!-- Include the self-contained KATch2 UI library -->
+    <script type="module" src="katch2ui/katch2-editor.js"></script>
+</body>
+</html> 

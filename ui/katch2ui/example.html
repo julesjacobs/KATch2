@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple NetKAT Editor Example</title>
+    <style>
+        body {
+            font-family: system-ui, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        h1 { color: #333; }
+        p { line-height: 1.6; }
+    </style>
+</head>
+<body>
+    <h1>Simple NetKAT Editor Example</h1>
+    
+    <p>This is the minimal example of using the NetKAT editor library. 
+    Just include the script and add netkat elements.</p>
+
+    <h2>Example 1: Basic Assignment</h2>
+    <netkat>x0 := 1</netkat>
+
+    <h2>Example 2: Sequential Composition</h2>
+    <netkat>x0 := 0; x1 := 1</netkat>
+
+    <h2>Example 3: Conditional Logic</h2>
+    <netkat>x0 == 0; x1 := 1 + x0 == 1; x1 := 0</netkat>
+
+    <h2>Example 4: Custom Height</h2>
+    <netkat lines="6">
+// Try editing this - 6 lines tall
+x0 := 0; x1 := 0;
+((x0 == 0; x0 := 1 + x0 == 1; x1 := 1); dup)*;
+x0 == 0; x1 == 1
+    </netkat>
+
+    <h2>Example 5: With Line Numbers</h2>
+    <netkat line-numbers="true">
+x0 := 0; x1 := 0;
+((x0 == 0; x0 := 1 + x0 == 1; x1 := 1); dup)*;
+x0 == 0; x1 == 1
+    </netkat>
+
+    <!-- Include the KATch2 NetKAT editor library -->
+    <script type="module" src="katch2-editor.js"></script>
+</body>
+</html> 

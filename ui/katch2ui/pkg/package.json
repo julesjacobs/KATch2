@@ -1,0 +1,15 @@
+{
+  "name": "katch2",
+  "type": "module",
+  "version": "0.1.0",
+  "files": [
+    "katch2_bg.wasm",
+    "katch2.js",
+    "katch2.d.ts"
+  ],
+  "main": "katch2.js",
+  "types": "katch2.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NetKAT Editor Library Test</title>
+    <style>
+        body {
+            font-family: system-ui, sans-serif;
+            max-width: 1000px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+        .test-section {
+            margin: 30px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        .test-section h3 {
+            margin-top: 0;
+            color: #0066cc;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .warning { background: #fff3cd; color: #856404; }
+    </style>
+</head>
+<body>
+    <h1>NetKAT Editor Library Test Suite</h1>
+    
+    <div id="testResults"></div>
+
+    <div class="test-section">
+        <h3>Test 1: Basic Pre Element Transformation</h3>
+        <p>This pre element should be transformed into an editor:</p>
+        <pre class="netkat">x0 := 0</pre>
+    </div>
+
+    <div class="test-section">
+        <h3>Test 2: Custom Element</h3>
+        <p>This custom element should also become an editor:</p>
+        <netkat-editor>
+x1 := 1
+        </netkat-editor>
+    </div>
+
+    <div class="test-section">
+        <h3>Test 3: Complex Expression</h3>
+        <p>Testing with a complex NetKAT expression:</p>
+        <pre class="netkat">x0 := 0; x1 := 0;
+((x0 == 0; x0 := 1 + x0 == 1; x1 := 1); dup)*;
+x0 == 0; x1 == 1</pre>
+    </div>
+
+    <div class="test-section">
+        <h3>Test 4: Syntax Error</h3>
+        <p>This should show error highlighting:</p>
+        <pre class="netkat">x0 := // missing value</pre>
+    </div>
+
+    <div class="test-section">
+        <h3>Test 5: Empty Expression</h3>
+        <p>This should be analyzed as empty/unsatisfiable:</p>
+        <pre class="netkat">x0 := 0; x0 := 1</pre>
+    </div>
+
+    <div class="test-section">
+        <h3>Test 6: Multiple Pre Elements</h3>
+        <p>Multiple elements should all be transformed:</p>
+        <pre class="netkat">dup</pre>
+        <pre class="netkat">T</pre>
+        <pre class="netkat">F</pre>
+    </div>
+
+    <script type="module">
+        import { NetKATEditor } from './netkat-editor.js';
+        
+        // Custom initialization for testing
+        const testResults = document.getElementById('testResults');
+        
+        function addTestResult(message, success) {
+            const div = document.createElement('div');
+            div.className = `status ${success ? 'success' : 'error'}`;
+            div.textContent = message;
+            testResults.appendChild(div);
+        }
+        
+        // Test the library initialization
+        try {
+            const editor = new NetKATEditor();
+            
+            // Test initialization
+            await editor.init({
+                wasmPath: '../pkg/katch2.js',
+                monacoVersion: '0.52.2',
+                theme: 'light'
+            });
+            
+            addTestResult('✓ Library initialized successfully', true);
+            
+            // Test that editors were created
+            setTimeout(() => {
+                const editorContainers = document.querySelectorAll('.monaco-editor');
+                const resultAreas = document.querySelectorAll('.netkat-result');
+                
+                if (editorContainers.length > 0) {
+                    addTestResult(`✓ Created ${editorContainers.length} Monaco editors`, true);
+                } else {
+                    addTestResult('✗ No Monaco editors found', false);
+                }
+                
+                if (resultAreas.length > 0) {
+                    addTestResult(`✓ Created ${resultAreas.length} result areas`, true);
+                } else {
+                    addTestResult('✗ No result areas found', false);
+                }
+                
+                // Test WASM functionality
+                try {
+                    const testResult = editor.analyzeFunction('x0 := 0');
+                    if (testResult) {
+                        addTestResult('✓ WASM analysis function working', true);
+                    } else {
+                        addTestResult('✗ WASM analysis returned no result', false);
+                    }
+                } catch (e) {
+                    addTestResult(`✗ WASM analysis error: ${e.message}`, false);
+                }
+                
+                // Check that pre elements were replaced
+                const remainingPreElements = document.querySelectorAll('pre.netkat');
+                if (remainingPreElements.length === 0) {
+                    addTestResult('✓ All pre.netkat elements were transformed', true);
+                } else {
+                    addTestResult(`⚠ ${remainingPreElements.length} pre.netkat elements remain untransformed`, false);
+                }
+                
+                // Check custom elements
+                const customElements = document.querySelectorAll('netkat-editor');
+                if (customElements.length > 0) {
+                    addTestResult(`✓ Found ${customElements.length} custom elements`, true);
+                } else {
+                    addTestResult('⚠ No custom elements found', false);
+                }
+                
+            }, 2000); // Wait for async operations to complete
+            
+        } catch (error) {
+            addTestResult(`✗ Initialization failed: ${error.message}`, false);
+            console.error('Test failed:', error);
+        }
+    </script>
+</body>
+</html> 
