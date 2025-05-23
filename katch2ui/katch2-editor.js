@@ -1,25 +1,44 @@
-// NetKAT Editor Library
-// A standalone library to transform <pre class="netkat"> elements into interactive Monaco editors
+// KATch2 NetKAT Editor Library
+// A self-contained library to transform <pre class="netkat"> elements into interactive Monaco editors
+// Just include this script and it will automatically find and transform NetKAT code elements
 
-class NetKATEditor {
+class KATch2Editor {
     constructor() {
         this.wasmModule = null;
         this.analyzeFunction = null;
         this.monacoInstance = null;
         this.editorInstances = [];
         this.isInitialized = false;
+        this.baseUrl = this.getBaseUrl();
+    }
+
+    // Get the base URL for this script to resolve relative paths
+    getBaseUrl() {
+        const currentScript = document.currentScript;
+        if (currentScript && currentScript.src) {
+            return currentScript.src.substring(0, currentScript.src.lastIndexOf('/') + 1);
+        }
+        // Fallback: try to find this script in the DOM
+        const scripts = document.querySelectorAll('script[src*="katch2-editor.js"]');
+        if (scripts.length > 0) {
+            const src = scripts[scripts.length - 1].src;
+            return src.substring(0, src.lastIndexOf('/') + 1);
+        }
+        // Final fallback
+        return './katch2ui/';
     }
 
     async init(options = {}) {
         if (this.isInitialized) return;
 
-        // Default options
+        // Default options with paths relative to this script
         const config = {
-            wasmPath: options.wasmPath || '../pkg/katch2.js',
+            wasmPath: options.wasmPath || `${this.baseUrl}pkg/katch2.js`,
             monacoVersion: options.monacoVersion || '0.52.2',
             theme: options.theme || 'light', // 'light' or 'dark'
             selector: options.selector || 'pre.netkat',
             customElement: options.customElement || 'netkat-editor',
+            autoInit: options.autoInit !== false, // Default to true
             ...options
         };
 
@@ -40,12 +59,14 @@ class NetKATEditor {
             
             this.isInitialized = true;
             
-            // Transform existing elements
-            this.transformElements(config.selector);
+            // Transform existing elements if auto-init is enabled
+            if (config.autoInit) {
+                this.transformElements(config.selector);
+            }
             
-            console.log('NetKAT Editor initialized successfully');
+            console.log('KATch2 NetKAT Editor initialized successfully');
         } catch (error) {
-            console.error('Failed to initialize NetKAT Editor:', error);
+            console.error('Failed to initialize KATch2 NetKAT Editor:', error);
             throw error;
         }
     }
@@ -150,6 +171,8 @@ class NetKATEditor {
     }
 
     registerCustomElement(tagName) {
+        const self = this;
+        
         class NetKATEditorElement extends HTMLElement {
             constructor() {
                 super();
@@ -162,20 +185,23 @@ class NetKATEditor {
                 
                 // Create editor container
                 const container = document.createElement('div');
-                container.style.cssText = 'width: 100%; height: 300px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 10px;';
+                container.style.cssText = 'width: 100%; height: 300px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 10px; box-shadow: 0 3px 7px rgba(0,0,0,0.15);';
                 
                 // Create result area
                 const resultArea = document.createElement('div');
-                resultArea.className = 'netkat-result';
+                resultArea.className = 'katch2-result';
                 resultArea.style.cssText = `
                     padding: 12px 15px;
                     border: 1px solid #ddd;
                     border-left-width: 5px;
+                    border-left-color: #7f8c8d;
                     border-radius: 4px;
                     background-color: #f9fafb;
                     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
                     font-size: 0.95em;
                     line-height: 1.6;
+                    font-weight: 500;
+                    color: #555;
                     transition: border-color 0.3s ease-in-out, color 0.3s ease-in-out;
                 `;
                 resultArea.innerHTML = '<strong>Analysis:</strong> Waiting for input...';
@@ -183,14 +209,14 @@ class NetKATEditor {
                 this.appendChild(container);
                 this.appendChild(resultArea);
                 
-                // Initialize editor when NetKAT library is ready
-                if (window.netkatEditor && window.netkatEditor.isInitialized) {
-                    window.netkatEditor.createEditor(container, resultArea, code);
+                // Initialize editor when library is ready
+                if (self.isInitialized) {
+                    self.createEditor(container, resultArea, code);
                 } else {
                     // Wait for initialization
                     const checkInit = () => {
-                        if (window.netkatEditor && window.netkatEditor.isInitialized) {
-                            window.netkatEditor.createEditor(container, resultArea, code);
+                        if (self.isInitialized) {
+                            self.createEditor(container, resultArea, code);
                         } else {
                             setTimeout(checkInit, 100);
                         }
@@ -218,7 +244,7 @@ class NetKATEditor {
         
         // Create result area
         const resultArea = document.createElement('div');
-        resultArea.className = 'netkat-result';
+        resultArea.className = 'katch2-result';
         resultArea.style.cssText = `
             padding: 12px 15px;
             border: 1px solid #ddd;
@@ -267,7 +293,7 @@ class NetKATEditor {
         });
 
         // Setup analysis logic
-        this.setupAnalysis.call(this, editor, resultArea);
+        this.setupAnalysis(editor, resultArea);
         
         this.editorInstances.push({ editor, resultArea });
         return editor;
@@ -277,7 +303,7 @@ class NetKATEditor {
         let isAnalysisInProgress = false;
         let needsAnalysis = false;
         
-        const self = this; // Capture reference to this
+        const self = this;
 
         const processAnalysisQueue = async () => {
             if (isAnalysisInProgress) return;
@@ -299,7 +325,7 @@ class NetKATEditor {
                     if (result.error.span) {
                         errorString += ` (line ${result.error.span.start_line}, column ${result.error.span.start_column})`;
                     }
-                                        resultArea.innerHTML = errorString;
+                    resultArea.innerHTML = errorString;
                     self.setResultStyle(resultArea, 'error');
 
                     if (result.error.span && model) {
@@ -311,17 +337,17 @@ class NetKATEditor {
                             endLineNumber: result.error.span.end_line,
                             endColumn: result.error.span.end_column
                         }];
-                        self.monacoInstance.editor.setModelMarkers(model, 'netkat-parser', markers);
+                        self.monacoInstance.editor.setModelMarkers(model, 'katch2-parser', markers);
                     }
                 } else {
-                                        resultArea.innerHTML = `<strong>Analysis result:</strong> ${result.status}`;
+                    resultArea.innerHTML = `<strong>Analysis result:</strong> ${result.status}`;
                     if (result.status && (result.status.includes("Empty (no input)") || result.status === "Waiting for input...")) {
                         self.setResultStyle(resultArea, 'neutral');
                     } else {
                         self.setResultStyle(resultArea, 'success');
                     }
                     if (model) {
-                        self.monacoInstance.editor.setModelMarkers(model, 'netkat-parser', []);
+                        self.monacoInstance.editor.setModelMarkers(model, 'katch2-parser', []);
                     }
                 }
             } catch (e) {
@@ -359,7 +385,7 @@ class NetKATEditor {
     // Public API methods
     createEditorInElement(element, initialCode) {
         if (!this.isInitialized) {
-            throw new Error('NetKAT Editor not initialized. Call init() first.');
+            throw new Error('KATch2 Editor not initialized. Call init() first.');
         }
         return this.createEditor(element, null, initialCode);
     }
@@ -374,17 +400,17 @@ class NetKATEditor {
 
 // Auto-initialize when DOM is ready
 if (typeof window !== 'undefined') {
-    window.netkatEditor = new NetKATEditor();
+    window.katch2Editor = new KATch2Editor();
     
     // Auto-init when DOM loads
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', () => {
-            window.netkatEditor.init().catch(console.error);
+            window.katch2Editor.init().catch(console.error);
         });
     } else {
         // DOM already loaded
-        window.netkatEditor.init().catch(console.error);
+        window.katch2Editor.init().catch(console.error);
     }
 }
 
-export { NetKATEditor }; 
+export { KATch2Editor }; 

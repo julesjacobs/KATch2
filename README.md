@@ -84,7 +84,7 @@ KATch2 includes a self-contained web UI for interactive NetKAT analysis. See `ui
 - **Use**: `<script type="module" src="katch2ui/katch2-editor.js"></script>`
 - **Write**: `<netkat>x0 := 0; x1 := 1</netkat>`
 
-For complete documentation, see [`UI.md`](UI.md) and [`ui/README.md`](ui/README.md).
+For complete documentation, see [`ui/README.md`](ui/README.md).
 
 ## Future
 

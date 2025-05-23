@@ -34,7 +34,7 @@ ui/
 │   │   └── katch2_bg.wasm # Compiled WASM binary
 │   ├── example.html      # Working example
 │   └── README.md         # Usage documentation
-├── wasm-ui/              # Legacy development files
+├── assets/               # UI assets (logo, favicon)
 ├── index.html            # Legacy interface with original design
 ├── build-ui.sh           # Build script (run from ui/ directory)
 ├── test-deployment.html  # Test file
@@ -92,7 +92,7 @@ Test the deployment:
 | `ui/index.html` | Legacy interface with original design |
 | `ui/build-ui.sh` | Build script (updates katch2ui from main build) |
 | `ui/test-deployment.html` | Test file to verify deployment |
-| `ui/wasm-ui/` | Legacy development files |
+| `ui/assets/` | UI assets (logo, favicon) |
 
 ## 🎉 Success!
 
