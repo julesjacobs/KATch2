@@ -831,7 +831,7 @@ impl Aut {
                 *original_sp = self.spp.sp.union(*original_sp, to_add);
                 // iterate over all transitions from the state
                 for (state2, spp2) in self.delta(state).transitions {
-                    // NB: `push(to_add, spp2) === naive_forward(to_add; spp2)`,
+                    // NB: `push(to_add, spp2)   naive_forward(to_add; spp2)`,
                     // where `;` is sequential composition
                     let seq_forward = self.spp.push(to_add, spp2);
                     todo.push((state2, seq_forward));
@@ -849,6 +849,18 @@ impl Aut {
         }
         true
     }
+
+    /// Computes a packet transformer for the given state (equivalent to eliminating dup)
+    pub fn eliminate_dup(&mut self, state: State) -> spp::SPP {
+        // We implement this using Kleene's algorithm
+        // We start by using the delta function to explore the automaton forward from this state
+        // And store the automaton's SPP edges we find
+        // We add an additional end state and from each state add the transition epsilon(state) to the end state
+        // We then use Kleene's algorithm to eliminate all states except the end state
+        // The self loop stored at the end state is the packet transformer SPP that we are looking for
+        todo!()
+    }
+
 
     /// Returns a string representation of the AExpr for the given state
     pub fn state_to_string(&self, state: State) -> String {
