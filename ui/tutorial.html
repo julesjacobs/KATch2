@@ -445,6 +445,8 @@
         
         <netkat example="Sets x1 to 1, logs the intermediate state with dup, then sets x2 to 1. Notice how the trace shows all three states.">x1 := 1; dup; x2 := 1</netkat>
 
+        <netkat exercise="Set x0 to 1, log with dup, then set x1 to 1, log again with dup">x0 := 1; dup; x1 := 1; dup</netkat>
+
         <h2>Iteration (Kleene Star)</h2>
         <p>Iteration, denoted by an asterisk <code>*</code> (Kleene star) after an expression <code>e</code> (i.e., <code>e*</code>), allows an expression to be executed zero or more times.</p>
         
@@ -490,7 +492,7 @@
         
         <p style="font-style: italic; color: #666; margin: 10px 0;">Explore the multiple iteration paths in the editor below:</p>
         
-        <netkat example="Progressive bit setting: sets x0, then x1, then x2 in sequence. Starting from 000, watch how it builds up to 111 through multiple iterations.">(x0:=1 + (x0==1;x1:=1) + (x1==1; x2:=1))*</netkat>
+        <netkat example="Progressive bit setting: sets x0, then x1, then x2 in sequence. Starting from 000, watch how it builds up to 111 through multiple iterations.">((x0:=1 + (x0==1;x1:=1) + (x1==1; x2:=1)); dup)*</netkat>
         
         <p>This shows multiple paths in the trace, corresponding to 0, 1, 2, etc., iterations, up to a limit defined by the analyzer to prevent infinite loops in the visualization.</p>
 
