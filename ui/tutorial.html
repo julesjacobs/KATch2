@@ -202,7 +202,32 @@
         <h2>Tests (Packet Filters)</h2>
         <p>Tests are conditions that check the value of a packet bit. They act as filters: if the condition is true, the packet passes through; otherwise, it is dropped (or "filtered out").</p>
         
-        <netkat example="A test that checks if the first bit (x0) is 1. Try changing the input packet to see how different packets are filtered." num-traces="1">x0 == 1</netkat>
+        <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 20px; margin: 15px 0; font-family: monospace;">
+            <div style="margin-bottom: 12px; font-weight: bold; color: #495057; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">Test Filtering: x2 == 1</div>
+            <div style="display: flex; align-items: center; margin-bottom: 8px;">
+                <span style="background: #e3f2fd; padding: 4px 8px; border-radius: 3px; margin-right: 8px; min-width: 60px; text-align: center;">101</span>
+                <span style="margin: 0 8px;">→</span>
+                <span style="background: #e8f5e8; padding: 4px 8px; border-radius: 3px; color: #2e7d32; margin-right: 8px;">✓ PASS</span>
+                <span style="margin: 0 8px;">→</span>
+                <span style="background: #e3f2fd; padding: 4px 8px; border-radius: 3px;">101</span>
+            </div>
+            <div style="display: flex; align-items: center; margin-bottom: 8px;">
+                <span style="background: #e3f2fd; padding: 4px 8px; border-radius: 3px; margin-right: 8px; min-width: 60px; text-align: center;">010</span>
+                <span style="margin: 0 8px;">→</span>
+                <span style="background: #ffebee; padding: 4px 8px; border-radius: 3px; color: #c62828; margin-right: 8px;">✗ DROP</span>
+                <span style="margin: 0 8px;">→</span>
+                <span style="color: #999; font-style: italic;">(no output)</span>
+            </div>
+            <div style="display: flex; align-items: center;">
+                <span style="background: #e3f2fd; padding: 4px 8px; border-radius: 3px; margin-right: 8px; min-width: 60px; text-align: center;">111</span>
+                <span style="margin: 0 8px;">→</span>
+                <span style="background: #e8f5e8; padding: 4px 8px; border-radius: 3px; color: #2e7d32; margin-right: 8px;">✓ PASS</span>
+                <span style="margin: 0 8px;">→</span>
+                <span style="background: #e3f2fd; padding: 4px 8px; border-radius: 3px;">111</span>
+            </div>
+        </div>
+        
+        <netkat example="A test that checks if the third bit (x2) is 1. Try changing the input packet to see how different packets are filtered.">x2 == 1</netkat>
 
         <p>You can also test for equality to 0, like <code>x3 == 0</code>.</p>
 
@@ -210,22 +235,115 @@
 
         <p>Note that the examples displayed are as wide as the largest bit mentioned in the program.</p>
 
+        <h2>Assignments</h2>
+        <p>Assignments modify the packet's bits. The expression <code>x2 := 1</code> sets the third bit of the packet to 1, regardless of its previous value.</p>
+        
+        <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 20px; margin: 15px 0; font-family: monospace;">
+            <div style="margin-bottom: 12px; font-weight: bold; color: #495057; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">Assignment Effect: x2 := 1</div>
+            <div style="display: flex; align-items: center; justify-content: center; gap: 20px;">
+                <div style="text-align: center;">
+                    <div style="background: #e3f2fd; padding: 8px 12px; border-radius: 4px; margin-bottom: 8px; font-weight: bold; color: #1976d2;">Before</div>
+                    <div style="background: white; border: 2px solid #ccc; border-radius: 4px; padding: 8px;">
+                        <div style="display: flex; gap: 4px; margin-bottom: 4px;">
+                            <span style="padding: 4px 6px; background: #fff3e0; border-radius: 2px;">x0=0</span>
+                            <span style="padding: 4px 6px; background: #fff3e0; border-radius: 2px;">x1=1</span>
+                            <span style="padding: 4px 6px; background: #ffebee; border-radius: 2px;">x2=0</span>
+                        </div>
+                        <div style="text-align: center; font-weight: bold;">010</div>
+                    </div>
+                </div>
+                <span style="font-size: 24px; color: #666;">→</span>
+                <div style="text-align: center;">
+                    <div style="background: #e8f5e8; padding: 8px 12px; border-radius: 4px; margin-bottom: 8px; font-weight: bold; color: #2e7d32;">After</div>
+                    <div style="background: white; border: 2px solid #4caf50; border-radius: 4px; padding: 8px;">
+                        <div style="display: flex; gap: 4px; margin-bottom: 4px;">
+                            <span style="padding: 4px 6px; background: #fff3e0; border-radius: 2px;">x0=0</span>
+                            <span style="padding: 4px 6px; background: #fff3e0; border-radius: 2px;">x1=1</span>
+                            <span style="padding: 4px 6px; background: #e8f5e8; border-radius: 2px; font-weight: bold;">x2=1</span>
+                        </div>
+                        <div style="text-align: center; font-weight: bold;">011</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <netkat example="Sets x2 to 1, regardless of its original value. Watch how only the targeted bit changes in the trace.">x2 := 1</netkat>
+
+        <netkat exercise="Set x2 to 0">x2 := 0</netkat>
+
         <h2>Sequential Composition</h2>
         <p>Sequential composition, denoted by a semicolon <code>;</code>, combines two NetKAT expressions by executing them one after the other. The packet output by the first expression becomes the input to the second.</p>
         
-        <netkat example="First tests if x0 is 1, then tests if x1 is 0. Both conditions must be true for the packet to pass through." num-traces="1">x0 == 1; x1 == 0</netkat>
-
-        <netkat exercise="Write a policy that tests x0 == 1, then tests x2 == 0">x0 == 1; x2 == 0</netkat>
-
-        <h2>Assignments</h2>
-        <p>Assignments modify the packet's bits. The expression <code>x0 := 1</code> sets the first bit of the packet to 1, regardless of its previous value.</p>
+        <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 20px; margin: 15px 0; font-family: monospace;">
+            <div style="margin-bottom: 12px; font-weight: bold; color: #495057; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">Sequential Flow: x2 == 1; x1 := 0</div>
+            <div style="display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 12px;">
+                <div style="text-align: center;">
+                    <div style="background: #e3f2fd; padding: 8px 12px; border-radius: 4px; margin-bottom: 4px;">Input</div>
+                    <div style="background: white; padding: 4px 8px; border: 1px solid #ccc; border-radius: 3px;">101</div>
+                </div>
+                <span style="font-size: 18px; color: #666;">→</span>
+                <div style="text-align: center;">
+                    <div style="background: #fff3e0; padding: 8px 12px; border-radius: 4px; margin-bottom: 4px;">Test x2 == 1</div>
+                    <div style="background: #e8f5e8; padding: 4px 8px; border-radius: 3px; color: #2e7d32;">✓ PASS</div>
+                </div>
+                <span style="font-size: 18px; color: #666;">→</span>
+                <div style="text-align: center;">
+                    <div style="background: #f3e5f5; padding: 8px 12px; border-radius: 4px; margin-bottom: 4px;">Assign x1 := 0</div>
+                    <div style="background: white; padding: 4px 8px; border: 1px solid #ccc; border-radius: 3px;">100</div>
+                </div>
+                <span style="font-size: 18px; color: #666;">→</span>
+                <div style="text-align: center;">
+                    <div style="background: #e8f5e8; padding: 8px 12px; border-radius: 4px; margin-bottom: 4px;">Output</div>
+                    <div style="background: white; padding: 4px 8px; border: 1px solid #ccc; border-radius: 3px;">100</div>
+                </div>
+            </div>
+        </div>
         
-        <netkat example="Sets x0 to 1 and x2 to 0, regardless of their original values. Watch how the packet bits change in the trace.">x0 := 1; x2 := 0</netkat>
+        <netkat example="First tests if x2 is 1, then assigns x1 to 0. Both the test and assignment must succeed for the packet to reach the output." num-traces="1">x2 == 1; x1 := 0</netkat>
 
-        <netkat exercise="Set x0 to 0 and x2 to 1">x0 := 0; x2 := 1</netkat>
+        <netkat exercise="Write a policy that tests x0 == 1, then sets x2 to 0">x0 == 1; x2 := 0</netkat>
+        
+        <p>You can also chain multiple assignments together:</p>
+        
+        <netkat example="Demonstrates chaining multiple assignments: first sets x0 to 1, then sets x2 to 0. Watch how the packet transforms through both steps.">x0 := 1; x2 := 0</netkat>
 
         <h2>Choice (Union)</h2>
         <p>Choice, denoted by a plus sign <code>+</code>, represents a non-deterministic selection between two NetKAT expressions. The network can choose to follow either path.</p>
+        
+        <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 20px; margin: 15px 0; font-family: monospace;">
+            <div style="margin-bottom: 12px; font-weight: bold; color: #495057; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">Choice Branching: x0 := 1 + x1 := 1</div>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 12px;">
+                <div style="background: #e3f2fd; padding: 8px 12px; border-radius: 4px; text-align: center;">
+                    <strong>Input: 010</strong>
+                </div>
+                <div style="font-size: 18px; color: #666;">↓</div>
+                <div style="background: #fff3e0; padding: 8px 12px; border-radius: 4px; text-align: center;">
+                    <strong>Choice (+)</strong>
+                </div>
+                <div style="display: flex; gap: 40px; align-items: flex-start;">
+                    <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+                        <span style="font-size: 18px; color: #666;">↙</span>
+                        <div style="text-align: center;">
+                            <div style="background: #f3e5f5; padding: 6px 10px; border-radius: 3px; margin-bottom: 4px;">Path A</div>
+                            <div style="font-size: 12px; margin-bottom: 4px;">x0 := 1</div>
+                            <div style="background: #e8f5e8; padding: 4px 8px; border-radius: 3px;">110</div>
+                        </div>
+                    </div>
+                    <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+                        <span style="font-size: 18px; color: #666;">↘</span>
+                        <div style="text-align: center;">
+                            <div style="background: #f3e5f5; padding: 6px 10px; border-radius: 3px; margin-bottom: 4px;">Path B</div>
+                            <div style="font-size: 12px; margin-bottom: 4px;">x1 := 1</div>
+                            <div style="background: #e8f5e8; padding: 4px 8px; border-radius: 3px;">011</div>
+                        </div>
+                    </div>
+                </div>
+                <div style="font-size: 18px; color: #666;">↓</div>
+                <div style="background: #e8f5e8; padding: 8px 12px; border-radius: 4px; text-align: center;">
+                    <strong>Multiple Possible Outputs</strong>
+                </div>
+            </div>
+        </div>
         
         <netkat example="Either sets x0 to 1 OR sets x1 to 1. The analyzer explores both possibilities, showing multiple traces.">x0 := 1 + x1 := 1</netkat>
 
@@ -234,14 +352,44 @@
         <h2>Encoding If-Then-Else</h2>
         <p>NetKAT can express conditional logic (if-then-else) by combining tests, assignments, and choice. The general pattern for "if C then P1 else P2" is: <code>(C; P1) + (not C; P2)</code>.</p>
         
-        <netkat example="If-then-else: if x0 is 1, set x1 to 1; otherwise set x1 to 0. Try packets with different x0 values.">(x0 == 1; x1 := 1) + (x0 == 0; x1 := 0)</netkat>
+        <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 20px; margin: 15px 0; font-family: monospace;">
+            <div style="margin-bottom: 12px; font-weight: bold; color: #495057; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">If-Then-Else Decision: (x0 == 1; x1 := 1) + (x0 == 0; x1 := 0)</div>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 12px;">
+                <div style="background: #e3f2fd; padding: 8px 12px; border-radius: 4px; text-align: center;">
+                    <strong>Input Packet</strong>
+                </div>
+                <div style="font-size: 18px; color: #666;">↓</div>
+                <div style="background: #fff3e0; padding: 10px 15px; border-radius: 4px; text-align: center;">
+                    <strong>Test: x0 == 1?</strong>
+                </div>
+                <div style="display: flex; gap: 60px; align-items: center;">
+                    <div style="display: flex; flex-direction: column; align-items: center; gap: 8px;">
+                        <span style="font-size: 18px; color: #666;">↙</span>
+                        <div style="background: #e8f5e8; padding: 6px 12px; border-radius: 3px; color: #2e7d32;">
+                            <strong>YES (x0 == 1)</strong>
+                        </div>
+                        <div style="font-size: 18px; color: #666;">↓</div>
+                        <div style="background: #f3e5f5; padding: 6px 10px; border-radius: 3px;">x1 := 1</div>
+                        <div style="font-size: 12px; color: #666;">Then branch</div>
+                    </div>
+                    <div style="display: flex; flex-direction: column; align-items: center; gap: 8px;">
+                        <span style="font-size: 18px; color: #666;">↘</span>
+                        <div style="background: #ffebee; padding: 6px 12px; border-radius: 3px; color: #c62828;">
+                            <strong>NO (x0 == 0)</strong>
+                        </div>
+                        <div style="font-size: 18px; color: #666;">↓</div>
+                        <div style="background: #f3e5f5; padding: 6px 10px; border-radius: 3px;">x1 := 0</div>
+                        <div style="font-size: 12px; color: #666;">Else branch</div>
+                    </div>
+                </div>
+                <div style="font-size: 18px; color: #666;">↓</div>
+                <div style="background: #e8f5e8; padding: 8px 12px; border-radius: 4px; text-align: center;">
+                    <strong>Result: x1 matches x0</strong>
+                </div>
+            </div>
+        </div>
         
-        <p>Let's break this down:</p>
-        <ul>
-            <li><code>(x0 == 1; x1 := 1)</code>: If <code>x0</code> is 1, then set <code>x1</code> to 1.</li>
-            <li><code>(x0 == 0; x1 := 0)</code>: If <code>x0</code> is 0 (the 'else' condition), then set <code>x1</code> to 0.</li>
-            <li>The <code>+</code> combines these, so the appropriate branch is taken based on <code>x0</code>'s value.</li>
-        </ul>
+        <netkat example="If-then-else: if x0 is 1, set x1 to 1; otherwise set x1 to 0. Try packets with different x0 values.">(x0 == 1; x1 := 1) + (x0 == 0; x1 := 0)</netkat>
 
         <netkat exercise="If x1 == 0 then set x0 := 1, else set x0 := 0">(x1 == 0; x0 := 1) + (x1 == 1; x0 := 0)</netkat>
 
@@ -254,6 +402,46 @@
 
         <h2>Iteration (Kleene Star)</h2>
         <p>Iteration, denoted by an asterisk <code>*</code> (Kleene star) after an expression <code>e</code> (i.e., <code>e*</code>), allows an expression to be executed zero or more times.</p>
+        
+        <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 20px; margin: 15px 0; font-family: monospace;">
+            <div style="margin-bottom: 12px; font-weight: bold; color: #495057; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">Iteration Paths: (x0 := 1)*</div>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 8px;">
+                <div style="background: #e3f2fd; padding: 8px 12px; border-radius: 4px; text-align: center;">
+                    <strong>Input: 010</strong>
+                </div>
+                <div style="font-size: 18px; color: #666;">↓</div>
+                <div style="display: flex; flex-direction: column; gap: 8px; align-items: center;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <div style="background: #f3e5f5; padding: 6px 10px; border-radius: 3px; text-align: center; min-width: 80px;">
+                            <div style="font-size: 12px; margin-bottom: 2px;">0 loops</div>
+                            <div style="background: #e8f5e8; padding: 2px 6px; border-radius: 2px;">010</div>
+                        </div>
+                        <span style="color: #666;">‖</span>
+                        <div style="background: #f3e5f5; padding: 6px 10px; border-radius: 3px; text-align: center; min-width: 80px;">
+                            <div style="font-size: 12px; margin-bottom: 2px;">1 loop</div>
+                            <div style="background: #e8f5e8; padding: 2px 6px; border-radius: 2px;">110</div>
+                        </div>
+                        <span style="color: #666;">‖</span>
+                        <div style="background: #f3e5f5; padding: 6px 10px; border-radius: 3px; text-align: center; min-width: 80px;">
+                            <div style="font-size: 12px; margin-bottom: 2px;">2 loops</div>
+                            <div style="background: #e8f5e8; padding: 2px 6px; border-radius: 2px;">110</div>
+                        </div>
+                        <span style="color: #666;">‖</span>
+                        <div style="background: #f3e5f5; padding: 6px 10px; border-radius: 3px; text-align: center; min-width: 80px;">
+                            <div style="font-size: 12px; margin-bottom: 2px;">3+ loops</div>
+                            <div style="background: #e8f5e8; padding: 2px 6px; border-radius: 2px;">110</div>
+                        </div>
+                    </div>
+                    <div style="font-size: 11px; color: #666; text-align: center; margin-top: 4px;">
+                        Each path represents a different number of iterations
+                    </div>
+                </div>
+                <div style="font-size: 18px; color: #666;">↓</div>
+                <div style="background: #e8f5e8; padding: 8px 12px; border-radius: 4px; text-align: center;">
+                    <strong>Multiple Possible Outputs</strong>
+                </div>
+            </div>
+        </div>
         
         <netkat example="Flips bit x0 repeatedly (0→1→0→1...), logging each step with dup, then sets x1 to 1. Shows multiple iteration paths.">(((x0 == 0; x0 := 1) + (x0 == 1; x0 := 0)); dup)*; x1 := 1</netkat>
         
