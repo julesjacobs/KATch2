@@ -18,20 +18,23 @@
         }
         .container {
             background-color: #fff;
-            padding: 25px;
-            border-radius: 8px;
-            box-shadow: 0 6px 12px rgba(0,0,0,0.1);
+            padding: 35px;
+            border-radius: 12px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.12);
             width: 100%;
-            max-width: 850px;
+            max-width: 900px;
             display: flex;
             flex-direction: column;
+            border: 1px solid rgba(0,0,0,0.05);
         }
         h1 {
-            color: #000;
+            color: #1a1a1a;
             text-align: center;
             margin-top: 0;
-            margin-bottom: 20px;
-            font-size: 1.8em;
+            margin-bottom: 30px;
+            font-size: 2.2em;
+            font-weight: 700;
+            letter-spacing: -0.02em;
         }
         h1 img {
             vertical-align: middle;
@@ -40,17 +43,94 @@
             width: 100px;
             height: 100px;
         }
-        .initial-message {
+        h2 {
+            color: #2c3e50;
+            font-size: 1.6em;
+            font-weight: 600;
+            margin-top: 40px;
+            margin-bottom: 20px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #e8f4f8;
+        }
+        
+        h3 {
+            color: #34495e;
+            font-size: 1.3em;
+            font-weight: 600;
+            margin-top: 30px;
+            margin-bottom: 15px;
+        }
+        
+        h4 {
+            color: #7f8c8d;
+            font-size: 1.1em;
+            font-weight: 600;
+            margin-top: 25px;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-size: 0.9em;
+        }
+        
+        p {
+            line-height: 1.7;
+            color: #444;
+            margin-bottom: 16px;
+        }
+        
+        code {
+            background-color: #f8f9fa;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.9em;
+            color: #e83e8c;
+            border: 1px solid #e9ecef;
+        }
+        
+        ul {
+            line-height: 1.6;
             color: #555;
-            text-align: center;
-            margin-bottom: 25px;
-            font-size: 0.95em;
+        }
+        
+        li {
+            margin-bottom: 8px;
         }
 
+        /* Practice Area Styling */
+        .practice-section {
+            margin: 50px 0;
+            padding: 0;
+        }
+        
+        .practice-section h2 {
+            margin-top: 0;
+            margin-bottom: 25px;
+        }
+        
+        .practice-grid {
+            display: grid; 
+            grid-template-columns: 1fr 1fr; 
+            gap: 30px; 
+            margin: 25px 0;
+        }
+        
+        .examples-column, .editor-column {
+            padding: 0;
+        }
+        
+        .examples-column h3, .editor-column h3 {
+            margin-top: 0;
+            margin-bottom: 20px;
+            color: #343a40;
+            font-size: 1.2em;
+        }
+        
         .github-link {
             text-align: center;
-            margin-top: 10px;
-            padding-top: 20px;
+            margin-top: 30px;
+            padding-top: 30px;
+            border-top: 1px solid #e9ecef;
         }
         .github-link a {
             text-decoration: none;
@@ -65,10 +145,7 @@
             fill: currentColor;
         }
 
-        h2 {
-            margin-top: 30px;
-            margin-bottom: 0px;
-        }
+
 
     </style>
 </head>
@@ -79,7 +156,7 @@
             KATch<sup style="font-size: 0.6em">2</sup> NetKAT Tutorial
         </h1>
         
-        <p>This tutorial will guide you through the basics of NetKAT.</p>
+        <p style="text-align: center">This tutorial will guide you through the basics of NetKAT.</p>
 
         <h2>Packets and Variables</h2>
         <p>In NetKAT, a <strong>packet</strong> is represented as a sequence (or vector) of bits. We use variables like <code>x0</code>, <code>x1</code>, <code>x2</code>, and so on, to refer to these bits.</p>
@@ -159,11 +236,12 @@
 
         <netkat exercise="Write an iteration that nondeterministically modifies x0 in a loop." id="exercise6">((x0 := 0 + x0 := 1); dup)*</netkat>
 
-        <h2>Examples & Practice</h2>
-        <p>Click examples on the left to load them into the practice editor, or write your own expressions:</p>
+        <div class="practice-section">
+            <h2>Additional Examples</h2>
+            <p>Click examples on the left to load them into the practice editor, or write your own expressions:</p>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0;">
-            <div>
+            <div class="practice-grid">
+                <div class="examples-column">
                 <h3>Examples (click to load):</h3>
                 
                 <h4>Basic Operations:</h4>
@@ -188,22 +266,24 @@ dup; x1 := 1</netkat>
 x0 == 1;
 (x1 == 0; x2 := 1 + x1 == 1; x2 := 0);
 dup</netkat>
-            </div>
-            
-            <div>
-                <h3>Practice Editor</h3>
-                <h4>Click examples on the left to load them:</h4>
-                <netkat id="practice-editor" lines="8" show-line-numbers>
+                </div>
+                
+                <div class="editor-column">
+                    <h3>Practice Editor</h3>
+                    <h4>Click examples on the left to load them:</h4>
+                    <netkat id="practice-editor" lines="8" show-line-numbers">
 
 </netkat>
+                </div>
             </div>
         </div>
 
-        <h2>Exercises & Analysis</h2>
-        <p>Click exercises on the left to load them into the analysis editor with equivalence checking:</p>
+        <div class="practice-section">
+            <h2>Additional Exercises</h2>
+            <p>Click exercises on the left to load them into the analysis editor with equivalence checking:</p>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0;">
-            <div>
+            <div class="practice-grid">
+                <div class="examples-column">
                 <h3>Additional Exercises:</h3>
                 
                 <netkat exercise="Create a bit flipper: if x0 is 0 set it to 1, if x0 is 1 set it to 0" target="analysis-editor">(x0 == 0; x0 := 1) + (x0 == 1; x0 := 0)</netkat>
@@ -220,9 +300,8 @@ dup</netkat>
                 </netkat>
             </div>
             
-            <div>
-                <p></p>
-                <h3>Exercise Editor:</h3>
+                <div class="editor-column">
+                    <h3>Exercise Editor:</h3>
                 <netkat id="analysis-editor" lines="8" show-line-numbers>// Click an exercise to load it
 
 </netkat>
