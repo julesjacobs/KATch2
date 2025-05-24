@@ -283,9 +283,7 @@ class KATch2Editor {
         // Create unified container with all styling
         const unifiedContainer = document.createElement('div');
         unifiedContainer.style.cssText = `
-            border: 1px solid ${isExercise ? '#aed6f1' : '#ddd'};
-            border-left-width: 5px;
-            border-left-color: ${isExercise ? '#3498db' : '#ddd'};
+            border: 1px solid #e1e5e9;
             border-radius: 4px;
             box-shadow: 0 3px 7px rgba(0,0,0,0.15);
             transition: border-color 0.3s ease, box-shadow 0.3s ease;
@@ -380,7 +378,7 @@ class KATch2Editor {
             showSolutionButton.style.opacity = '0.9';
             showSolutionButton.style.transform = 'translateY(0)';
             showSolutionButton.style.boxShadow = '0 2px 4px rgba(108,117,125,0.3)';
-            unifiedContainer.style.borderColor = isExercise ? '#aed6f1' : '#ddd';
+            unifiedContainer.style.borderColor = '#e1e5e9';
             unifiedContainer.style.boxShadow = '0 3px 7px rgba(0,0,0,0.15)';
         });
 
@@ -671,7 +669,7 @@ class KATch2Editor {
                                     const [inputTrace, finalOutput] = trace;
                                     const traceString = inputTrace.map(p => p.map(bit => bit ? '1' : '0').join('')).join(' → ');
                                     const outputString = finalOutput ? ` → ${finalOutput.map(bit => bit ? '1' : '0').join('')}` : ' → ...';
-                                    feedbackHtml += `<div class="trace" style="margin-left: 20px; font-family: monospace;">${this.htmlEscape(traceString + outputString)}</div>`;
+                                    feedbackHtml += `<div class="trace" style="margin-left: 20px; font-family: monospace; background-color: white; padding: 2px 4px; border-radius: 3px; border: 1px solid #e9ecef; display: inline-block;">${this.htmlEscape(traceString + outputString)}</div>`;
                                 });
                                 feedbackHtml += '</div>';
                             }
@@ -689,7 +687,7 @@ class KATch2Editor {
                                     const [inputTrace, finalOutput] = trace;
                                     const traceString = inputTrace.map(p => p.map(bit => bit ? '1' : '0').join('')).join(' → ');
                                     const outputString = finalOutput ? ` → ${finalOutput.map(bit => bit ? '1' : '0').join('')}` : ' → ...';
-                                    feedbackHtml += `<div class="trace" style="margin-left: 20px; font-family: monospace;">${this.htmlEscape(traceString + outputString)}</div>`;
+                                    feedbackHtml += `<div class="trace" style="margin-left: 20px; font-family: monospace; background-color: white; padding: 2px 4px; border-radius: 3px; border: 1px solid #e9ecef; display: inline-block;">${this.htmlEscape(traceString + outputString)}</div>`;
                                 });
                                 feedbackHtml += '</div>';
                             }
@@ -728,7 +726,7 @@ class KATch2Editor {
                                 const [inputTrace, finalOutput] = analysis.traces[i];
                             const traceString = inputTrace.map(formatPacket).join(' → ');
                             const outputString = finalOutput ? ` → ${formatPacket(finalOutput)}` : ' → ...';
-                            tracesHtml += `<div style="margin: 2px 0;"><span style="font-family: monospace; background-color: #f8f9fa; padding: 2px 4px; border-radius: 3px;">${traceString}${outputString}</span></div>`;
+                            tracesHtml += `<div style="margin: 2px 0;"><span style="font-family: monospace; background-color: white; padding: 2px 4px; border-radius: 3px; border: 1px solid #e9ecef;">${traceString}${outputString}</span></div>`;
                             }
                             html += `<br><strong>Example traces:</strong><br>` + tracesHtml;
                         }
@@ -790,9 +788,18 @@ class KATch2Editor {
 
     setResultStyle(resultArea, type) {
         const styles = {
-            success: { backgroundColor: '#d4edda', color: '#155724' },
-            error: { backgroundColor: '#f8d7da', color: '#721c24' },
-            neutral: { backgroundColor: '#f9fafb', color: '#555' }
+            success: { 
+                backgroundColor: '#f8fff9', 
+                color: '#2d5a3d'
+            },
+            error: { 
+                backgroundColor: '#fef8f8', 
+                color: '#a53e3e'
+            },
+            neutral: { 
+                backgroundColor: '#f9fafb', 
+                color: '#555'
+            }
         };
         
         const style = styles[type] || styles.neutral;
@@ -910,11 +917,7 @@ class KATch2Editor {
         // Update container styling for exercise mode
         const container = instance.customElementDOM.querySelector('div[style*="border: 1px solid"]');
         if (container) {
-            container.style.borderTop = 'none';
             container.style.borderRadius = '0 0 0 0';
-            container.style.borderLeftWidth = '5px';
-            container.style.borderLeftColor = '#aed6f1';
-            container.style.marginRight = '5px';
         }
 
         if (instance.exerciseFeedbackArea) {
@@ -981,7 +984,7 @@ class KATch2Editor {
                 newButton.style.transform = 'translateY(0)';
                 newButton.style.boxShadow = '0 2px 4px rgba(108,117,125,0.3)';
                 if (container) {
-                    container.style.borderColor = '#ddd';
+                    container.style.borderColor = '#e1e5e9';
                     container.style.boxShadow = '0 3px 7px rgba(0,0,0,0.15)';
                 }
             });
