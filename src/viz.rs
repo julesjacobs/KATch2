@@ -594,38 +594,60 @@ pub fn render_aut(root_state: usize, aut: &mut Aut, output_dir: &Path) -> Result
     const CARDS_PER_ROW: usize = 4;
     let rows = (sorted_spps.len() + CARDS_PER_ROW - 1) / CARDS_PER_ROW; // Ceiling division
 
-    for row in 0..rows {
+    for row_idx in 0..rows {
         html_content.push_str("            <div class=\"spp-row\">\n");
-
-        let start_idx = row * CARDS_PER_ROW;
-        let end_idx = std::cmp::min((row + 1) * CARDS_PER_ROW, sorted_spps.len());
+        let start_idx = row_idx * CARDS_PER_ROW;
+        let end_idx = std::cmp::min(start_idx + CARDS_PER_ROW, sorted_spps.len());
 
         for i in start_idx..end_idx {
-            let spp = sorted_spps[i];
+            let spp_index = sorted_spps[i];
+            let spp_id_str = format!("SPP({})", spp_index.0); // For display and ID
+            let spp_file_name = format!("spp_{}.svg", spp_index.0); // For file reference
+
+            // Check if the SPP SVG file exists, render if not
+            let spp_svg_path = output_dir.join(&spp_file_name);
+            if !spp_svg_path.exists() {
+                // Call the public spp_store() method to get an immutable reference to the SPPstore
+                if let Err(e) = render_spp(*spp_index, aut.spp_store(), output_dir) {
+                    eprintln!("Error rendering SPP {} on-demand: {}", spp_id_str, e);
+                    // Optionally add an error message to the HTML
+                    html_content.push_str(&format!(
+                        "                <div class=\"spp-card error\">Error rendering {}</div>\n",
+                        spp_id_str
+                    ));
+                    continue;
+                }
+            }
+
             html_content.push_str(&format!(
-                "                <div class=\"spp-card\" id=\"spp-{}-card\">\n                    <div class=\"spp-title\">SPP {}</div>\n                    <div class=\"spp-img-container\"><img class=\"spp-img\" src=\"spp_{}.svg\" alt=\"SPP {}\" loading=\"lazy\"></div>\n                </div>\n",
-                spp, spp, spp, spp
+                r#"                <div class="spp-card" id="spp-{}-card">
+                    <div class="spp-title">SPP {}</div>
+                    <div class="spp-img-container"><img class="spp-img" src="{}" alt="SPP {}" loading="lazy"></div>
+                </div>
+"#,
+                spp_id_str, // id: SPP(2)
+                spp_id_str, // title: SPP SPP(2)
+                spp_file_name, // src: spp_2.svg
+                spp_id_str  // alt: SPP SPP(2)
             ));
         }
-
-        html_content.push_str("            </div>\n");
+        html_content.push_str("            </div>\n"); // Close spp-row
     }
+    html_content.push_str("        </div>\n    </div>\n"); // Close spp-container and section
 
+    // Add state information table
     html_content.push_str(
-        r#"        </div>
-    </div>
-    
-    <div class="section">
-        <h2>State Information</h2>
-        <table id="state-table">
-            <thead>
-                <tr>
-                    <th>State</th>
-                    <th>Expression</th>
-                    <th>Epsilon SPP</th>
-                </tr>
-            </thead>
-            <tbody>
+        r#"        <div class="section">
+            <h2>State Information</h2>
+            <table id="state-table">
+                <thead>
+                    <tr>
+                        <th>State</th>
+                        <th>Expression</th>
+                        <th>Epsilon SPP</th>
+                    </tr>
+                </thead>
+                <tbody>
 "#,
     );
 
@@ -647,21 +669,21 @@ pub fn render_aut(root_state: usize, aut: &mut Aut, output_dir: &Path) -> Result
     }
 
     html_content.push_str(
-        r#"            </tbody>
-        </table>
-    </div>
-    
-    <div class="section">
-        <h2>Transitions</h2>
-        <table id="transitions-table">
-            <thead>
-                <tr>
-                    <th>From</th>
-                    <th>To</th>
-                    <th>SPP</th>
-                </tr>
-            </thead>
-            <tbody>
+        r#"                </tbody>
+            </table>
+        </div>
+        
+        <div class="section">
+            <h2>Transitions</h2>
+            <table id="transitions-table">
+                <thead>
+                    <tr>
+                        <th>From</th>
+                        <th>To</th>
+                        <th>SPP</th>
+                    </tr>
+                </thead>
+                <tbody>
 "#,
     );
 
@@ -676,240 +698,286 @@ pub fn render_aut(root_state: usize, aut: &mut Aut, output_dir: &Path) -> Result
     }
 
     html_content.push_str(
-        r#"            </tbody>
-        </table>
-    </div>
-    
-    <footer>
-        Automaton Visualization Report - Generated on <span id="generation-date"></span>
-    </footer>
-    
-    <!-- SPP Modal Dialog -->
-    <div id="spp-modal" class="modal">
-        <div class="modal-content">
-            <span class="close-button">&times;</span>
-            <h2 id="modal-title">SPP Visualization</h2>
-            <div id="modal-content"></div>
+        r#"                </tbody>
+            </table>
         </div>
-    </div>
-
-    <script>
-        // Set the generation date
-        document.getElementById('generation-date').textContent = new Date().toLocaleDateString();
         
-        // Initialize when the document is fully loaded
-        document.addEventListener('DOMContentLoaded', function() {
-            // SVG manipulation variables
-            const svgContainer = document.getElementById('automaton-container');
-            const svgObject = document.getElementById('automaton-svg');
-            const tooltip = document.getElementById('tooltip');
-            let svgDoc = null;
+        <footer>
+            Automaton Visualization Report - Generated on <span id="generation-date"></span>
+        </footer>
+        
+        <!-- SPP Modal Dialog -->
+        <div id="spp-modal" class="modal">
+            <div class="modal-content">
+                <span class="close-button">&times;</span>
+                <h2 id="modal-title">SPP Visualization</h2>
+                <div id="modal-content"></div>
+            </div>
+        </div>
+
+        <script>
+            // Set the generation date
+            document.getElementById('generation-date').textContent = new Date().toLocaleDateString();
             
-            // Modal handling
-            const modal = document.getElementById('spp-modal');
-            const modalTitle = document.getElementById('modal-title');
-            const modalContent = document.getElementById('modal-content');
-            const closeButton = document.querySelector('.close-button');
-            
-            // Close the modal when clicking the close button or outside
-            closeButton.onclick = function() {
-                modal.style.display = 'none';
-            };
-            
-            window.onclick = function(event) {
-                if (event.target === modal) {
+            // Initialize when the document is fully loaded
+            document.addEventListener('DOMContentLoaded', function() {
+                // SVG manipulation variables
+                const svgContainer = document.getElementById('automaton-container');
+                const svgObject = document.getElementById('automaton-svg');
+                const tooltip = document.getElementById('tooltip');
+                let svgDoc = null;
+                
+                // Modal handling
+                const modal = document.getElementById('spp-modal');
+                const modalTitle = document.getElementById('modal-title');
+                const modalContent = document.getElementById('modal-content');
+                const closeButton = document.querySelector('.close-button');
+                
+                // Close the modal when clicking the close button or outside
+                closeButton.onclick = function() {
                     modal.style.display = 'none';
-                }
-            };
-            
-            // SPP reference click handlers
-            document.querySelectorAll('.spp-reference, .expr-spp').forEach(ref => {
-                ref.addEventListener('click', function() {
-                    const sppId = this.getAttribute('data-spp');
-                    showSPPModal(sppId);
-                });
-            });
-            
-            // Function to show SPP in a modal
-            function showSPPModal(sppId) {
-                modalTitle.textContent = `SPP ${sppId} Visualization`;
-                modalContent.innerHTML = `<img src="spp_${sppId}.svg" alt="SPP ${sppId}" style="max-width: 100%;">`;
-                modal.style.display = 'block';
-            }
-            
-            // Wait for SVG to load
-            svgObject.addEventListener('load', function() {
-                // Get access to the SVG document
-                svgDoc = svgObject.contentDocument;
+                };
                 
-                // Process all nodes in the SVG
-                const nodes = svgDoc.querySelectorAll('[id^="node"]');
-                nodes.forEach(node => {
-                    setupNodeInteraction(node);
-                });
-                
-                // Process all edges (paths) in the SVG
-                const edges = svgDoc.querySelectorAll('path, polygon');
-                edges.forEach(edge => {
-                    if (edge.parentElement && edge.parentElement.tagName === 'g' && 
-                        edge.parentElement.getAttribute('class') === 'edge') {
-                        setupEdgeInteraction(edge);
+                window.onclick = function(event) {
+                    if (event.target === modal) {
+                        modal.style.display = 'none';
                     }
+                };
+                
+                // SPP reference click handlers
+                document.querySelectorAll('.spp-reference, .expr-spp').forEach(ref => {
+                    ref.addEventListener('click', function() {
+                        const sppId = this.getAttribute('data-spp');
+                        showSPPModal(sppId);
+                    });
+                });
+                
+                // Function to show SPP in a modal
+                function showSPPModal(sppId) { // sppId is in format "SPP(X)" or just "X" from node labels
+                    let numericSppId = sppId;
+                    if (sppId.startsWith('SPP(') && sppId.endsWith(')')) {
+                        numericSppId = sppId.substring(4, sppId.length - 1);
+                    }
+                    modalTitle.textContent = \`SPP \${sppId} Visualization\`; // Display original sppId like SPP(5)
+                    modalContent.innerHTML = \`<img src="spp_\${numericSppId}.svg" alt="SPP \${sppId}" style="max-width: 100%;">\`;
+                    modal.style.display = 'block';
+                }
+                
+                // Wait for SVG to load
+                svgObject.addEventListener('load', function() {
+                    // Get access to the SVG document
+                    svgDoc = svgObject.contentDocument;
+                    
+                    // Process all nodes in the SVG
+                    const nodes = svgDoc.querySelectorAll('[id^="node"]');
+                    nodes.forEach(node => {
+                        setupNodeInteraction(node);
+                    });
+                    
+                    // Process all edges (paths) in the SVG
+                    const edges = svgDoc.querySelectorAll('path, polygon');
+                    edges.forEach(edge => {
+                        if (edge.parentElement && edge.parentElement.tagName === 'g' && 
+                            edge.parentElement.getAttribute('class') === 'edge') {
+                            setupEdgeInteraction(edge);
+                        }
+                    });
+                    
+                    // Make SPP references in SVG node labels clickable
+                    makeNodeLabelSPPsClickable(svgDoc);
                 });
                 
                 // Make SPP references in SVG node labels clickable
-                makeNodeLabelSPPsClickable(svgDoc);
-            });
-            
-            // Make SPP references in SVG node labels clickable
-            function makeNodeLabelSPPsClickable(svgDoc) {
-                // Find all text elements that might contain SPP references
-                const textElements = svgDoc.querySelectorAll('text');
-                
-                textElements.forEach(textEl => {
-                    // Check if this is a text element that contains SPP reference
-                    const tspans = textEl.querySelectorAll('tspan');
+                function makeNodeLabelSPPsClickable(svgDoc) {
+                    // Find all text elements that might contain SPP references
+                    const textElements = svgDoc.querySelectorAll('text');
                     
-                    tspans.forEach(tspan => {
-                        // Check if this tspan contains an underlined SPP reference
-                        if (tspan.innerHTML && tspan.innerHTML.includes('SPP(')) {
-                            // Look for colored text which indicates our SPP references
-                            const sppMatch = tspan.innerHTML.match(/SPP\((\d+)\)/);
-                            if (sppMatch) {
-                                const sppId = sppMatch[1];
-                                
-                                // Make tspan clickable
-                                tspan.style.cursor = 'pointer';
-                                tspan.style.textDecoration = 'underline';
-                                
-                                // Remove any existing click listeners on the parent node
-                                const parentNode = findParentNode(tspan);
-                                if (parentNode) {
-                                    // Store the original click handler
-                                    const originalClickHandler = parentNode.onclick;
-                                    parentNode.onclick = null;
+                    textElements.forEach(textEl => {
+                        // Check if this is a text element that contains SPP reference
+                        const tspans = textEl.querySelectorAll('tspan');
+                        
+                        tspans.forEach(tspan => {
+                            // Check if this tspan contains an underlined SPP reference
+                            if (tspan.innerHTML && tspan.innerHTML.includes('SPP(')) {
+                                // Look for colored text which indicates our SPP references
+                                const sppMatch = tspan.innerHTML.match(/SPP\((\d+)\)/);
+                                if (sppMatch) {
+                                    const sppId = sppMatch[1];
                                     
-                                    // Create a new click handler for the node that checks the target
-                                    parentNode.addEventListener('click', function(e) {
-                                        // If click was on a tspan containing SPP, don't show epsilon
-                                        if (e.target.tagName === 'tspan' && 
-                                            e.target.innerHTML && 
-                                            e.target.innerHTML.includes('SPP(')) {
-                                            return;
-                                        }
+                                    // Make tspan clickable
+                                    tspan.style.cursor = 'pointer';
+                                    tspan.style.textDecoration = 'underline';
+                                    
+                                    // Remove any existing click listeners on the parent node
+                                    const parentNode = findParentNode(tspan);
+                                    if (parentNode) {
+                                        // Store the original click handler
+                                        const originalClickHandler = parentNode.onclick;
+                                        parentNode.onclick = null;
                                         
-                                        // Extract epsilon SPP from the label
-                                        const labelContent = parentNode.textContent;
-                                        const epsilonMatch = labelContent.match(/ε:(\d+)/);
-                                        if (epsilonMatch) {
-                                            const epsilonSpp = epsilonMatch[1];
-                                            showSPPModal(epsilonSpp);
-                                        }
+                                        // Create a new click handler for the node that checks the target
+                                        parentNode.addEventListener('click', function(e) {
+                                            // If click was on a tspan containing SPP, don't show epsilon
+                                            if (e.target.tagName === 'tspan' && 
+                                                e.target.innerHTML && 
+                                                e.target.innerHTML.includes('SPP(')) {
+                                                return;
+                                            }
+                                            
+                                            // Extract epsilon SPP from the label
+                                            const labelContent = parentNode.textContent;
+                                            const epsilonMatch = labelContent.match(/ε:(\d+)/);
+                                            if (epsilonMatch) {
+                                                const epsilonSpp = epsilonMatch[1];
+                                                showSPPModal(epsilonSpp);
+                                            }
+                                        });
+                                    }
+                                    
+                                    // Add click handler to the tspan
+                                    tspan.addEventListener('click', function(e) {
+                                        showSPPModal(sppId);
+                                        e.stopPropagation();
                                     });
                                 }
-                                
-                                // Add click handler to the tspan
-                                tspan.addEventListener('click', function(e) {
-                                    showSPPModal(sppId);
-                                    e.stopPropagation();
-                                });
                             }
-                        }
+                        });
                     });
-                });
-            }
-            
-            // Helper function to find the parent node element
-            function findParentNode(element) {
-                let current = element;
-                while (current) {
-                    // Move up the DOM tree
-                    current = current.parentElement;
-                    
-                    // Check if we've found a node element
-                    if (current && current.id && current.id.startsWith('node')) {
-                        return current;
+                }
+                
+                // Helper function to find the parent node element
+                function findParentNode(element) {
+                    let current = element;
+                    while (current) {
+                        // Move up the DOM tree
+                        current = current.parentElement;
+                        
+                        // Check if we've found a node element
+                        if (current && current.id && current.id.startsWith('node')) {
+                            return current;
+                        }
+                        
+                        // If we hit the svg element, stop searching
+                        if (current && current.tagName === 'svg') {
+                            break;
+                        }
                     }
+                    return null;
+                }
+                
+                // Setup node interaction (hover, click)
+                function setupNodeInteraction(node) {
+                    // Extract state ID and epsilon SPP from the node's title or label
+                    const nodeId = node.id;
+                    const stateId = nodeId.replace('node', '');
                     
-                    // If we hit the svg element, stop searching
-                    if (current && current.tagName === 'svg') {
-                        break;
+                    // Find the node's label element
+                    const labelText = node.querySelector('text');
+                    
+                    if (labelText) {
+                        // We'll now handle node clicks differently to accommodate SPP references
+                        // The click handler is added in makeNodeLabelSPPsClickable
+                        
+                        // Setup hover effects
+                        node.addEventListener('mouseover', function(e) {
+                            this.classList.add('node-highlight');
+                            // Extract epsilon SPP from the label
+                            const labelContent = labelText.textContent;
+                            const epsilonMatch = labelContent.match(/ε:(\d+)/);
+                            const epsilonSpp = epsilonMatch ? epsilonMatch[1] : null;
+                            
+                            showTooltip(e, 
+                                `<div class="tooltip-content">
+                                    <strong>State ${stateId}</strong>
+                                    ${epsilonSpp ? `<br>Epsilon SPP: <span class=\"spp-link\" data-spp=\"${epsilonSpp}\">${epsilonSpp}</span>` : ''}
+                                    <br><br>
+                                    ${epsilonSpp ? `<img src="spp_${epsilonSpp}.svg" alt="SPP ${epsilonSpp}" width="200">` : ''}
+                                </div>`
+                            );
+                            e.stopPropagation();
+                        });
+                        
+                        node.addEventListener('mousemove', function(e) {
+                            updateTooltipPosition(e);
+                            e.stopPropagation();
+                        });
+                        
+                        node.addEventListener('mouseout', function(e) {
+                            this.classList.remove('node-highlight');
+                            hideTooltip();
+                            e.stopPropagation();
+                        });
                     }
                 }
-                return null;
-            }
-            
-            // Setup node interaction (hover, click)
-            function setupNodeInteraction(node) {
-                // Extract state ID and epsilon SPP from the node's title or label
-                const nodeId = node.id;
-                const stateId = nodeId.replace('node', '');
                 
-                // Find the node's label element
-                const labelText = node.querySelector('text');
-                
-                if (labelText) {
-                    // We'll now handle node clicks differently to accommodate SPP references
-                    // The click handler is added in makeNodeLabelSPPsClickable
+                // Setup edge interaction
+                function setupEdgeInteraction(edge) {
+                    const parentG = edge.parentElement;
+                    if (!parentG) return;
                     
-                    // Setup hover effects
-                    node.addEventListener('mouseover', function(e) {
-                        this.classList.add('node-highlight');
-                        // Extract epsilon SPP from the label
-                        const labelContent = labelText.textContent;
-                        const epsilonMatch = labelContent.match(/ε:(\d+)/);
-                        const epsilonSpp = epsilonMatch ? epsilonMatch[1] : null;
+                    const titleEl = parentG.querySelector('title');
+                    if (!titleEl) return;
+                    
+                    // Extract edge information from the title element (format is usually "node1->node2")
+                    const title = titleEl.textContent;
+                    const edgeMatch = title.match(/node(\d+)->node(\d+)/);
+                    if (!edgeMatch) return;
+                    
+                    const fromState = edgeMatch[1];
+                    const toState = edgeMatch[2];
+                    
+                    // Find the label text for this edge
+                    const edgeLabel = parentG.querySelector('text');
+                    let sppId = null;
+                    
+                    if (edgeLabel) {
+                        sppId = edgeLabel.textContent;
                         
-                        showTooltip(e, 
-                            `<div class="tooltip-content">
-                                <strong>State ${stateId}</strong>
-                                ${epsilonSpp ? `<br>Epsilon SPP: <span class=\"spp-link\" data-spp=\"${epsilonSpp}\">${epsilonSpp}</span>` : ''}
-                                <br><br>
-                                ${epsilonSpp ? `<img src="spp_${epsilonSpp}.svg" alt="SPP ${epsilonSpp}" width="200">` : ''}
-                            </div>`
-                        );
+                        // Make the edge label itself clickable
+                        edgeLabel.style.cursor = 'pointer';
+                        edgeLabel.addEventListener('click', function(e) {
+                            if (sppId) {
+                                showSPPModal(sppId);
+                                e.stopPropagation();
+                            }
+                        });
+                    }
+                    
+                    // Set up hover effects for the whole edge
+                    parentG.addEventListener('mouseover', function(e) {
+                        parentG.querySelectorAll('path, polygon').forEach(el => {
+                            el.classList.add('edge-highlight');
+                        });
+                        
+                        if (sppId) {
+                            showTooltip(e, 
+                                `<div class="tooltip-content">
+                                    <strong>Transition</strong><br>
+                                    From: ${fromState} → To: ${toState}<br>
+                                    SPP: <span class="spp-link" data-spp="${sppId}">${sppId}</span>
+                                    <br><br>
+                                    <img src="spp_${sppId}.svg" alt="SPP ${sppId}" width="200">
+                                </div>`
+                            );
+                        }
                         e.stopPropagation();
                     });
                     
-                    node.addEventListener('mousemove', function(e) {
+                    parentG.addEventListener('mousemove', function(e) {
                         updateTooltipPosition(e);
                         e.stopPropagation();
                     });
                     
-                    node.addEventListener('mouseout', function(e) {
-                        this.classList.remove('node-highlight');
+                    parentG.addEventListener('mouseout', function(e) {
+                        parentG.querySelectorAll('path, polygon').forEach(el => {
+                            el.classList.remove('edge-highlight');
+                        });
                         hideTooltip();
                         e.stopPropagation();
                     });
-                }
-            }
-            
-            // Setup edge interaction
-            function setupEdgeInteraction(edge) {
-                const parentG = edge.parentElement;
-                if (!parentG) return;
-                
-                const titleEl = parentG.querySelector('title');
-                if (!titleEl) return;
-                
-                // Extract edge information from the title element (format is usually "node1->node2")
-                const title = titleEl.textContent;
-                const edgeMatch = title.match(/node(\d+)->node(\d+)/);
-                if (!edgeMatch) return;
-                
-                const fromState = edgeMatch[1];
-                const toState = edgeMatch[2];
-                
-                // Find the label text for this edge
-                const edgeLabel = parentG.querySelector('text');
-                let sppId = null;
-                
-                if (edgeLabel) {
-                    sppId = edgeLabel.textContent;
                     
-                    // Make the edge label itself clickable
-                    edgeLabel.style.cursor = 'pointer';
-                    edgeLabel.addEventListener('click', function(e) {
+                    // Click to show detailed SPP for the whole edge
+                    parentG.addEventListener('click', function(e) {
                         if (sppId) {
                             showSPPModal(sppId);
                             e.stopPropagation();
@@ -917,96 +985,54 @@ pub fn render_aut(root_state: usize, aut: &mut Aut, output_dir: &Path) -> Result
                     });
                 }
                 
-                // Set up hover effects for the whole edge
-                parentG.addEventListener('mouseover', function(e) {
-                    parentG.querySelectorAll('path, polygon').forEach(el => {
-                        el.classList.add('edge-highlight');
-                    });
+                // Show tooltip at the event position
+                function showTooltip(event, html) {
+                    tooltip.innerHTML = html;
+                    updateTooltipPosition(event);
+                    tooltip.style.visibility = 'visible';
+                    tooltip.style.opacity = '1';
                     
-                    if (sppId) {
-                        showTooltip(e, 
-                            `<div class="tooltip-content">
-                                <strong>Transition</strong><br>
-                                From: ${fromState} → To: ${toState}<br>
-                                SPP: <span class="spp-link" data-spp="${sppId}">${sppId}</span>
-                                <br><br>
-                                <img src="spp_${sppId}.svg" alt="SPP ${sppId}" width="200">
-                            </div>`
-                        );
-                    }
-                    e.stopPropagation();
-                });
-                
-                parentG.addEventListener('mousemove', function(e) {
-                    updateTooltipPosition(e);
-                    e.stopPropagation();
-                });
-                
-                parentG.addEventListener('mouseout', function(e) {
-                    parentG.querySelectorAll('path, polygon').forEach(el => {
-                        el.classList.remove('edge-highlight');
+                    // Add click handlers to any SPP links in the tooltip
+                    tooltip.querySelectorAll('.spp-link').forEach(link => {
+                        link.addEventListener('click', function(e) {
+                            const sppId = this.getAttribute('data-spp');
+                            showSPPModal(sppId);
+                            e.stopPropagation();
+                        });
                     });
-                    hideTooltip();
-                    e.stopPropagation();
-                });
-                
-                // Click to show detailed SPP for the whole edge
-                parentG.addEventListener('click', function(e) {
-                    if (sppId) {
-                        showSPPModal(sppId);
-                        e.stopPropagation();
-                    }
-                });
-            }
-            
-            // Show tooltip at the event position
-            function showTooltip(event, html) {
-                tooltip.innerHTML = html;
-                updateTooltipPosition(event);
-                tooltip.style.visibility = 'visible';
-                tooltip.style.opacity = '1';
-                
-                // Add click handlers to any SPP links in the tooltip
-                tooltip.querySelectorAll('.spp-link').forEach(link => {
-                    link.addEventListener('click', function(e) {
-                        const sppId = this.getAttribute('data-spp');
-                        showSPPModal(sppId);
-                        e.stopPropagation();
-                    });
-                });
-            }
-            
-            // Update tooltip position based on mouse coordinates
-            function updateTooltipPosition(event) {
-                const rect = svgContainer.getBoundingClientRect();
-                
-                // Adjust position to keep tooltip within visible area
-                let left = event.clientX - rect.left + 10;
-                let top = event.clientY - rect.top + 10;
-                
-                // Ensure the tooltip stays within the container bounds
-                const tooltipRect = tooltip.getBoundingClientRect();
-                if (left + tooltipRect.width > rect.width) {
-                    left = event.clientX - rect.left - tooltipRect.width - 10;
-                }
-                if (top + tooltipRect.height > rect.height) {
-                    top = event.clientY - rect.top - tooltipRect.height - 10;
                 }
                 
-                tooltip.style.left = `${left}px`;
-                tooltip.style.top = `${top}px`;
-            }
-            
-            // Hide the tooltip
-            function hideTooltip() {
-                tooltip.style.opacity = '0';
-                setTimeout(() => {
-                    tooltip.style.visibility = 'hidden';
-                }, 300);
-            }
-        });
-    </script>
-</body>
+                // Update tooltip position based on mouse coordinates
+                function updateTooltipPosition(event) {
+                    const rect = svgContainer.getBoundingClientRect();
+                    
+                    // Adjust position to keep tooltip within visible area
+                    let left = event.clientX - rect.left + 10;
+                    let top = event.clientY - rect.top + 10;
+                    
+                    // Ensure the tooltip stays within the container bounds
+                    const tooltipRect = tooltip.getBoundingClientRect();
+                    if (left + tooltipRect.width > rect.width) {
+                        left = event.clientX - rect.left - tooltipRect.width - 10;
+                    }
+                    if (top + tooltipRect.height > rect.height) {
+                        top = event.clientY - rect.top - tooltipRect.height - 10;
+                    }
+                    
+                    tooltip.style.left = `${left}px`;
+                    tooltip.style.top = `${top}px`;
+                }
+                
+                // Hide the tooltip
+                function hideTooltip() {
+                    tooltip.style.opacity = '0';
+                    setTimeout(() => {
+                        tooltip.style.visibility = 'hidden';
+                    }, 300);
+                }
+            });
+        </script>
+    </body>
 </html>
 "#,
     );

@@ -137,7 +137,7 @@
         <p>The <code>dup</code> keyword is a special NetKAT operator that doesn't change the packet but instead "duplicates" it and sends one copy to a log or trace, while the other copy continues through the policy. This is extremely useful for observing the state of the packet at various points in your NetKAT expression.</p>
         <p>In KATch2, <code>dup</code> causes the current packet state to be explicitly shown in the trace output for that step.</p>
         <p>Example: Set <code>x0</code> to 1, log the packet, then set <code>x1</code> to 1.</p>
-        <netkat>x0 := 1; dup; x1 := 1</netkat>
+        <netkat>x0 := 1; dup</netkat>
         <p>You'll see an entry in the trace specifically for the <code>dup</code> operation, showing the packet state after <code>x0 := 1</code> but before <code>x1 := 1</code>.</p>
         <p>Here's another example showing <code>dup</code> inside an iteration to see the packet at each step of a loop (that eventually terminates because the condition <code>x0 == 0</code> becomes false):</p>
         <netkat>((x0 == 0; x0 := 1); dup)*</netkat>

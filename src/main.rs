@@ -1,13 +1,12 @@
 #![allow(dead_code)]
-#![allow(unused)]
+#![allow(unused_imports)]
 #![allow(non_snake_case)]
 
 use clap::{Parser, Subcommand};
-use expr::Expr;
+use crate::expr::Expr;
 use std::fs;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
-use regex::Regex;
 
 mod aut;
 mod expr;
@@ -16,7 +15,7 @@ mod parser;
 mod pre;
 mod sp;
 mod spp;
-// mod ui; // ui.rs is kept but not used by main.rs for now
+mod ui;
 mod viz;
 /// KATch2: A symbolic automata toolkit for NetKAT expressions
 #[derive(Parser, Debug)]
@@ -28,18 +27,14 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    // /// Run the interactive web UI
-    // #[command(name = "webui")]
-    // WebUI {
-    //     /// Port to run the web server on
-    //     #[arg(short, long, default_value = "8080")]
-    //     port: u16,
-    // },
-
-    /// Parse and process NetKAT expressions from a file or directory
+    /// Parse and process NetKAT expressions from a file or directory,
+    /// generating a static HTML report in the specified output directory.
     Parse {
-        /// The file or directory path to parse
+        /// The file or directory path to parse.
         path: PathBuf,
+        /// The base directory for outputting the static HTML reports.
+        #[arg(short, long, value_name = "DIR", default_value = "./out")]
+        out_dir: PathBuf,
     },
 }
 
@@ -47,25 +42,23 @@ enum Commands {
 async fn main() -> std::io::Result<()> {
     let cli = Cli::parse();
 
-    match &cli.command {
-        // Commands::WebUI { port } => {
-        //     println!("Starting web UI server on port {}", port);
-        //     if let Err(e) = ui::start_ui(*port).await {
-        //         eprintln!("Error running web server: {}", e);
-        //         std::process::exit(1);
-        //     }
-        // }
-        Commands::Parse { path } => {
-            // Traditional file processing mode
+    match cli.command {
+        Commands::Parse { path, out_dir } => {
             if !path.exists() {
                 eprintln!("Error: Path \"{}\" does not exist.", path.display());
                 std::process::exit(1);
             }
 
+            // Ensure the base output directory exists
+            if let Err(e) = fs::create_dir_all(&out_dir) {
+                eprintln!("Error: Could not create output directory \"{}\": {}", out_dir.display(), e);
+                std::process::exit(1);
+            }
+
             if path.is_dir() {
-                process_directory(&path);
+                process_directory(&path, &out_dir);
             } else if path.is_file() {
-                process_file(&path);
+                process_file(&path, &out_dir);
             } else {
                 eprintln!(
                     "Error: Path \"{}\" is neither a file nor a directory.",
@@ -78,64 +71,59 @@ async fn main() -> std::io::Result<()> {
     Ok(())
 }
 
-fn process_directory(dir_path: &Path) {
+fn process_directory(dir_path: &Path, out_dir: &Path) {
     println!("Processing directory: {}", dir_path.display());
     let mut found_k2_files = false;
     for entry in WalkDir::new(dir_path).into_iter().filter_map(|e| e.ok()) {
-        let path = entry.path();
-        if path.is_file() {
-            if let Some(ext) = path.extension() {
+        let current_path = entry.path();
+        if current_path.is_file() {
+            if let Some(ext) = current_path.extension() {
                 if ext == "k2" {
                     found_k2_files = true;
-                    process_file(path);
+                    process_file(current_path, out_dir);
                 }
             }
         }
     }
     if !found_k2_files {
-        println!("No .k2 files found in directory.");
+        println!("No .k2 files found in directory: {}", dir_path.display());
     }
 }
 
-fn process_file(file_path: &Path) {
+fn process_file(file_path: &Path, out_dir: &Path) {
     println!("--- Processing file: {} ---", file_path.display());
     match fs::read_to_string(file_path) {
         Ok(content) => {
-            match parser::parse_expressions(&content) {
+            match crate::parser::parse_expressions(&content) {
                 Ok(expressions) => {
                     if expressions.is_empty() {
-                        println!("No expressions found or parsed.");
+                        println!("No expressions found or parsed in {}.", file_path.display());
                     } else {
-                        println!("Parsed Expressions:");
-                        for (i, expr) in expressions.iter().enumerate() {
-                            println!("  {}: {:?}", i + 1, expr);
-                            // Potentially print a more user-friendly format later
-                            // println!("  {}: {}", i + 1, expr);
-                        }
-                        for expr in &expressions {
-                            process_expression(expr);
+                        println!("Parsed {} expressions from {}.", expressions.len(), file_path.display());
+                        // Optional: Print details of expressions if needed for debugging
+                        // for (i, expr) in expressions.iter().enumerate() {
+                        //     println!("  {}: {:?}", i + 1, expr);
+                        // }
+
+                        let source_file_name = file_path
+                            .file_name()
+                            .unwrap_or_else(|| std::ffi::OsStr::new("unknown.k2"))
+                            .to_string_lossy();
+                        
+                        println!("Generating static site for {}...", source_file_name);
+                        if let Err(e) = crate::ui::generate_static_site(&expressions, &source_file_name, out_dir) {
+                            eprintln!("  Error generating static site for {}: {}", source_file_name, e);
                         }
                     }
                 }
                 Err(e) => {
-                    eprintln!("  Error parsing file: {}", e);
+                    eprintln!("  Error parsing file {}: {}", file_path.display(), e);
                 }
             }
         }
         Err(e) => {
-            eprintln!("  Error reading file: {}", e);
+            eprintln!("  Error reading file {}: {}", file_path.display(), e);
         }
     }
-    println!("-------------------------------");
-}
-
-fn process_expression(expr: &Box<Expr>) {
-    // Create an automaton from the expression
-    let mut aut = aut::Aut::new(expr.num_fields());
-    let state = aut.expr_to_state(expr);
-    println!("State: {}", state);
-    let delta = aut.delta(state);
-    println!("Delta: {:?}", delta);
-    let epsilon = aut.epsilon(state);
-    println!("Epsilon: {:?}", epsilon);
+    println!("--- Finished processing file: {} ---", file_path.display());
 }
