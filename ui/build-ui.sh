@@ -55,6 +55,12 @@ if [ $? -eq 0 ]; then
         # Copy the entire ui folder contents to the deployment directory
         cp -r ui/* "$DEPLOY_DIR/"
         
+        # Remove .gitignore from pkg directory to allow WASM files to be committed
+        if [ -f "$DEPLOY_DIR/katch2ui/pkg/.gitignore" ]; then
+            rm "$DEPLOY_DIR/katch2ui/pkg/.gitignore"
+            echo "🗑️  Removed .gitignore from pkg directory to allow WASM files to be committed"
+        fi
+        
         if [ $? -eq 0 ]; then
             echo "✅ Successfully deployed to GitHub Pages!"
             echo "🌐 Files deployed to: $DEPLOY_DIR"
