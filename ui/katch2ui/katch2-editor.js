@@ -700,7 +700,7 @@ class KATch2Editor {
         const loaderDiv = document.createElement('div');
         loaderDiv.className = 'katch2-exercise-loader';
         loaderDiv.style.cssText = `
-            padding: 15px;
+            padding: 10px 15px;
             border: 1px solid #007bff;
             border-radius: 5px;
             margin-bottom: 15px;
@@ -709,7 +709,7 @@ class KATch2Editor {
 
         const descriptionP = document.createElement('p');
         descriptionP.innerHTML = `<strong>Exercise:</strong> ${this.htmlEscape(description)}`;
-        descriptionP.style.marginBottom = '10px';
+        descriptionP.style.cssText = 'margin: 0 0 10px 0;';
 
         const loadButton = document.createElement('button');
         loadButton.textContent = 'Try this Exercise →';
