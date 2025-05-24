@@ -37,7 +37,6 @@ class KATch2Editor {
             monacoVersion: options.monacoVersion || '0.52.2',
             theme: options.theme || 'light', // 'light' or 'dark'
             selector: options.selector || 'netkat',
-            customElement: options.customElement || 'netkat-editor',
             autoInit: options.autoInit !== false, // Default to true
             ...options
         };
@@ -48,11 +47,6 @@ class KATch2Editor {
             
             // Load WASM module
             await this.loadWASM(config.wasmPath);
-            
-            // Register custom element if needed
-            if (config.customElement && !customElements.get(config.customElement)) {
-                this.registerCustomElement(config.customElement);
-            }
             
             // Setup NetKAT language and theme
             this.setupNetKATLanguage(config.theme);
@@ -170,149 +164,46 @@ class KATch2Editor {
         });
     }
 
-    registerCustomElement(tagName) {
-        const self = this;
-        
-        class NetKATEditorElement extends HTMLElement {
-            constructor() {
-                super();
-                this.editor = null;
-            }
-
-            connectedCallback() {
-                const code = this.textContent.trim();
-                this.innerHTML = ''; // Clear original content
-                
-                // Get lines configuration from element attribute or calculate from content
-                let lines = this.getAttribute('lines');
-                if (!lines) {
-                    // Count lines in the content (no buffer)
-                    lines = Math.max(1, code.split('\n').length);
-                } else {
-                    lines = parseInt(lines, 10) || 1;
-                }
-                
-                // Calculate height based on lines (approximately 22px per line + padding)
-                // Monaco default line height is ~19px, but we need extra space to prevent scrollbars
-                const height = Math.max(50, lines * 22 + 30);
-                
-                // Create editor container
-                const container = document.createElement('div');
-                container.style.cssText = `width: 100%; height: ${height}px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 10px; box-shadow: 0 3px 7px rgba(0,0,0,0.15);`;
-                
-                // Create result area
-                const resultArea = document.createElement('div');
-                resultArea.className = 'katch2-result';
-                resultArea.style.cssText = `
-                    padding: 12px 15px;
-                    border: 1px solid #ddd;
-                    border-left-width: 5px;
-                    border-left-color: #7f8c8d;
-                    border-radius: 4px;
-                    background-color: #f9fafb;
-                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-                    font-size: 0.95em;
-                    line-height: 1.6;
-                    font-weight: 500;
-                    color: #555;
-                    transition: border-color 0.3s ease-in-out, color 0.3s ease-in-out;
-                `;
-                resultArea.innerHTML = '<strong>Analysis:</strong> Waiting for input...';
-                
-                this.appendChild(container);
-                this.appendChild(resultArea);
-                
-                // Check for line numbers option
-                const showLineNumbers = this.getAttribute('line-numbers') === 'true';
-                
-                // Check for target attribute
-                const target = this.getAttribute('target');
-                const id = this.getAttribute('id');
-                
-                if (target) {
-                    // This is an example editor - replace with example editor
-                    this.innerHTML = ''; // Clear again for example editor
-                    
-                    if (self.isInitialized) {
-                        self.replaceWithExampleEditor(this, code, lines, showLineNumbers, target);
-                    } else {
-                        const checkInit = () => {
-                            if (self.isInitialized) {
-                                self.replaceWithExampleEditor(this, code, lines, showLineNumbers, target);
-                            } else {
-                                setTimeout(checkInit, 100);
-                            }
-                        };
-                        checkInit();
-                    }
-                } else {
-                    // Regular editor
-                    if (id) {
-                        this.id = id; // Set ID on the custom element
-                    }
-                    
-                    // Initialize editor when library is ready
-                    if (self.isInitialized) {
-                        self.createEditor(container, resultArea, code, showLineNumbers, false, id);
-                    } else {
-                        // Wait for initialization
-                        const checkInit = () => {
-                            if (self.isInitialized) {
-                                self.createEditor(container, resultArea, code, showLineNumbers, false, id);
-                            } else {
-                                setTimeout(checkInit, 100);
-                            }
-                        };
-                        checkInit();
-                    }
-                }
-            }
-        }
-        
-        customElements.define(tagName, NetKATEditorElement);
-    }
-
     transformElements(selector) {
-        const elements = document.querySelectorAll(selector);
+        const elements = document.querySelectorAll(selector); // E.g., 'netkat' or 'pre.netkat'
         elements.forEach(element => {
-            const code = element.textContent.trim();
-            
-            // Get lines configuration from element attribute or calculate from content
-            let lines = element.getAttribute('lines');
-            if (!lines) {
-                // Count lines in the content (no buffer)
-                lines = Math.max(1, code.split('\n').length);
+            const isExerciseAttr = element.getAttribute('exercise');
+            const targetId = element.getAttribute('target');
+            const initialCode = element.textContent.trim(); // Solution if exercise loader, or code if editor
+            const id = element.getAttribute('id') || this.generateUniqueId('keditor-');
+
+            if (isExerciseAttr && targetId) {
+                // This element is an EXERCISE LOADER for another editor
+                this.createExerciseLoaderUI(element, isExerciseAttr, initialCode, targetId);
             } else {
-                lines = parseInt(lines, 10) || 1;
-            }
-            
-            // Check for line numbers option
-            const showLineNumbers = element.getAttribute('line-numbers') === 'true';
-            
-            // Check for target attribute (for example editors)
-            const target = element.getAttribute('target');
-            const id = element.getAttribute('id');
-            
-            if (target) {
-                // This is an example editor that points to a target
-                this.replaceWithExampleEditor(element, code, lines, showLineNumbers, target);
-            } else {
-                // This is a regular editor (might be a target)
-                this.replaceWithEditor(element, code, lines, showLineNumbers, id);
+                // This element will become an editor itself (regular, example, or self-contained exercise)
+                let lines = element.getAttribute('lines');
+                if (!lines) { lines = Math.max(1, initialCode.split('\n').length); }
+                else { lines = parseInt(lines, 10) || 1; }
+                const showLineNumbers = element.hasAttribute('show-line-numbers');
+
+                if (targetId) { // No isExerciseAttr, so it's an EXAMPLE editor
+                    this.replaceWithExampleEditor(element, initialCode, lines, showLineNumbers, targetId);
+                } else { // Regular editor or a self-contained EXERCISE editor
+                    this.replaceWithEditor(element, initialCode, lines, showLineNumbers, id, isExerciseAttr);
+                }
             }
         });
     }
 
-    replaceWithEditor(element, initialCode, lines = 1, showLineNumbers = false, id = null) {
-        // Calculate height based on lines (approximately 22px per line + padding)
-        // Monaco default line height is ~19px, but we need extra space to prevent scrollbars
+    replaceWithEditor(element, initialCode, lines = 1, showLineNumbers = false, id = null, exerciseDescriptionText = null) {
         const height = Math.max(50, lines * 22 + 30);
+        const isExercise = exerciseDescriptionText !== null;
+        const targetSolution = isExercise ? initialCode : null;
+        const editorInitialCode = isExercise ? '// Start your solution here\n' : initialCode;
         
-        // Create editor container
+        const wrapper = document.createElement('div');
+        wrapper.className = 'katch2-editor-wrapper'; // Add a class for easier identification
+        if (id) wrapper.id = id;
+
         const container = document.createElement('div');
         container.style.cssText = `width: 100%; height: ${height}px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 10px; box-shadow: 0 3px 7px rgba(0,0,0,0.15);`;
         
-        // Create result area
         const resultArea = document.createElement('div');
         resultArea.className = 'katch2-result';
         resultArea.style.cssText = `
@@ -331,17 +222,52 @@ class KATch2Editor {
         `;
         resultArea.innerHTML = '<strong>Analysis:</strong> Waiting for input...';
         
-        // Replace the original element
-        const wrapper = document.createElement('div');
-        if (id) {
-            wrapper.id = id; // Set ID on wrapper for target editors
-        }
+        const exerciseDescriptionElement = document.createElement('div');
+        exerciseDescriptionElement.className = 'katch2-exercise-description';
+        exerciseDescriptionElement.style.cssText = `
+            padding: 10px 15px;
+            margin-bottom: 10px;
+            border: 1px solid #aed6f1;
+            border-left-width: 5px;
+            border-left-color: #3498db;
+            border-radius: 4px;
+            background-color: #eaf2f8;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-size: 0.98em;
+            color: #2c3e50;
+            display: none;
+        `;
+        exerciseDescriptionElement.style.display = isExercise ? 'block' : 'none';
+        if (isExercise) exerciseDescriptionElement.innerHTML = `<strong>Exercise:</strong> ${this.htmlEscape(exerciseDescriptionText)}`;
+        
+        const exerciseFeedbackArea = document.createElement('div');
+        exerciseFeedbackArea.className = 'katch2-exercise-feedback';
+        exerciseFeedbackArea.style.cssText = `
+            padding: 10px 15px;
+            margin-top: 5px; /* Spacing from resultArea or editor */
+            border: 1px solid #ddd;
+            border-left-width: 5px;
+            border-left-color: #7f8c8d; /* Neutral by default */
+            border-radius: 4px;
+            background-color: #f9fafb;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-size: 0.9em;
+            color: #555;
+            display: none;
+        `;
+        exerciseFeedbackArea.style.display = isExercise ? 'block' : 'none';
+        if (isExercise) exerciseFeedbackArea.innerHTML = 'Equivalence: Pending...';
+        
+        if (isExercise) resultArea.style.display = 'none';
+        else resultArea.style.display = 'block';
+
+        wrapper.appendChild(exerciseDescriptionElement);
         wrapper.appendChild(container);
         wrapper.appendChild(resultArea);
+        wrapper.appendChild(exerciseFeedbackArea);
         element.parentNode.replaceChild(wrapper, element);
         
-        // Create the editor
-        this.createEditor(container, resultArea, initialCode, showLineNumbers, false, id);
+        this.createEditor(wrapper, container, resultArea, exerciseDescriptionElement, exerciseFeedbackArea, editorInitialCode, showLineNumbers, false, id, isExercise, targetSolution, exerciseDescriptionText);
     }
 
     replaceWithExampleEditor(element, initialCode, lines = 1, showLineNumbers = false, target) {
@@ -421,7 +347,7 @@ class KATch2Editor {
         element.parentNode.replaceChild(wrapper, element);
         
         // Create the read-only editor
-        const editor = this.createEditor(container, null, initialCode, showLineNumbers, true);
+        const editor = this.createEditor(wrapper, container, null, null, null, initialCode, showLineNumbers, true, null, false, null, null);
         
         // Add click handler to load content into target
         const loadIntoTarget = () => {
@@ -450,8 +376,21 @@ class KATch2Editor {
         analyzeButton.addEventListener('click', loadIntoTarget);
     }
 
-    createEditor(container, resultArea, initialCode, showLineNumbers = false, readOnly = false, id = null) {
+    createEditor(customElementDOM, container, resultArea, exerciseDescriptionElement, exerciseFeedbackArea, initialCode, showLineNumbers = false, readOnly = false, id = null, isExercise = false, targetSolution = null, exerciseDescriptionText = null) {
         const monaco = this.monacoInstance;
+        if (!id && customElementDOM && customElementDOM.id) id = customElementDOM.id; // Ensure ID if customElementDOM has one
+        else if (!id) id = this.generateUniqueId('keditor-'); // Generate if still no ID
+
+        if (customElementDOM && !customElementDOM.id) customElementDOM.id = id;
+        
+        // Ensure katch2ExerciseInfo is initialized on the customElementDOM (wrapper/custom tag)
+        if (customElementDOM) {
+            if (!customElementDOM.katch2ExerciseInfo) customElementDOM.katch2ExerciseInfo = {};
+            customElementDOM.katch2ExerciseInfo.isExercise = isExercise;
+            customElementDOM.katch2ExerciseInfo.targetSolution = targetSolution;
+            customElementDOM.katch2ExerciseInfo.exerciseDescriptionText = exerciseDescriptionText; // Store raw text
+            // Note: DOM elements for feedback/description are passed directly, not via katch2ExerciseInfo here
+        }
         
         const editor = monaco.editor.create(container, {
             value: initialCode || '// Enter your NetKAT expression here\n',
@@ -475,14 +414,20 @@ class KATch2Editor {
 
         // Setup analysis logic only for non-readonly editors with result areas
         if (!readOnly && resultArea) {
-            this.setupAnalysis(editor, resultArea);
+            // Pass exercise info to setupAnalysis
+            this.setupAnalysis(editor, resultArea, isExercise, targetSolution, exerciseFeedbackArea, exerciseDescriptionElement);
         }
         
-        this.editorInstances.push({ editor, resultArea, id });
+        this.editorInstances.push({ 
+            editor, resultArea, id, 
+            isExercise, targetSolution, exerciseDescriptionText, 
+            exerciseDescriptionElement, exerciseFeedbackArea, 
+            customElementDOM // This is the key: the wrapper div or <netkat-editor> tag
+        });
         return editor;
     }
 
-    setupAnalysis(editor, resultArea) {
+    setupAnalysis(editor, resultArea, isExercise = false, targetSolution = null, exerciseFeedbackArea = null, exerciseDescriptionElement = null) {
         let isAnalysisInProgress = false;
         let needsAnalysis = false; // Flag to indicate if analysis is pending
 
@@ -498,8 +443,20 @@ class KATch2Editor {
             if (this.analyzeFunction) {
                 try {
                     let netkatElement = editor.getDomNode();
-                    while(netkatElement && netkatElement.tagName !== 'NETKAT-EDITOR') {
+                    // Traverse up to find the wrapper div created by replaceWithEditor
+                    while(netkatElement && !netkatElement.classList.contains('katch2-editor-wrapper')) {
                         netkatElement = netkatElement.parentElement;
+                    }
+
+                    // Try to get exercise info from the element if setupAnalysis didn't receive it directly.
+                    let currentIsExercise = isExercise;
+                    let currentTargetSolution = targetSolution;
+                    let currentExerciseFeedbackArea = exerciseFeedbackArea;
+                    let currentExerciseDescriptionText = null; // Initialize to null, will be set from katch2ExerciseInfo if available
+                    if (netkatElement && netkatElement.katch2ExerciseInfo) {
+                        currentIsExercise = netkatElement.katch2ExerciseInfo.isExercise;
+                        currentTargetSolution = netkatElement.katch2ExerciseInfo.targetSolution;
+                        currentExerciseDescriptionText = netkatElement.katch2ExerciseInfo.exerciseDescriptionText;
                     }
 
                     let numTraces = null;
@@ -521,61 +478,132 @@ class KATch2Editor {
                             }
                         }
                     }
-                    
-                    const result_val = this.analyzeFunction(codeToAnalyze, numTraces, maxTraceLength);
-                    const analysis = result_val; 
 
-                    let html = `<strong>${analysis.status}</strong>`;
-                    
-                    if (analysis.traces && analysis.status === "Non-empty") {
-                        const formatPacket = (packet) => packet.map(bit => bit ? '1' : '0').join('');
+                    if (currentIsExercise && currentTargetSolution && this.wasmModule.analyze_difference) {
+                        // Exercise Mode: Call analyze_difference twice
+                        const userCode = codeToAnalyze;
+                        // Use numTraces and maxTraceLength from attributes if available, otherwise default for exercises
+                        const exerciseNumTraces = numTraces !== null ? numTraces : 3; 
+                        const exerciseMaxTraceLength = maxTraceLength !== null ? maxTraceLength : 5;
+
+                        const diff1_result = this.wasmModule.analyze_difference(currentTargetSolution, userCode, exerciseNumTraces, exerciseMaxTraceLength);
+                        const diff2_result = this.wasmModule.analyze_difference(userCode, currentTargetSolution, exerciseNumTraces, exerciseMaxTraceLength);
+
+                        let feedbackHtml = '';
+                        let overallEquivalent = true;
+
+                        // Check target - user (missing traces)
+                        if (diff1_result.expr1_errors) feedbackHtml += `<p><strong>Error in target expression (should not happen):</strong> ${this.htmlEscape(diff1_result.expr1_errors.message)}</p>`;
+                        if (diff1_result.expr2_errors) {
+                            feedbackHtml += `<p><strong>Error in your solution:</strong> ${this.htmlEscape(diff1_result.expr2_errors.message)}</p>`;
+                            overallEquivalent = false; // An error in the user's code means it's not equivalent
+                        }
+                        
+                        if (diff1_result.example_traces && diff1_result.example_traces.length > 0) {
+                            overallEquivalent = false;
+                            feedbackHtml += '<div><strong>❌ Missing (target has, you don\'t):</strong>';
+                            diff1_result.example_traces.forEach(trace => {
+                                const [inputTrace, finalOutput] = trace;
+                                const traceString = inputTrace.map(p => p.join('')).join(' → ');
+                                const outputString = finalOutput ? ` → ${finalOutput.join('')}` : ' → (dropped)';
+                                feedbackHtml += `<div class="trace">- ${this.htmlEscape(traceString + outputString)}</div>`;
+                            });
+                            feedbackHtml += '</div>';
+                        }
+
+                        // Check user - target (extra traces)
+                        if (diff2_result.expr1_errors && !diff1_result.expr2_errors) {
+                             feedbackHtml += `<p><strong>Error in your solution:</strong> ${this.htmlEscape(diff2_result.expr1_errors.message)}</p>`;
+                             overallEquivalent = false; // An error in the user's code means it's not equivalent
+                        }
+
+                        if (diff2_result.example_traces && diff2_result.example_traces.length > 0) {
+                            overallEquivalent = false;
+                            feedbackHtml += '<div><strong>➕ Extra (you have, target doesn\'t):</strong>';
+                            diff2_result.example_traces.forEach(trace => {
+                                const [inputTrace, finalOutput] = trace;
+                                const traceString = inputTrace.map(p => p.join('')).join(' → ');
+                                const outputString = finalOutput ? ` → ${finalOutput.join('')}` : ' → (dropped)';
+                                feedbackHtml += `<div class="trace">+ ${this.htmlEscape(traceString + outputString)}</div>`;
+                            });
+                            feedbackHtml += '</div>';
+                        }
+
+                        if (overallEquivalent && !diff1_result.expr1_errors && !diff1_result.expr2_errors && !diff2_result.expr1_errors) {
+                            currentExerciseFeedbackArea.innerHTML = '<strong>✅ Equivalent!</strong>';
+                            this.setResultStyle(currentExerciseFeedbackArea, 'success'); 
+                        } else if (!overallEquivalent || (diff1_result.expr2_errors || diff2_result.expr1_errors)) { // If not equivalent OR there were user errors
+                            currentExerciseFeedbackArea.innerHTML = feedbackHtml;
+                            this.setResultStyle(currentExerciseFeedbackArea, 'error');
+                        } else if (feedbackHtml) { // Only target errors, no counterexamples and no user errors (should be rare)
+                             currentExerciseFeedbackArea.innerHTML = feedbackHtml;
+                             this.setResultStyle(currentExerciseFeedbackArea, 'error'); // Still an error state due to target issue
+                        } else {
+                            currentExerciseFeedbackArea.innerHTML = 'Equivalence: Pending...'; // Should not happen if no errors and no traces
+                            this.setResultStyle(currentExerciseFeedbackArea, 'neutral');
+                        }
+                        resultArea.style.display = 'none'; // Hide standard analysis result area
+
+                    } else {
+                        // Standard Analysis Mode
+                        if (currentExerciseFeedbackArea) currentExerciseFeedbackArea.style.display = 'none'; // Hide exercise feedback area
+                        resultArea.style.display = 'block'; // Ensure standard result area is visible
+
+                        const result_val = this.analyzeFunction(codeToAnalyze, numTraces, maxTraceLength);
+                        const analysis = result_val; 
+
+                        let html = `<strong>${analysis.status}</strong>`;
+                        
+                        if (analysis.traces && analysis.status === "Non-empty") {
+                            const formatPacket = (packet) => packet.map(bit => bit ? '1' : '0').join('');
                         let tracesHtml = '';
-                        for (let i = 0; i < analysis.traces.length; i++) {
-                            const [inputTrace, finalOutput] = analysis.traces[i];
+                            for (let i = 0; i < analysis.traces.length; i++) {
+                                const [inputTrace, finalOutput] = analysis.traces[i];
                             const traceString = inputTrace.map(formatPacket).join(' → ');
                             const outputString = finalOutput ? ` → ${formatPacket(finalOutput)}` : ' → ...';
                             tracesHtml += `<div style="margin: 2px 0;"><span style="font-family: monospace; background-color: #f8f9fa; padding: 2px 4px; border-radius: 3px;">${traceString}${outputString}</span></div>`;
-                        }
-                        html += `<br><strong>Example traces:</strong><br>` + tracesHtml;
-                    }
-                    
-                    resultArea.innerHTML = html;
-                    
-                    if (analysis.error) {
-                        // Handle error display, including span if available
-                        let errorString = `<strong>Syntax error:</strong> ${analysis.error.message}`;
-                        if (analysis.error.span) {
-                            errorString += ` (line ${analysis.error.span.start_line}, col ${analysis.error.span.start_column})`;
-                            // Add Monaco marker for the error span
-                            if (editor.getModel()) {
-                                this.monacoInstance.editor.setModelMarkers(editor.getModel(), 'katch2-parser', [{
-                                    message: analysis.error.message,
-                                    severity: this.monacoInstance.MarkerSeverity.Error,
-                                    startLineNumber: analysis.error.span.start_line,
-                                    startColumn: analysis.error.span.start_column,
-                                    endLineNumber: analysis.error.span.end_line,
-                                    endColumn: analysis.error.span.end_column
-                                }]);
                             }
+                            html += `<br><strong>Example traces:</strong><br>` + tracesHtml;
                         }
-                        resultArea.innerHTML = errorString; // Overwrite if there is an error
-                        this.setResultStyle(resultArea, 'error');
-                    } else if (analysis.status && (analysis.status.includes("Empty (no input)") || analysis.status === "Waiting for input...")) {
-                        this.setResultStyle(resultArea, 'neutral');
-                        if (editor.getModel()) this.monacoInstance.editor.setModelMarkers(editor.getModel(), 'katch2-parser', []);
+                        
+                        resultArea.innerHTML = html;
+                        
+                        if (analysis.error) {
+                            // Handle error display, including span if available
+                            let errorString = `<strong>Syntax error:</strong> ${analysis.error.message}`;
+                            if (analysis.error.span) {
+                                errorString += ` (line ${analysis.error.span.start_line}, col ${analysis.error.span.start_column})`;
+                                // Add Monaco marker for the error span
+                                if (editor.getModel()) {
+                                    this.monacoInstance.editor.setModelMarkers(editor.getModel(), 'katch2-parser', [{
+                                        message: analysis.error.message,
+                                        severity: this.monacoInstance.MarkerSeverity.Error,
+                                        startLineNumber: analysis.error.span.start_line,
+                                        startColumn: analysis.error.span.start_column,
+                                        endLineNumber: analysis.error.span.end_line,
+                                        endColumn: analysis.error.span.end_column
+                                    }]);
+                                }
+                            }
+                            resultArea.innerHTML = errorString; // Overwrite if there is an error
+                            this.setResultStyle(resultArea, 'error');
+                        } else if (analysis.status && (analysis.status.includes("Empty (no input)") || analysis.status === "Waiting for input...")) {
+                            this.setResultStyle(resultArea, 'neutral');
+                            if (editor.getModel()) this.monacoInstance.editor.setModelMarkers(editor.getModel(), 'katch2-parser', []);
                     } else {
-                        this.setResultStyle(resultArea, 'success');
-                        if (editor.getModel()) this.monacoInstance.editor.setModelMarkers(editor.getModel(), 'katch2-parser', []);
+                            this.setResultStyle(resultArea, 'success');
+                            if (editor.getModel()) this.monacoInstance.editor.setModelMarkers(editor.getModel(), 'katch2-parser', []);
                     }
-                } catch (e) {
-                    console.error("Analysis error:", e);
-                    resultArea.innerHTML = `<strong>Frontend error:</strong> ${e.message}`;
+                }
+            } catch (e) {
+                console.error("Analysis error:", e);
+                resultArea.innerHTML = `<strong>Frontend error:</strong> ${e.message}`;
                     this.setResultStyle(resultArea, 'error');
                 } finally {
                     isAnalysisInProgress = false;
                     // If needsAnalysis became true while processing, re-queue immediately.
                     if (needsAnalysis) {
-                        Promise.resolve().then(processAnalysisQueue);
+                Promise.resolve().then(processAnalysisQueue);
                     }
                 }
             }
@@ -616,6 +644,120 @@ class KATch2Editor {
             editor.dispose();
         });
         this.editorInstances = [];
+    }
+
+    // Helper function for escaping HTML to prevent XSS if descriptions or traces contain HTML characters
+    htmlEscape(str) {
+        if (str === null || str === undefined) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    generateUniqueId(prefix = 'id-') {
+        return prefix + Math.random().toString(36).substr(2, 9);
+    }
+
+    createExerciseLoaderUI(originalElement, description, solution, targetId) {
+        const loaderDiv = document.createElement('div');
+        loaderDiv.className = 'katch2-exercise-loader';
+        loaderDiv.style.cssText = `
+            padding: 15px;
+            border: 1px solid #007bff;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            background-color: #f0f8ff;
+        `;
+
+        const descriptionP = document.createElement('p');
+        descriptionP.innerHTML = `<strong>Exercise:</strong> ${this.htmlEscape(description)}`;
+        descriptionP.style.marginBottom = '10px';
+
+        const loadButton = document.createElement('button');
+        loadButton.textContent = 'Try this Exercise →';
+        loadButton.style.cssText = `
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        `;
+        loadButton.addEventListener('mouseenter', () => loadButton.style.backgroundColor = '#0056b3');
+        loadButton.addEventListener('mouseleave', () => loadButton.style.backgroundColor = '#007bff');
+
+        const self = this; // For 'this' context in event listener
+        loadButton.addEventListener('click', function() {
+            self.loadExerciseIntoTarget(targetId, description, solution);
+        });
+
+        loaderDiv.appendChild(descriptionP);
+        loaderDiv.appendChild(loadButton);
+
+        originalElement.parentNode.replaceChild(loaderDiv, originalElement);
+    }
+
+    loadExerciseIntoTarget(targetId, description, solution) {
+        const instance = this.findEditorInstanceById(targetId);
+        if (!instance) {
+            console.error(`KATch2: Target editor with ID '${targetId}' not found for loading exercise.`);
+            return;
+        }
+
+        // Update instance properties
+        instance.isExercise = true;
+        instance.targetSolution = solution;
+        instance.exerciseDescriptionText = description; // Store the raw text
+
+        // Update katch2ExerciseInfo on the DOM element for persistence/consistency
+        if (instance.customElementDOM && instance.customElementDOM.katch2ExerciseInfo) {
+            instance.customElementDOM.katch2ExerciseInfo.isExercise = true;
+            instance.customElementDOM.katch2ExerciseInfo.targetSolution = solution;
+            instance.customElementDOM.katch2ExerciseInfo.exerciseDescriptionText = description;
+        } else if (instance.customElementDOM) {
+            instance.customElementDOM.katch2ExerciseInfo = {
+                isExercise: true,
+                targetSolution: solution,
+                exerciseDescriptionText: description
+            };
+        }
+
+        // Ensure UI elements are correctly displayed and updated
+        if (instance.exerciseDescriptionElement) {
+            instance.exerciseDescriptionElement.innerHTML = `<strong>Exercise:</strong> ${this.htmlEscape(description)}`;
+            instance.exerciseDescriptionElement.style.display = 'block';
+        } else {
+            console.warn("exerciseDescriptionElement not found on instance for targetId:", targetId)
+            // Potentially create it here if absolutely necessary, but it should exist from createEditor
+        }
+
+        if (instance.exerciseFeedbackArea) {
+            instance.exerciseFeedbackArea.innerHTML = 'Equivalence: Pending...'; // Reset feedback
+            instance.exerciseFeedbackArea.style.display = 'block';
+            this.setResultStyle(instance.exerciseFeedbackArea, 'neutral'); // Reset style
+        }  else {
+            console.warn("exerciseFeedbackArea not found on instance for targetId:", targetId)
+        }
+
+        if (instance.resultArea) {
+            instance.resultArea.style.display = 'none'; // Hide standard analysis area
+        }
+
+        instance.editor.setValue(`// Solve: ${description.substring(0, 70)}${description.length > 70 ? '...' : ''}\n`);
+        instance.editor.focus();
+        
+        // The editor's onDidChangeModelContent will trigger processAnalysisQueue,
+        // which should pick up the new isExercise and targetSolution from katch2ExerciseInfo
+        // or from the re-setup analysis context if we chose to re-call setupAnalysis.
+        // For now, relying on katch2ExerciseInfo being picked up by the existing analysis loop.
+    }
+
+    findEditorInstanceById(id) {
+        return this.editorInstances.find(inst => inst.id === id);
     }
 }
 

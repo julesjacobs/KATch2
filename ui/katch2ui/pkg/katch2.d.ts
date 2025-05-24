@@ -3,6 +3,7 @@
 export function greet(name: string): string;
 export function init_panic_hook(): void;
 export function analyze_expression(expr_str: string, num_traces_opt?: number | null, max_trace_length_opt?: number | null): any;
+export function analyze_difference(expr1_str: string, expr2_str: string, num_traces_opt?: number | null, max_trace_length_opt?: number | null): any;
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
@@ -10,6 +11,7 @@ export interface InitOutput {
   readonly memory: WebAssembly.Memory;
   readonly greet: (a: number, b: number) => [number, number];
   readonly analyze_expression: (a: number, b: number, c: number, d: number) => any;
+  readonly analyze_difference: (a: number, b: number, c: number, d: number, e: number, f: number) => any;
   readonly init_panic_hook: () => void;
   readonly __wbindgen_free: (a: number, b: number, c: number) => void;
   readonly __wbindgen_exn_store: (a: number) => void;

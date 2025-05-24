@@ -100,8 +100,8 @@ x0 := 0
     <p><strong>See example:</strong> <a href="katch2ui/example.html">katch2ui/example.html</a></p>
 
     <p>This is a target editor. Examples below will load into this one.</p>
-    <netkat-editor id="targetEditor" lines="3">
-    </netkat-editor>
+    <netkat id="targetEditor" lines="3">
+    </netkat>
 
     <h2>Examples that load into the target editor:</h2>
     <netkat target="targetEditor" lines="1">x0==1</netkat>
@@ -109,24 +109,63 @@ x0 := 0
 
     <h2>Trace Configuration Examples:</h2>
     <h3>Default Traces (5 traces, max length 5):</h3>
-    <netkat-editor lines="2">
+    <netkat lines="2">
     dup; x0==1
-    </netkat-editor>
+    </netkat>
 
     <h3>Custom Number of Traces (num-traces="2"):</h3>
-    <netkat-editor lines="2" num-traces="2">
+    <netkat lines="2" num-traces="2">
     x0==0 + x1==1
-    </netkat-editor>
+    </netkat>
 
     <h3>Custom Max Trace Length (max-trace-length="3"):</h3>
-    <netkat-editor lines="2" max-trace-length="3">
+    <netkat lines="2" max-trace-length="3">
     x0==1; x0==0; x0==1; x0==0
-    </netkat-editor>
+    </netkat>
 
     <h3>Custom Traces and Length (num-traces="1", max-trace-length="2"):</h3>
-    <netkat-editor lines="2" num-traces="1" max-trace-length="2">
+    <netkat lines="2" num-traces="1" max-trace-length="2">
     x0==1*; x1==1
-    </netkat-editor>
+    </netkat>
+
+    <hr>
+    <h2>NetKAT Editor (Targeted Example - Readonly Source)</h2>
+    <p>The editor below (<code>editorB</code>) will display the content of <code>editorC</code>. <code>editorB</code> is readonly.</p>
+    <netkat id="editorB" lines="3" readonly show-line-numbers>
+    x0 == 1 ; x1 == 0
+    </netkat>
+    <netkat id="editorC" target="editorB" lines="1" show-line-numbers></netkat>
+
+    <hr>
+    <h2>NetKAT Editor (Exercise Mode)</h2>
+    <p>Solve the exercise described. Your solution will be checked for equivalence against a hidden target solution.</p>
+    <netkat id="exercise1" exercise="Implement a policy that: 1. Accepts packets if x0 is 1 AND x1 is 0. 2. If x0 is 1 AND x1 is 1, it first flips x1 to 0 and then accepts the packet. 3. All other packets should be dropped (evaluate to false)." num-traces="3" max-trace-length="4">
+((x0==1 & x1==0) + (x0==1 & x1==1 ; x1:=0))
+    </netkat>
+
+    <hr>
+    <h2>Exercise Loading System</h2>
+    <p>Click the button below to load an exercise into the target editor on the right:</p>
+    
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0;">
+        <div>
+            <h3>Exercise Loader:</h3>
+            <netkat exercise="Write a policy that assigns 1 to x0 and then assigns 0 to x1" target="exercise-target">
+x0 := 1; x1 := 0
+            </netkat>
+            
+            <netkat exercise="Create a policy that accepts packets where x0 equals 1, otherwise drops them" target="exercise-target">
+x0 == 1
+            </netkat>
+        </div>
+        
+        <div>
+            <h3>Target Editor:</h3>
+            <netkat id="exercise-target" lines="4">
+// Click an exercise on the left to load it here
+            </netkat>
+        </div>
+    </div>
 
     <!-- Include the self-contained KATch2 UI library -->
     <script type="module" src="katch2ui/katch2-editor.js"></script>

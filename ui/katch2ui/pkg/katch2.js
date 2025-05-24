@@ -206,6 +206,22 @@ export function analyze_expression(expr_str, num_traces_opt, max_trace_length_op
     return ret;
 }
 
+/**
+ * @param {string} expr1_str
+ * @param {string} expr2_str
+ * @param {number | null} [num_traces_opt]
+ * @param {number | null} [max_trace_length_opt]
+ * @returns {any}
+ */
+export function analyze_difference(expr1_str, expr2_str, num_traces_opt, max_trace_length_opt) {
+    const ptr0 = passStringToWasm0(expr1_str, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(expr2_str, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ret = wasm.analyze_difference(ptr0, len0, ptr1, len1, isLikeNone(num_traces_opt) ? 0x100000001 : (num_traces_opt) >>> 0, isLikeNone(max_trace_length_opt) ? 0x100000001 : (max_trace_length_opt) >>> 0);
+    return ret;
+}
+
 async function __wbg_load(module, imports) {
     if (typeof Response === 'function' && module instanceof Response) {
         if (typeof WebAssembly.instantiateStreaming === 'function') {

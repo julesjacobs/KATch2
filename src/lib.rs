@@ -21,6 +21,15 @@ pub struct AnalysisResult {
     // pub parsed_expr_string: Option<String>,
 }
 
+/// The result of analyzing the difference between two NetKAT expressions.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct DifferenceResult {
+    pub expr1_errors: Option<parser::ParseErrorDetails>, // Errors from parsing the first expression (e.g., user's code)
+    pub expr2_errors: Option<parser::ParseErrorDetails>, // Errors from parsing the second expression (e.g., target solution)
+    pub example_traces: Option<Vec<(Vec<Vec<bool>>, Option<Vec<bool>>)>>, // Traces from (expr1 - expr2)
+    // If both errors are None and example_traces is None or Empty, then (expr1 - expr2) is empty.
+}
+
 #[wasm_bindgen]
 pub fn greet(name: &str) -> String {
     format!("Hello from Rust, {}!", name)
@@ -102,4 +111,116 @@ pub fn analyze_expression(
             .unwrap()
         }
     }
+}
+
+#[wasm_bindgen]
+pub fn analyze_difference(
+    expr1_str: &str, 
+    expr2_str: &str, 
+    num_traces_opt: Option<usize>, 
+    max_trace_length_opt: Option<usize>
+) -> JsValue {
+    let mut expr1_parse_result = None;
+    let mut expr2_parse_result = None;
+
+    let parsed_expr1 = match parser::parse_expressions(expr1_str) {
+        Ok(mut exprs) => {
+            if exprs.is_empty() {
+                // Treat as a form of parse error for this context if no actual expression is found
+                expr1_parse_result = Some(parser::ParseErrorDetails {
+                    message: "Expression 1 is empty or only comments".to_string(),
+                    span: None,
+                });
+                None
+            } else {
+                Some(exprs.remove(0)) // Take the first expression
+            }
+        }
+        Err(e) => {
+            expr1_parse_result = Some(e);
+            None
+        }
+    };
+
+    let parsed_expr2 = match parser::parse_expressions(expr2_str) {
+        Ok(mut exprs) => {
+            if exprs.is_empty() {
+                expr2_parse_result = Some(parser::ParseErrorDetails {
+                    message: "Expression 2 is empty or only comments".to_string(),
+                    span: None,
+                });
+                None
+            } else {
+                Some(exprs.remove(0)) 
+            }
+        }
+        Err(e) => {
+            expr2_parse_result = Some(e);
+            None
+        }
+    };
+
+    // If either expression failed to parse, return early with error info
+    if expr1_parse_result.is_some() || expr2_parse_result.is_some() || parsed_expr1.is_none() || parsed_expr2.is_none() {
+        return serde_wasm_bindgen::to_value(&DifferenceResult {
+            expr1_errors: expr1_parse_result,
+            expr2_errors: expr2_parse_result,
+            example_traces: None,
+        }).unwrap();
+    }
+
+    let expr1 = parsed_expr1.unwrap();
+    let expr2 = parsed_expr2.unwrap();
+
+    // Ensure field counts are compatible for difference operation
+    // This is a simplified check; a more robust system might try to align fields
+    // or the Aut struct might handle this internally during `expr_to_state` or difference.
+    // For now, we assume they must be equal or the `difference` operation will handle it.
+    let num_fields = expr1.num_fields(); // Use num_fields from expr1 as the primary
+    if expr1.num_fields() != expr2.num_fields() {
+        // This is a semantic error, not a parse error for expr2 necessarily.
+        // We can choose to represent this as an expr2_error or a top-level error.
+        // For now, let's add a specific error to expr2_errors for simplicity.
+        let expr2_error_msg = format!(
+            "Field count mismatch: expr1 has {}, expr2 has {}. Cannot compute difference.", 
+            expr1.num_fields(), expr2.num_fields()
+        );
+        return serde_wasm_bindgen::to_value(&DifferenceResult {
+            expr1_errors: None, // expr1 parsed fine
+            expr2_errors: Some(parser::ParseErrorDetails { message: expr2_error_msg, span: None }),
+            example_traces: None,
+        }).unwrap();
+    }
+
+    let mut aut_handler = aut::Aut::new(num_fields);
+
+    // Compute expr1 - expr2
+    // This requires having a difference operation in aut::Aut that returns a state representing the difference.
+    // Let's assume `aut_handler.difference(state1, state2)` exists.
+    let state1_id = aut_handler.expr_to_state(expr1.as_ref());
+    let state2_id = aut_handler.expr_to_state(expr2.as_ref());
+    
+    // Use the mk_difference smart constructor
+    let diff_state_id = aut_handler.mk_difference(state1_id, state2_id);
+    let is_diff_empty = aut_handler.is_empty(diff_state_id);
+
+    let traces = if is_diff_empty {
+        None // Difference is empty
+    } else {
+        let mut traces_vec = Vec::new();
+        let num_traces = num_traces_opt.unwrap_or(3); // Default to 3 for difference traces
+        let max_len = max_trace_length_opt.unwrap_or(5); // Default to 5
+        for _ in 0..num_traces {
+            if let Some(trace) = aut_handler.random_trace(diff_state_id, max_len) {
+                traces_vec.push(trace);
+            }
+        }
+        if traces_vec.is_empty() { None } else { Some(traces_vec) }
+    };
+
+    serde_wasm_bindgen::to_value(&DifferenceResult {
+        expr1_errors: None,
+        expr2_errors: None,
+        example_traces: traces,
+    }).unwrap()
 }

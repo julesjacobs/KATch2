@@ -3,6 +3,7 @@
 export const memory: WebAssembly.Memory;
 export const greet: (a: number, b: number) => [number, number];
 export const analyze_expression: (a: number, b: number, c: number, d: number) => any;
+export const analyze_difference: (a: number, b: number, c: number, d: number, e: number, f: number) => any;
 export const init_panic_hook: () => void;
 export const __wbindgen_free: (a: number, b: number, c: number) => void;
 export const __wbindgen_exn_store: (a: number) => void;

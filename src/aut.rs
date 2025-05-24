@@ -248,7 +248,7 @@ impl Aut {
         self.intern(AExpr::Xor(e1, e2))
     }
 
-    fn mk_difference(&mut self, e1: State, e2: State) -> State {
+    pub fn mk_difference(&mut self, e1: State, e2: State) -> State {
         if e1 == e2 {
             return self.mk_spp(self.spp.zero);
         } // e - e = 0
