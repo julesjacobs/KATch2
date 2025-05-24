@@ -951,4 +951,44 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn fuzz_test_is_empty_vs_eliminate_dup() {
+        // Enable backtrace for debugging failing tests
+        unsafe {
+            std::env::set_var("RUST_BACKTRACE", "1");
+        }
+
+        let expr_depth = 2; // Keep expressions somewhat simple for this test
+        let num_fields = 3;
+        let max_trials = 3000; // Increased number of random expressions to test
+
+        println!("Starting fuzz_test_is_empty_vs_eliminate_dup ({} trials)...", max_trials);
+
+        for i in 0..max_trials {
+            let expr = gen_random_expr(num_fields, expr_depth);
+
+            let mut aut = Aut::new(num_fields);
+            let state = aut.expr_to_state(&expr);
+
+            // Method 1: Direct is_empty check
+            let is_empty_direct = aut.is_empty(state);
+            
+            let mut aut_for_elim_dup = Aut::new(num_fields); // Use a fresh aut to avoid interference
+            let state_for_elim_dup = aut_for_elim_dup.expr_to_state(&expr);
+            let eliminated_spp = aut_for_elim_dup.eliminate_dup(state_for_elim_dup);
+            let spp_store_for_elim_dup = aut_for_elim_dup.spp_store();
+            let is_empty_via_elim_dup = eliminated_spp == spp_store_for_elim_dup.zero;
+
+            assert_eq!(
+                is_empty_direct,
+                is_empty_via_elim_dup,
+                "Mismatch on trial {}/{}: is_empty and eliminate_dup for expression: {}. is_empty: {}, elim_dup_empty: {}",
+                i + 1, max_trials, expr,
+                is_empty_direct,
+                is_empty_via_elim_dup
+            );
+        }
+        println!("fuzz_test_is_empty_vs_eliminate_dup finished successfully after {} trials.", max_trials);
+    }
 }

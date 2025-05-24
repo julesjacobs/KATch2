@@ -54,6 +54,7 @@ pub struct Aut {
     aexpr_map: HashMap<AExpr, State>,
     delta_map: HashMap<State, ST>,
     epsilon_map: HashMap<State, spp::SPP>,
+    eliminate_dup_cache: HashMap<State, spp::SPP>,
     spp: spp::SPPstore,
     num_calls: u32,
 }
@@ -65,6 +66,7 @@ impl Aut {
             aexpr_map: HashMap::new(),
             delta_map: HashMap::new(),
             epsilon_map: HashMap::new(),
+            eliminate_dup_cache: HashMap::new(),
             spp: spp::SPPstore::new(num_vars),
             num_calls: 0,
         };
@@ -853,6 +855,11 @@ impl Aut {
 
     /// Computes a packet transformer for the given state (equivalent to eliminating dup)
     pub fn eliminate_dup(&mut self, initial_state: State) -> spp::SPP {
+        // Check cache first
+        if let Some(cached_spp) = self.eliminate_dup_cache.get(&initial_state) {
+            return *cached_spp;
+        }
+
         // Phase 1: Discover all reachable states using BFS
         let mut q: VecDeque<State> = VecDeque::new();
         let mut visited_states: HashSet<State> = HashSet::new();
@@ -945,7 +952,11 @@ impl Aut {
         }
         
         // Phase 4: Result is the self-loop on END_NODE
-        get_edge(&edges, END_NODE, END_NODE, self.spp.zero)
+        let result_spp = get_edge(&edges, END_NODE, END_NODE, self.spp.zero);
+
+        // Store in cache before returning
+        self.eliminate_dup_cache.insert(initial_state, result_spp);
+        result_spp
     }
 
 
