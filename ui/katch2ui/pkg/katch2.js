@@ -192,14 +192,12 @@ export function init_panic_hook() {
 
 /**
  * @param {string} expr_str
- * @param {number} num_traces
- * @param {number} max_trace_length
  * @returns {any}
  */
-export function analyze_expression(expr_str, num_traces, max_trace_length) {
+export function analyze_expression(expr_str) {
     const ptr0 = passStringToWasm0(expr_str, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.analyze_expression(ptr0, len0, num_traces, max_trace_length);
+    const ret = wasm.analyze_expression(ptr0, len0);
     return ret;
 }
 
