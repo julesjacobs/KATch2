@@ -47,35 +47,33 @@
             color: #2c3e50;
             font-size: 1.6em;
             font-weight: 600;
-            margin-top: 40px;
-            margin-bottom: 20px;
-            padding-bottom: 8px;
-            border-bottom: 2px solid #e8f4f8;
+            margin-top: 20px;
+            margin-bottom: 10px;
+            /* border-bottom: 2px solid #e8f4f8; */
         }
         
         h3 {
             color: #34495e;
             font-size: 1.3em;
             font-weight: 600;
-            margin-top: 30px;
-            margin-bottom: 15px;
+            margin-top: 15px;
+            margin-bottom: 8px;
         }
         
         h4 {
             color: #7f8c8d;
             font-size: 1.1em;
             font-weight: 600;
-            margin-top: 25px;
-            margin-bottom: 12px;
+            margin-top: 12px;
+            margin-bottom: 6px;
             text-transform: uppercase;
             letter-spacing: 0.5px;
             font-size: 0.9em;
         }
         
         p {
-            line-height: 1.7;
             color: #444;
-            margin-bottom: 16px;
+            margin-bottom: 12px;
         }
         
         code {
@@ -91,28 +89,24 @@
         ul {
             line-height: 1.6;
             color: #555;
+            margin-bottom: 12px;
         }
         
         li {
-            margin-bottom: 8px;
+            margin-bottom: 4px;
         }
 
         /* Practice Area Styling */
         .practice-section {
-            margin: 50px 0;
+            margin: 25px 0;
             padding: 0;
-        }
-        
-        .practice-section h2 {
-            margin-top: 0;
-            margin-bottom: 25px;
         }
         
         .practice-grid {
             display: grid; 
             grid-template-columns: 1fr 1fr; 
             gap: 30px; 
-            margin: 25px 0;
+            margin: 15px 0;
         }
         
         .examples-column, .editor-column {
@@ -121,7 +115,7 @@
         
         .examples-column h3, .editor-column h3 {
             margin-top: 0;
-            margin-bottom: 20px;
+            margin-bottom: 12px;
             color: #343a40;
             font-size: 1.2em;
         }
@@ -159,8 +153,8 @@
         <p style="text-align: center">This tutorial will guide you through the basics of NetKAT.</p>
 
         <h2>Packets and Variables</h2>
-        <p>In NetKAT, a <strong>packet</strong> is represented as a sequence (or vector) of bits. We use variables like <code>x0</code>, <code>x1</code>, <code>x2</code>, and so on, to refer to these bits.</p>
-        <p>For example, if a packet is <code>[1, 0, 1]</code>, then:</p>
+        <p>In NetKAT, a <strong>packet</strong> is represented as a sequence (or vector) of bits. We use variables like <code>x0</code>, <code>x1</code>, <code>x2</code>, and so on, to refer to these bits.
+        For example, if a packet is <code>[1, 0, 1]</code>, then:</p>
         <ul>
             <li><code>x0</code> would be 1</li>
             <li><code>x1</code> would be 0</li>
@@ -168,10 +162,9 @@
         </ul>
 
         <h2>Tests (Packet Filters)</h2>
-        <p>Tests are conditions that check the value of a packet bit. They act as filters: if the condition is true, the packet passes through; otherwise, it is dropped (or "filtered out").</p>
-        <p>For example, <code>x0 == 1</code> tests if the first bit of the packet is 1. If it is, the packet continues. If <code>x0</code> is 0, the packet is dropped.</p>
+        <p>Tests are conditions that check the value of a packet bit. They act as filters: if the condition is true, the packet passes through; otherwise, it is dropped (or "filtered out").For example, <code>x0 == 1</code> tests if the first bit of the packet is 1. If it is, the packet continues. If <code>x0</code> is 0, the packet is dropped.</p>
         <p>Here's an example. Try changing the packet bits in the "Input Packet" field and see how the trace changes based on the test:</p>
-        <netkat>x0 == 1</netkat>
+        <netkat num-traces="1">x0 == 1</netkat>
         <p>You can also test for equality to 0, like <code>x3 == 0</code>.</p>
 
         <netkat exercise="Write a test that only allows packets where x1 is 0">x1 == 0</netkat>
@@ -179,11 +172,8 @@
         <p>Note that the examples displayed are as wide as the largest bit mentioned in the program.</p>
 
         <h2>Sequential Composition</h2>
-        <p>Sequential composition, denoted by a semicolon <code>;</code>, combines two NetKAT expressions by executing them one after the other. The packet output by the first expression becomes the input to the second.</p>
-        <p>For example, <code>x0 == 1; x1 == 0</code> first tests if <code>x0</code> is 1. If true, that packet is then passed to <code>x1 == 0</code>, which tests if its second bit is 0.</p>
-        <netkat>x0 == 1; x1 == 0</netkat>
-
-        <p></p>
+        <p>Sequential composition, denoted by a semicolon <code>;</code>, combines two NetKAT expressions by executing them one after the other. The packet output by the first expression becomes the input to the second.For example, <code>x0 == 1; x1 == 0</code> first tests if <code>x0</code> is 1. If true, that packet is then passed to <code>x1 == 0</code>, which tests if its second bit is 0.</p>
+        <netkat num-traces="1">x0 == 1; x1 == 0</netkat>
 
         <netkat exercise="Write a policy that tests x0 == 1, then tests x2 == 0">x0 == 1; x2 == 0</netkat>
 
@@ -195,16 +185,14 @@
         <netkat exercise="Set x0 to 0 and x2 to 1">x0 := 0; x2 := 1</netkat>
 
         <h2>Choice (Union)</h2>
-        <p>Choice, denoted by a plus sign <code>+</code>, represents a non-deterministic selection between two NetKAT expressions. The network can choose to follow either path.</p>
-        <p>For example, <code>x0 := 1 + x1 := 1</code> means the policy can either set <code>x0</code> to 1 OR set <code>x1</code> to 1. The analyzer will explore both possibilities.</p>
+        <p>Choice, denoted by a plus sign <code>+</code>, represents a non-deterministic selection between two NetKAT expressions. The network can choose to follow either path. For example, <code>x0 := 1 + x1 := 1</code> means the policy can either set <code>x0</code> to 1 OR set <code>x1</code> to 1. The analyzer will explore both possibilities.</p>
         <netkat>x0 := 1 + x1 := 1</netkat>
         <p>You'll see multiple paths in the trace if the input packet allows for both choices to be taken, or if the choices lead to different packet states.</p>
 
         <netkat exercise="Write a policy that either tests x0 == 1 or assigns x1 := 0">x0 == 1 + x1 := 0</netkat>
 
         <h2>Encoding If-Then-Else</h2>
-        <p>NetKAT can express conditional logic (if-then-else) by combining tests, assignments, and choice.</p>
-        <p>The general pattern for "if C then P1 else P2" is: <code>(C; P1) + (not C; P2)</code>.</p>
+        <p>NetKAT can express conditional logic (if-then-else) by combining tests, assignments, and choice. The general pattern for "if C then P1 else P2" is: <code>(C; P1) + (not C; P2)</code>.</p>
         <p>For example, to say "if x0 is 1, then set x1 to 1, otherwise set x1 to 0":</p>
         <netkat>(x0 == 1; x1 := 1) + (x0 == 0; x1 := 0)</netkat>
         <p>Let's break this down:</p>
@@ -227,8 +215,7 @@
         <netkat exercise="Set x1 to 1, log with dup, then set x2 to 0">x1 := 1; dup; x2 := 0</netkat>
 
         <h2>Iteration (Kleene Star)</h2>
-        <p>Iteration, denoted by an asterisk <code>*</code> (Kleene star) after an expression <code>e</code> (i.e., <code>e*</code>), allows an expression to be executed zero or more times.</p>
-        <p>For example, this program uses <code>dup</code> inside an iteration to see the packet at each step of a loop:</p>
+        <p>Iteration, denoted by an asterisk <code>*</code> (Kleene star) after an expression <code>e</code> (i.e., <code>e*</code>), allows an expression to be executed zero or more times. For example, this program uses <code>dup</code> inside an iteration to see the packet at each step of a loop:</p>
         <netkat>(((x0 == 0; x0 := 1) + (x0 == 1; x0 := 0)); dup)*; x1 := 1</netkat>
         <p>This will show multiple paths in the trace, corresponding to 0, 1, 2, etc., iterations, up to a limit defined by the analyzer to prevent infinite loops in the visualization.
         The program above will flip the first bit of the packet, then flip it back, then flip it again, etc., and finally output the packet after setting the second bit to 1.
