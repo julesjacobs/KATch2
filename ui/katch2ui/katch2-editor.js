@@ -413,7 +413,13 @@ class KATch2Editor {
             lineNumbers: showLineNumbers ? 'on' : 'off',
             lineNumbersMinChars: showLineNumbers ? 3 : 0,
             lineDecorationsWidth: showLineNumbers ? 5 : 0,
-            readOnly: readOnly
+            readOnly: readOnly,
+            // Disable intellisense/autocomplete features
+            quickSuggestions: false,
+            suggestOnTriggerCharacters: false,
+            wordBasedSuggestions: false,
+            parameterHints: { enabled: false },
+            hover: { enabled: false }
         });
 
         // Setup analysis logic only for non-readonly editors with result areas
