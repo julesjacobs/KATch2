@@ -161,6 +161,44 @@
             <li><code>x2</code> would be <code>1</code> (the third bit)</li>
         </ul>
 
+        <h3>Real-World Example: Ethernet Frame</h3>
+        <p>In real networking, packets have structured fields. Here's a simplified Ethernet frame showing how packet bits correspond to actual network data:</p>
+        
+        <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 15px; margin: 15px 0; font-family: monospace; font-size: 13px;">
+            <div style="margin-bottom: 8px; font-weight: bold; color: #495057;">Ethernet Frame (simplified)</div>
+            <div style="display: flex; border: 1px solid #adb5bd; border-radius: 3px; overflow: hidden;">
+                <div style="background-color: #e3f2fd; padding: 8px 12px; border-right: 1px solid #adb5bd; text-align: center; min-width: 80px;">
+                    <div style="font-weight: bold; color: #1976d2;">Dest MAC</div>
+                    <div style="font-size: 11px; color: #666;">48 bits</div>
+                </div>
+                <div style="background-color: #f3e5f5; padding: 8px 12px; border-right: 1px solid #adb5bd; text-align: center; min-width: 80px;">
+                    <div style="font-weight: bold; color: #7b1fa2;">Src MAC</div>
+                    <div style="font-size: 11px; color: #666;">48 bits</div>
+                </div>
+                <div style="background-color: #fff3e0; padding: 8px 12px; border-right: 1px solid #adb5bd; text-align: center; min-width: 60px;">
+                    <div style="font-weight: bold; color: #f57c00;">EtherType</div>
+                    <div style="font-size: 11px; color: #666;">16 bits</div>
+                </div>
+                <div style="background-color: #e8f5e8; padding: 8px 12px; text-align: center; flex: 1;">
+                    <div style="font-weight: bold; color: #388e3c;">Payload</div>
+                    <div style="font-size: 11px; color: #666;">46-1500 bytes</div>
+                </div>
+            </div>
+            <div style="margin-top: 10px; font-size: 12px; color: #666;">
+                <strong>Bit mapping:</strong> x0=first bit of Dest MAC, x1=second bit of Dest MAC, x2=third bit, etc.
+            </div>
+        </div>
+        
+        <p>In this example:</p>
+        <ul>
+            <li><code>x0-x47</code> would represent the 48-bit destination MAC address</li>
+            <li><code>x48-x95</code> would represent the 48-bit source MAC address</li>
+            <li><code>x96-x111</code> would represent the 16-bit EtherType field</li>
+            <li><code>x112</code> and beyond would be the start of the payload data, but the payload is typically not modeled in NetKAT</li>
+        </ul>
+        
+        <p>NetKAT policies can test or modify any of these bits to implement network behavior like filtering, forwarding, or packet transformation.</p>
+
         <h2>Tests (Packet Filters)</h2>
         <p>Tests are conditions that check the value of a packet bit. They act as filters: if the condition is true, the packet passes through; otherwise, it is dropped (or "filtered out").</p>
         

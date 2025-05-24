@@ -520,7 +520,7 @@ class KATch2Editor {
             }
         };
         
-        analyzeButton.addEventListener('click', loadIntoTarget);
+        analyzeButton.addEventListener('mousedown', loadIntoTarget);
     }
 
     createEditor(customElementDOM, container, resultArea, exerciseDescriptionElement, exerciseFeedbackArea, initialCode, showLineNumbers = false, readOnly = false, id = null, isExercise = false, targetSolution = null, exerciseDescriptionText = null, exampleDescriptionText = null, exampleDescriptionElement = null, showSolutionButton = null) {
@@ -568,7 +568,7 @@ class KATch2Editor {
 
         // Setup show solution button functionality for exercises
         if (isExercise && showSolutionButton && targetSolution) {
-            showSolutionButton.addEventListener('click', () => {
+            showSolutionButton.addEventListener('mousedown', () => {
                 editor.setValue(targetSolution);
                 editor.focus();
                 // Position cursor at the end of the content
@@ -887,7 +887,7 @@ class KATch2Editor {
         loadButton.addEventListener('mouseleave', () => loadButton.style.backgroundColor = '#007bff');
 
         const self = this; // For 'this' context in event listener
-        loadButton.addEventListener('click', function() {
+        loadButton.addEventListener('mousedown', function() {
             self.loadExerciseIntoTarget(targetId, description, solution);
         });
 
@@ -981,7 +981,7 @@ class KATch2Editor {
             instance.showSolutionButton.parentNode.replaceChild(newButton, instance.showSolutionButton);
             instance.showSolutionButton = newButton;
             
-            newButton.addEventListener('click', () => {
+            newButton.addEventListener('mousedown', () => {
                 instance.editor.setValue(solution);
                 instance.editor.focus();
                 // Position cursor at the end of the content
