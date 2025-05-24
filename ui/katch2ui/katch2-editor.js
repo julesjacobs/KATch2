@@ -82,7 +82,7 @@ class KATch2Editor {
 
             // Load Monaco from CDN
             const script = document.createElement('script');
-            script.src = `https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.23.0/min/vs/loader.min.js`;
+            script.src = `https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/${version}/min/vs/loader.min.js`;
             script.onload = () => {
                 require.config({ 
                     paths: { 'vs': `https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/${version}/min/vs` }
