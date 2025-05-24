@@ -365,7 +365,7 @@ class KATch2Editor {
         showSolutionButton.style.cssText = `
             position: absolute;
             top: 8px;
-            right: 8px;
+            right: 10px;
             z-index: 10;
             background: linear-gradient(135deg, #6c757d, #5a6268);
             color: white;
@@ -397,6 +397,26 @@ class KATch2Editor {
             unifiedContainer.style.borderColor = '#e1e5e9';
             unifiedContainer.style.boxShadow = '0 3px 7px rgba(0,0,0,0.15)';
         });
+
+        // KATch logo (positioned in upper right corner of the editor area)
+        const katchLogo = document.createElement('img');
+        katchLogo.src = 'assets/katch2-head.webp';
+        katchLogo.alt = 'KATch2';
+        katchLogo.className = 'katch2-editor-logo';
+        katchLogo.style.cssText = `
+            position: absolute;
+            bottom: 5px;
+            right: 5px;
+            z-index: 100;
+            height: 28px;
+            opacity: 0.8;
+            pointer-events: none;
+            transform: scaleX(-1);
+        `;
+
+        // Position the logo relative to the editor container
+        container.style.position = 'relative';
+        container.appendChild(katchLogo);
 
         // Assemble the component
         unifiedContainer.appendChild(exerciseDescriptionElement);
@@ -440,7 +460,7 @@ class KATch2Editor {
         analyzeButton.style.cssText = `
             position: absolute;
             top: 8px;
-            right: 8px;
+            right: 10px;
             z-index: 10;
             background: linear-gradient(135deg, #007acc, #005a9e);
             color: white;
@@ -959,7 +979,7 @@ class KATch2Editor {
             instance.showSolutionButton.style.cssText = `
                 position: absolute;
                 top: 8px;
-                right: 8px;
+                right: 10px;
                 z-index: 10;
                 background: linear-gradient(135deg, #6c757d, #5a6268);
                 color: white;
