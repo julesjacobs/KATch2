@@ -173,7 +173,9 @@ impl SPPstore {
         let f11 = self.fwd(x11);
         let x0 = self.sp.union(f00, f10);
         let x1 = self.sp.union(f01, f11);
-        self.sp.mk(x0, x1)
+        let result = self.sp.mk(x0, x1);
+        self.fwd_memo.insert(spp, result);
+        result
     }
 
     /// Computes the set of packets, which when input to the `spp`,
@@ -196,7 +198,9 @@ impl SPPstore {
         let x01 = self.ifwd(x1);
         let x10 = x00;
         let x11 = x01;
-        self.mk(x00, x01, x10, x11)
+        let result = self.mk(x00, x01, x10, x11);
+        self.ifwd_memo.insert(sp, result);
+        result
     }
 
     /// Computes the SPP corresponding to the `sp` returned by `bwd`.            
@@ -206,7 +210,7 @@ impl SPPstore {
         self.flip(spp)
     }
 
-    fn mk(&mut self, x00: SPP, x01: SPP, x10: SPP, x11: SPP) -> SPP {
+    pub fn mk(&mut self, x00: SPP, x01: SPP, x10: SPP, x11: SPP) -> SPP {
         let node = SPPnode { x00, x01, x10, x11 };
 
         // Check if the node is already in the store using the hc table
@@ -646,6 +650,11 @@ impl SPPstore {
             result.push(self.rand());
         }
         result
+    }
+    
+    /// Returns the number of nodes in the SPP store
+    pub fn num_nodes(&self) -> usize {
+        self.nodes.len()
     }
 }
 

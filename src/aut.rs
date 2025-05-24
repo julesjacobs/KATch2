@@ -819,6 +819,11 @@ impl Aut {
     pub fn spp_store(&self) -> &spp::SPPstore {
         &self.spp
     }
+    
+    /// Returns a mutable reference to the internal SPPstore
+    pub fn spp_store_mut(&mut self) -> &mut spp::SPPstore {
+        &mut self.spp
+    }
 
     /// Checks if the given state is empty
     pub fn is_empty(&mut self, state: State) -> bool {
