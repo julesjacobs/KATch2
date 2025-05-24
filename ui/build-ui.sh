@@ -3,6 +3,12 @@
 # KATch2 UI Build Script
 # Builds WASM files and copies them to the katch2ui directory
 
+# Parse command line arguments
+DEPLOY=false
+if [ "$1" = "--deploy" ]; then
+    DEPLOY=true
+fi
+
 echo "🔨 Building KATch2 WASM module..."
 
 # Change to project root to build WASM files
@@ -31,7 +37,37 @@ if [ $? -eq 0 ]; then
     echo "📁 Files copied to ui/katch2ui/pkg/:"
     ls -la ui/katch2ui/pkg/
     echo ""
-    echo "🚀 Ready to deploy! Just copy the ui/katch2ui/ directory to your website."
+    
+    # Handle deployment if --deploy flag is provided
+    if [ "$DEPLOY" = true ]; then
+        DEPLOY_DIR="/Users/jules/git/julesjacobs.github.io/misc/katch2"
+        
+        echo "🚀 Deploying to GitHub Pages..."
+        
+        # Check if deployment directory exists
+        if [ ! -d "$DEPLOY_DIR" ]; then
+            echo "❌ Deployment directory does not exist: $DEPLOY_DIR"
+            exit 1
+        fi
+        
+        echo "📦 Copying UI files to $DEPLOY_DIR..."
+        
+        # Copy the entire ui folder contents to the deployment directory
+        cp -r ui/* "$DEPLOY_DIR/"
+        
+        if [ $? -eq 0 ]; then
+            echo "✅ Successfully deployed to GitHub Pages!"
+            echo "🌐 Files deployed to: $DEPLOY_DIR"
+            echo ""
+            echo "📁 Deployed files:"
+            ls -la "$DEPLOY_DIR"
+        else
+            echo "❌ Failed to deploy files"
+            exit 1
+        fi
+    else
+        echo "🚀 Ready to deploy! Run with --deploy to copy to GitHub Pages, or manually copy the ui/ directory."
+    fi
 else
     echo "❌ Failed to copy WASM files"
     exit 1

@@ -154,8 +154,58 @@
 
         <netkat exercise="Write an iteration that nondeterministically modifies x0 in a loop." id="exercise6">((x0 := 0 + x0 := 1); dup)*</netkat>
 
-        <h2>Further exercises</h2>
-        
+        <h2>Practice Area</h2>
+        <p>Use the examples on the left to load NetKAT policies into the editor on the right, or write your own expressions:</p>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0;">
+            <div>
+                <h3>Examples (click to load):</h3>
+                
+                <h4>Basic Operations:</h4>
+                <netkat target="practice-editor">x0 := 1</netkat>
+                <netkat target="practice-editor">x1 == 0</netkat>
+                <netkat target="practice-editor">x0 := 1; x1 := 0</netkat>
+                
+                <h4>Choice Operations:</h4>
+                <netkat target="practice-editor">x0 := 1 + x1 := 1</netkat>
+                <netkat target="practice-editor">(x0 == 1; x1 := 1) + (x0 == 0; x1 := 0)</netkat>
+                
+                <h4>Iterations:</h4>
+                <netkat target="practice-editor">(x0 == 0; x0 := 1)*</netkat>
+                <netkat target="practice-editor">((x0 == 0; x0 := 1); dup)*</netkat>
+                
+                <h4>Complex Policies:</h4>
+                <netkat target="practice-editor" lines="3">// Bit flipper with logging
+(x0 == 0; x0 := 1 + x0 == 1; x0 := 0);
+dup; x1 := 1</netkat>
+
+                <netkat target="practice-editor" lines="4">// Conditional assignment chain
+x0 == 1;
+(x1 == 0; x2 := 1 + x1 == 1; x2 := 0);
+dup</netkat>
+
+                <h3>Additional Exercises:</h3>
+                
+                <netkat exercise="Write a policy that sets x0 to 1, then tests if x1 is 0" target="practice-editor">x0 := 1; x1 == 0</netkat>
+                
+                <netkat exercise="Create a bit flipper: if x0 is 0 set it to 1, if x0 is 1 set it to 0" target="practice-editor">(x0 == 0; x0 := 1) + (x0 == 1; x0 := 0)</netkat>
+                
+                <netkat exercise="Write a policy that copies x0 to x1 (if x0 is 1 then x1 becomes 1, if x0 is 0 then x1 becomes 0)" target="practice-editor">(x0 == 1; x1 := 1) + (x0 == 0; x1 := 0)</netkat>
+                
+                <netkat exercise="Create a policy that accepts packets only if both x0 and x1 are 1" target="practice-editor">x0 == 1; x1 == 1</netkat>
+                
+                <netkat exercise="Write an iteration that flips x0 repeatedly until it becomes 1, with logging at each step" target="practice-editor">((x0 == 0; x0 := 1); dup)*</netkat>
+            </div>
+            
+            <div>
+                <h3>Practice Editor:</h3>
+                <netkat id="practice-editor" lines="8" show-line-numbers>// Click examples on the left to load them here
+// Or write your own NetKAT expressions
+
+</netkat>
+            </div>
+        </div>
+
         <p>This concludes the basic NetKAT tutorial. Experiment with these constructs to build more complex network policies!</p>
         
     </div>
