@@ -404,36 +404,36 @@
         <p>Iteration, denoted by an asterisk <code>*</code> (Kleene star) after an expression <code>e</code> (i.e., <code>e*</code>), allows an expression to be executed zero or more times.</p>
         
         <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 20px; margin: 15px 0; font-family: monospace;">
-            <div style="margin-bottom: 12px; font-weight: bold; color: #495057; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">Iteration Paths: (x0 := 1)*</div>
+            <div style="margin-bottom: 12px; font-weight: bold; color: #495057; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">Iteration Paths: (x0:=1 + (x0==1;x1:=1) + (x1==1; x2:=1))*</div>
             <div style="display: flex; flex-direction: column; align-items: center; gap: 8px;">
                 <div style="background: #e3f2fd; padding: 8px 12px; border-radius: 4px; text-align: center;">
-                    <strong>Input: 010</strong>
+                    <strong>Input: 000</strong>
                 </div>
                 <div style="font-size: 18px; color: #666;">↓</div>
                 <div style="display: flex; flex-direction: column; gap: 8px; align-items: center;">
                     <div style="display: flex; align-items: center; gap: 12px;">
                         <div style="background: #f3e5f5; padding: 6px 10px; border-radius: 3px; text-align: center; min-width: 80px;">
                             <div style="font-size: 12px; margin-bottom: 2px;">0 loops</div>
-                            <div style="background: #e8f5e8; padding: 2px 6px; border-radius: 2px;">010</div>
+                            <div style="background: #e8f5e8; padding: 2px 6px; border-radius: 2px;">000</div>
                         </div>
-                        <span style="color: #666;">‖</span>
+                        <span style="color: #666;">→</span>
                         <div style="background: #f3e5f5; padding: 6px 10px; border-radius: 3px; text-align: center; min-width: 80px;">
                             <div style="font-size: 12px; margin-bottom: 2px;">1 loop</div>
-                            <div style="background: #e8f5e8; padding: 2px 6px; border-radius: 2px;">110</div>
+                            <div style="background: #e8f5e8; padding: 2px 6px; border-radius: 2px;">100</div>
                         </div>
-                        <span style="color: #666;">‖</span>
+                        <span style="color: #666;">→</span>
                         <div style="background: #f3e5f5; padding: 6px 10px; border-radius: 3px; text-align: center; min-width: 80px;">
                             <div style="font-size: 12px; margin-bottom: 2px;">2 loops</div>
                             <div style="background: #e8f5e8; padding: 2px 6px; border-radius: 2px;">110</div>
                         </div>
-                        <span style="color: #666;">‖</span>
+                        <span style="color: #666;">→</span>
                         <div style="background: #f3e5f5; padding: 6px 10px; border-radius: 3px; text-align: center; min-width: 80px;">
                             <div style="font-size: 12px; margin-bottom: 2px;">3+ loops</div>
-                            <div style="background: #e8f5e8; padding: 2px 6px; border-radius: 2px;">110</div>
+                            <div style="background: #e8f5e8; padding: 2px 6px; border-radius: 2px;">111</div>
                         </div>
                     </div>
                     <div style="font-size: 11px; color: #666; text-align: center; margin-top: 4px;">
-                        Each path represents a different number of iterations
+                        Progressive bit setting: 000 → 100 → 110 → 111
                     </div>
                 </div>
                 <div style="font-size: 18px; color: #666;">↓</div>
@@ -443,7 +443,7 @@
             </div>
         </div>
         
-        <netkat example="Flips bit x0 repeatedly (0→1→0→1...), logging each step with dup, then sets x1 to 1. Shows multiple iteration paths.">(((x0 == 0; x0 := 1) + (x0 == 1; x0 := 0)); dup)*; x1 := 1</netkat>
+        <netkat example="Progressive bit setting: sets x0, then x1, then x2 in sequence. Starting from 000, watch how it builds up to 111 through multiple iterations.">(x0:=1 + (x0==1;x1:=1) + (x1==1; x2:=1))*</netkat>
         
         <p>This shows multiple paths in the trace, corresponding to 0, 1, 2, etc., iterations, up to a limit defined by the analyzer to prevent infinite loops in the visualization.</p>
 
