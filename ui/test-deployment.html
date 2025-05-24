@@ -99,6 +99,35 @@ x0 := 0
     
     <p><strong>See example:</strong> <a href="katch2ui/example.html">katch2ui/example.html</a></p>
 
+    <p>This is a target editor. Examples below will load into this one.</p>
+    <netkat-editor id="targetEditor" lines="3">
+    </netkat-editor>
+
+    <h2>Examples that load into the target editor:</h2>
+    <netkat target="targetEditor" lines="1">x0==1</netkat>
+    <netkat target="targetEditor" lines="2">x0==0; x1==1</netkat>
+
+    <h2>Trace Configuration Examples:</h2>
+    <h3>Default Traces (5 traces, max length 5):</h3>
+    <netkat-editor lines="2">
+    dup; x0==1
+    </netkat-editor>
+
+    <h3>Custom Number of Traces (num-traces="2"):</h3>
+    <netkat-editor lines="2" num-traces="2">
+    x0==0 + x1==1
+    </netkat-editor>
+
+    <h3>Custom Max Trace Length (max-trace-length="3"):</h3>
+    <netkat-editor lines="2" max-trace-length="3">
+    x0==1; x0==0; x0==1; x0==0
+    </netkat-editor>
+
+    <h3>Custom Traces and Length (num-traces="1", max-trace-length="2"):</h3>
+    <netkat-editor lines="2" num-traces="1" max-trace-length="2">
+    x0==1*; x1==1
+    </netkat-editor>
+
     <!-- Include the self-contained KATch2 UI library -->
     <script type="module" src="katch2ui/katch2-editor.js"></script>
 </body>

@@ -484,88 +484,106 @@ class KATch2Editor {
 
     setupAnalysis(editor, resultArea) {
         let isAnalysisInProgress = false;
-        let needsAnalysis = false;
-        
-        const self = this;
+        let needsAnalysis = false; // Flag to indicate if analysis is pending
 
         const processAnalysisQueue = async () => {
-            if (isAnalysisInProgress) return;
-            if (!needsAnalysis) return;
-
+            if (isAnalysisInProgress || !needsAnalysis) {
+                return;
+            }
             isAnalysisInProgress = true;
-            const currentExpression = editor.getValue();
-            needsAnalysis = false;
+            needsAnalysis = false; // Reset flag before starting
+            
+            const codeToAnalyze = editor.getValue();
 
-            resultArea.innerHTML = '<strong>Analysis:</strong> Processing...';
-            self.setResultStyle(resultArea, 'neutral');
-
-            try {
-                const result = self.analyzeFunction(currentExpression);
-                const model = editor.getModel();
-                
-                if (result.error) {
-                    let errorString = `<strong>Syntax error:</strong> ${result.error.message}`;
-                    if (result.error.span) {
-                        errorString += ` (line ${result.error.span.start_line}, column ${result.error.span.start_column})`;
+            if (this.analyzeFunction) {
+                try {
+                    let netkatElement = editor.getDomNode();
+                    while(netkatElement && netkatElement.tagName !== 'NETKAT-EDITOR') {
+                        netkatElement = netkatElement.parentElement;
                     }
-                    resultArea.innerHTML = errorString;
-                    self.setResultStyle(resultArea, 'error');
 
-                    if (result.error.span && model) {
-                        const markers = [{
-                            message: result.error.message,
-                            severity: self.monacoInstance.MarkerSeverity.Error,
-                            startLineNumber: result.error.span.start_line,
-                            startColumn: result.error.span.start_column,
-                            endLineNumber: result.error.span.end_line,
-                            endColumn: result.error.span.end_column
-                        }];
-                        self.monacoInstance.editor.setModelMarkers(model, 'katch2-parser', markers);
+                    let numTraces = null;
+                    let maxTraceLength = null;
+
+                    if (netkatElement) {
+                        const numTracesAttr = netkatElement.getAttribute('num-traces');
+                        if (numTracesAttr) {
+                            const parsedNum = parseInt(numTracesAttr, 10);
+                            if (!isNaN(parsedNum) && parsedNum > 0) {
+                                numTraces = parsedNum;
+                            }
+                        }
+                        const maxTraceLengthAttr = netkatElement.getAttribute('max-trace-length');
+                        if (maxTraceLengthAttr) {
+                            const parsedMaxLen = parseInt(maxTraceLengthAttr, 10);
+                            if (!isNaN(parsedMaxLen) && parsedMaxLen > 0) {
+                                maxTraceLength = parsedMaxLen;
+                            }
+                        }
                     }
-                } else {
-                    let resultMessage = `<strong>Analysis result:</strong> ${result.status}`;
                     
-                    // If we have traces, display them instead of just "Non-empty"
-                    if (result.traces && result.status === "Non-empty") {
+                    const result_val = this.analyzeFunction(codeToAnalyze, numTraces, maxTraceLength);
+                    const analysis = result_val; 
+
+                    let html = `<strong>${analysis.status}</strong>`;
+                    
+                    if (analysis.traces && analysis.status === "Non-empty") {
                         const formatPacket = (packet) => packet.map(bit => bit ? '1' : '0').join('');
-                        
                         let tracesHtml = '';
-                        for (let i = 0; i < result.traces.length; i++) {
-                            const [inputTrace, finalOutput] = result.traces[i];
+                        for (let i = 0; i < analysis.traces.length; i++) {
+                            const [inputTrace, finalOutput] = analysis.traces[i];
                             const traceString = inputTrace.map(formatPacket).join(' → ');
                             const outputString = finalOutput ? ` → ${formatPacket(finalOutput)}` : ' → ...';
-                            
                             tracesHtml += `<div style="margin: 2px 0;"><span style="font-family: monospace; background-color: #f8f9fa; padding: 2px 4px; border-radius: 3px;">${traceString}${outputString}</span></div>`;
                         }
-                        
-                        resultMessage = `<strong>Analysis result:</strong> Non-empty<br>` +
-                                      `<strong>Example traces:</strong><br>` + tracesHtml;
+                        html += `<br><strong>Example traces:</strong><br>` + tracesHtml;
                     }
                     
-                    resultArea.innerHTML = resultMessage;
+                    resultArea.innerHTML = html;
                     
-                    if (result.status && (result.status.includes("Empty (no input)") || result.status === "Waiting for input...")) {
-                        self.setResultStyle(resultArea, 'neutral');
+                    if (analysis.error) {
+                        // Handle error display, including span if available
+                        let errorString = `<strong>Syntax error:</strong> ${analysis.error.message}`;
+                        if (analysis.error.span) {
+                            errorString += ` (line ${analysis.error.span.start_line}, col ${analysis.error.span.start_column})`;
+                            // Add Monaco marker for the error span
+                            if (editor.getModel()) {
+                                this.monacoInstance.editor.setModelMarkers(editor.getModel(), 'katch2-parser', [{
+                                    message: analysis.error.message,
+                                    severity: this.monacoInstance.MarkerSeverity.Error,
+                                    startLineNumber: analysis.error.span.start_line,
+                                    startColumn: analysis.error.span.start_column,
+                                    endLineNumber: analysis.error.span.end_line,
+                                    endColumn: analysis.error.span.end_column
+                                }]);
+                            }
+                        }
+                        resultArea.innerHTML = errorString; // Overwrite if there is an error
+                        this.setResultStyle(resultArea, 'error');
+                    } else if (analysis.status && (analysis.status.includes("Empty (no input)") || analysis.status === "Waiting for input...")) {
+                        this.setResultStyle(resultArea, 'neutral');
+                        if (editor.getModel()) this.monacoInstance.editor.setModelMarkers(editor.getModel(), 'katch2-parser', []);
                     } else {
-                        self.setResultStyle(resultArea, 'success');
+                        this.setResultStyle(resultArea, 'success');
+                        if (editor.getModel()) this.monacoInstance.editor.setModelMarkers(editor.getModel(), 'katch2-parser', []);
                     }
-                    if (model) {
-                        self.monacoInstance.editor.setModelMarkers(model, 'katch2-parser', []);
+                } catch (e) {
+                    console.error("Analysis error:", e);
+                    resultArea.innerHTML = `<strong>Frontend error:</strong> ${e.message}`;
+                    this.setResultStyle(resultArea, 'error');
+                } finally {
+                    isAnalysisInProgress = false;
+                    // If needsAnalysis became true while processing, re-queue immediately.
+                    if (needsAnalysis) {
+                        Promise.resolve().then(processAnalysisQueue);
                     }
                 }
-            } catch (e) {
-                console.error("Analysis error:", e);
-                resultArea.innerHTML = `<strong>Frontend error:</strong> ${e.message}`;
-                self.setResultStyle(resultArea, 'error');
-            } finally {
-                isAnalysisInProgress = false;
-                Promise.resolve().then(processAnalysisQueue);
             }
         };
 
         editor.onDidChangeModelContent(() => {
             needsAnalysis = true;
-            processAnalysisQueue();
+            processAnalysisQueue(); // Try to process immediately
         });
 
         // Initial analysis

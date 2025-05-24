@@ -11,6 +11,7 @@ Implement an interactive exercise system where users write NetKAT programs to ma
   - Computes `expr1 - expr2` and returns example traces or syntax errors
   - Returns `DifferenceResult { expr1_errors, expr2_errors, example_traces }`
   - When no syntax errors and `example_traces` is empty → expressions are equivalent (for this direction), i.e., difference expr1 - expr2 is empty.
+  - expr2_errors should be displayed differently: this indicates a problem in the exercise solution (rather than a user error)
 
 ## Frontend/JavaScript Changes
 
@@ -20,7 +21,7 @@ Implement an interactive exercise system where users write NetKAT programs to ma
   ```html
   <!-- Basic exercise -->
   <netkat exercise="Write a program that sets x0 to 1">
-    x0 := 1
+    x0 := 1 // this is the solution of the exercise
   </netkat>
   
   <!-- Exercise with target editor -->

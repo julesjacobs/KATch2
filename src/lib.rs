@@ -32,7 +32,11 @@ pub fn init_panic_hook() {
 }
 
 #[wasm_bindgen]
-pub fn analyze_expression(expr_str: &str) -> JsValue {
+pub fn analyze_expression(
+    expr_str: &str, 
+    num_traces_opt: Option<usize>, 
+    max_trace_length_opt: Option<usize>
+) -> JsValue {
     if expr_str.trim().is_empty() {
         return serde_wasm_bindgen::to_value(&AnalysisResult {
             status: "Empty (no input)".to_string(),
@@ -66,16 +70,19 @@ pub fn analyze_expression(expr_str: &str) -> JsValue {
             let (status, traces) = if is_empty {
                 ("Empty".to_string(), None)
             } else {
-                let mut traces = Vec::new();
-                for _ in 0..5 {
-                    if let Some(trace) = aut_handler.random_trace(state_id, 5) {
-                        traces.push(trace);
+                let mut traces_vec = Vec::new();
+                let num_traces_to_generate = num_traces_opt.unwrap_or(5); // Default to 5 traces
+                let max_len = max_trace_length_opt.unwrap_or(5); // Default to max length 5
+                
+                for _ in 0..num_traces_to_generate {
+                    if let Some(trace) = aut_handler.random_trace(state_id, max_len) {
+                        traces_vec.push(trace);
                     }
                 }
-                if traces.is_empty() {
-                    ("Empty".to_string(), None)
+                if traces_vec.is_empty() {
+                    ("Empty".to_string(), None) // Could still be empty if random_trace fails or policy is very restrictive
                 } else {
-                    ("Non-empty".to_string(), Some(traces))
+                    ("Non-empty".to_string(), Some(traces_vec))
                 }
             };
 

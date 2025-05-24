@@ -190,14 +190,19 @@ export function init_panic_hook() {
     wasm.init_panic_hook();
 }
 
+function isLikeNone(x) {
+    return x === undefined || x === null;
+}
 /**
  * @param {string} expr_str
+ * @param {number | null} [num_traces_opt]
+ * @param {number | null} [max_trace_length_opt]
  * @returns {any}
  */
-export function analyze_expression(expr_str) {
+export function analyze_expression(expr_str, num_traces_opt, max_trace_length_opt) {
     const ptr0 = passStringToWasm0(expr_str, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.analyze_expression(ptr0, len0);
+    const ret = wasm.analyze_expression(ptr0, len0, isLikeNone(num_traces_opt) ? 0x100000001 : (num_traces_opt) >>> 0, isLikeNone(max_trace_length_opt) ? 0x100000001 : (max_trace_length_opt) >>> 0);
     return ret;
 }
 
