@@ -959,6 +959,25 @@ impl Aut {
         result_spp
     }
 
+    pub fn delta_pruned(&mut self, state: State) -> ST {
+        let original_st = self.delta(state); // Memoized
+        let pruning_spp = self.eliminate_dup(state); // Memoized
+
+        let mut new_transitions = HashMap::new();
+        for (&target_state, &original_edge_spp) in original_st.get_transitions() {
+            // Intersect the original edge SPP with the pruning SPP derived from eliminate_dup.
+            let intersected_spp = self.spp.intersect(original_edge_spp, pruning_spp);
+
+            if intersected_spp != self.spp.zero {
+                // Avoid adding transitions to a "zero" state if such a concept is distinctly represented.
+                // self.mk_spp(self.spp.zero) gives the state representing the zero SPP.
+                if target_state != self.mk_spp(self.spp.zero) { 
+                    new_transitions.insert(target_state, intersected_spp);
+                }
+            }
+        }
+        ST::new(new_transitions)
+    }
 
     /// Returns a string representation of the AExpr for the given state
     pub fn state_to_string(&self, state: State) -> String {
