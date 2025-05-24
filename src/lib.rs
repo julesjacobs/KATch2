@@ -77,7 +77,7 @@ pub fn analyze_expression(
             let is_empty = aut_handler.is_empty(state_id);
 
             let (status, traces) = if is_empty {
-                ("Empty".to_string(), None)
+                ("Analysis result: Drops all packets".to_string(), None)
             } else {
                 let mut traces_vec = Vec::new();
                 let num_traces_to_generate = num_traces_opt.unwrap_or(5); // Default to 5 traces
@@ -89,9 +89,9 @@ pub fn analyze_expression(
                     }
                 }
                 if traces_vec.is_empty() {
-                    ("Empty".to_string(), None) // Could still be empty if random_trace fails or policy is very restrictive
+                    ("Analysis result: Drops all packets".to_string(), None) // Could still be empty if random_trace fails or policy is very restrictive
                 } else {
-                    ("Non-empty".to_string(), Some(traces_vec))
+                    ("Analysis result: Allows traffic".to_string(), Some(traces_vec))
                 }
             };
 

@@ -537,7 +537,7 @@ class KATch2Editor {
 
                             if (diff2_result.example_traces && diff2_result.example_traces.length > 0) {
                                 overallEquivalent = false;
-                                feedbackHtml += '<div><strong>➕ Extra (you have, target doesn\'t):</strong>';
+                                feedbackHtml += '<div><strong>❌ Extra (you have, target doesn\'t):</strong>';
                                 diff2_result.example_traces.forEach(trace => {
                                     const [inputTrace, finalOutput] = trace;
                                     const traceString = inputTrace.map(p => p.map(bit => bit ? '1' : '0').join('')).join(' → ');
@@ -574,7 +574,7 @@ class KATch2Editor {
 
                         let html = `<strong>${analysis.status}</strong>`;
                         
-                        if (analysis.traces && analysis.status === "Non-empty") {
+                        if (analysis.traces && analysis.status === "Analysis result: Allows traffic") {
                             const formatPacket = (packet) => packet.map(bit => bit ? '1' : '0').join('');
                         let tracesHtml = '';
                             for (let i = 0; i < analysis.traces.length; i++) {
