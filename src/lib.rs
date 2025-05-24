@@ -16,6 +16,7 @@ pub mod viz;
 pub struct AnalysisResult {
     pub status: String,            // e.g., "Empty", "Non-empty", "Syntax Error"
     pub error: Option<parser::ParseErrorDetails>, // Contains error message and optional span
+    pub traces: Option<Vec<(Vec<Vec<bool>>, Option<Vec<bool>>)>>, // 5 random traces when expression is non-empty: (input_trace, final_output)
     // We could also include the string representation of the parsed expression here if useful
     // pub parsed_expr_string: Option<String>,
 }
@@ -36,6 +37,7 @@ pub fn analyze_expression(expr_str: &str) -> JsValue {
         return serde_wasm_bindgen::to_value(&AnalysisResult {
             status: "Empty (no input)".to_string(),
             error: None,
+            traces: None,
         })
         .unwrap();
     }
@@ -47,7 +49,8 @@ pub fn analyze_expression(expr_str: &str) -> JsValue {
                 // or by the initial trim().is_empty() check.
                 return serde_wasm_bindgen::to_value(&AnalysisResult {
                     status: "Empty (parsed as no expressions)".to_string(),
-                    error: None, 
+                    error: None,
+                    traces: None,
                 })
                 .unwrap();
             }
@@ -60,15 +63,26 @@ pub fn analyze_expression(expr_str: &str) -> JsValue {
             let state_id = aut_handler.expr_to_state(first_expr.as_ref());
             let is_empty = aut_handler.is_empty(state_id);
 
-            let status = if is_empty {
-                "Empty".to_string()
+            let (status, traces) = if is_empty {
+                ("Empty".to_string(), None)
             } else {
-                "Non-empty".to_string()
+                let mut traces = Vec::new();
+                for _ in 0..5 {
+                    if let Some(trace) = aut_handler.random_trace(state_id, 5) {
+                        traces.push(trace);
+                    }
+                }
+                if traces.is_empty() {
+                    ("Empty".to_string(), None)
+                } else {
+                    ("Non-empty".to_string(), Some(traces))
+                }
             };
 
             serde_wasm_bindgen::to_value(&AnalysisResult {
                 status,
                 error: None,
+                traces,
             })
             .unwrap()
         }
@@ -76,6 +90,7 @@ pub fn analyze_expression(expr_str: &str) -> JsValue {
             serde_wasm_bindgen::to_value(&AnalysisResult {
                 status: "Syntax Error".to_string(),
                 error: Some(err_details),
+                traces: None,
             })
             .unwrap()
         }

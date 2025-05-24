@@ -3,6 +3,8 @@
 // Unlike traditional BDDs, we do not leave out any levels of the BDD:
 // each path down the BDD has precisely the same depth, namely the number of variables, i.e. the packet size in bits.
 
+use rand::seq::SliceRandom;
+
 use crate::sp::{SPnode, SPstore, SP};
 #[allow(non_snake_case)]
 use std::collections::HashMap;
@@ -489,6 +491,84 @@ impl SPPstore {
         self.flip_memo.insert(spp, res);
         res
     }
+
+    pub fn random_packet_pair(&self, spp: SPP) -> Option<(Vec<bool>, Vec<bool>)> {
+        return self.random_packet_pair_helper(spp);
+    }
+
+    fn random_packet_pair_helper(&self, spp: SPP) -> Option<(Vec<bool>, Vec<bool>)> {
+        if spp == SPP::new(0) {
+            return None;
+        } else if spp == SPP::new(1) {
+            return Some((vec![], vec![]));
+        }
+        let spp_node = self.get(spp);
+        let mut options = vec![];
+        options.push((false, false, spp_node.x00));
+        options.push((false, true, spp_node.x01));
+        options.push((true, false, spp_node.x10));
+        options.push((true, true, spp_node.x11));
+        // Shuffle the options
+        options.shuffle(&mut rand::rng());
+        for (b1, b2, child) in options {
+            let random_packet_pair = self.random_packet_pair_helper(child);
+            if let Some((v1, v2)) = random_packet_pair {
+                let mut w1 = v1.clone();
+                w1.insert(0, b1);
+                let mut w2 = v2.clone();
+                w2.insert(0, b2);
+                return Some((w1, w2));
+            }
+        }
+        None
+    }
+
+    pub fn random_input_packet(&self, spp: SPP) -> Option<Vec<bool>> {
+        // get a random packet pair, then return first element
+        let random_packet_pair = self.random_packet_pair(spp);
+        if let Some((v1, _)) = random_packet_pair {
+            return Some(v1);
+        }
+        None
+    }
+
+    pub fn random_output_packet_from_input(&self, spp: SPP, input: Vec<bool>) -> Option<Vec<bool>> {
+        return self.random_output_packet_from_input_helper(spp, input);
+    }
+    
+    fn random_output_packet_from_input_helper(&self, spp: SPP, input: Vec<bool>) -> Option<Vec<bool>> {
+        if spp == SPP::new(0) {
+            assert!(input.len() == 0);
+            return None;
+        } else if spp == SPP::new(1) {
+            assert!(input.len() == 0);
+            return Some(vec![]);
+        }
+        let spp_node = self.get(spp);
+        let mut options = vec![];
+        if !input[0] {
+            options.push((false, false, spp_node.x00));
+            options.push((false, true, spp_node.x01));
+        } else {
+            options.push((true, false, spp_node.x10));
+            options.push((true, true, spp_node.x11));
+        }
+        // Remove first element from input
+        let mut rest = input.clone();
+        rest.remove(0);
+        // Shuffle the options
+        options.shuffle(&mut rand::rng());
+        for (_b1, b2, child) in options {
+            let random_packet_pair = self.random_output_packet_from_input_helper(child, rest.clone());
+            if let Some(v2) = random_packet_pair {
+                let mut w2 = v2.clone();
+                w2.insert(0, b2);
+                return Some(w2);
+            }
+        }
+        None
+    }
+
 
     /// Enumerates all possible SPPs with `num_vars` fields
     #[cfg(test)]

@@ -523,7 +523,27 @@ class KATch2Editor {
                         self.monacoInstance.editor.setModelMarkers(model, 'katch2-parser', markers);
                     }
                 } else {
-                    resultArea.innerHTML = `<strong>Analysis result:</strong> ${result.status}`;
+                    let resultMessage = `<strong>Analysis result:</strong> ${result.status}`;
+                    
+                    // If we have traces, display them instead of just "Non-empty"
+                    if (result.traces && result.status === "Non-empty") {
+                        const formatPacket = (packet) => packet.map(bit => bit ? '1' : '0').join('');
+                        
+                        let tracesHtml = '';
+                        for (let i = 0; i < result.traces.length; i++) {
+                            const [inputTrace, finalOutput] = result.traces[i];
+                            const traceString = inputTrace.map(formatPacket).join(' → ');
+                            const outputString = finalOutput ? ` → ${formatPacket(finalOutput)}` : ' → ...';
+                            
+                            tracesHtml += `<div style="margin: 2px 0;"><span style="font-family: monospace; background-color: #f8f9fa; padding: 2px 4px; border-radius: 3px;">${traceString}${outputString}</span></div>`;
+                        }
+                        
+                        resultMessage = `<strong>Analysis result:</strong> Non-empty<br>` +
+                                      `<strong>Example traces:</strong><br>` + tracesHtml;
+                    }
+                    
+                    resultArea.innerHTML = resultMessage;
+                    
                     if (result.status && (result.status.includes("Empty (no input)") || result.status === "Waiting for input...")) {
                         self.setResultStyle(resultArea, 'neutral');
                     } else {

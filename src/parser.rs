@@ -135,7 +135,7 @@ impl Token {
 pub struct Lexer<'a> {
     iter: Peekable<Chars<'a>>,
     current_pos: Position,
-    input_str: &'a str, // Keep a reference to the input for slicing if needed for error context
+    // input_str: &'a str, // Keep a reference to the input for slicing if needed for error context
     iterator_has_yielded_eof: bool, // New field to track EOF iteration state
 }
 
@@ -144,7 +144,7 @@ impl<'a> Lexer<'a> {
         Lexer {
             iter: input.chars().peekable(),
             current_pos: Position::new(0, 1, 1),
-            input_str: input,
+            // input_str: input,
             iterator_has_yielded_eof: false, // Initialize the new field
         }
     }

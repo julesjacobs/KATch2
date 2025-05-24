@@ -6,6 +6,8 @@
 use std::collections::HashMap;
 use std::fmt;
 
+use rand::Rng;
+
 /// We use indices into the SP store to represent SPs.
 /// The zero SP is represented by SP(0) and the one SP is represented by SP(1).
 /// Indices into the store are the u32 value - 2.
@@ -229,6 +231,43 @@ impl SPstore {
             self.ifelse(var, self.one, self.zero)
         } else {
             self.ifelse(var, self.zero, self.one)
+        }
+    }
+
+
+    /// Generates a random packet accepted by this SP
+    pub fn random_packet(&self, sp: SP) -> Option<Vec<bool>> {
+        self.random_packet_helper(sp)
+    }
+
+    pub fn random_packet_helper(&self, sp: SP) -> Option<Vec<bool>> {
+        if sp == SP::new(0) {
+            return None;
+        } else if sp == SP::new(1) {
+            return Some(vec![]);
+        }
+        let node = self.get(sp);
+        let option1 = self.random_packet_helper(node.x0);
+        let option2 = self.random_packet_helper(node.x1);
+        match (option1, option2) {
+            (None, None) => None,
+            (Some(mut p1), None) => {
+                p1.insert(0, true);
+                Some(p1)
+            }
+            (None, Some(mut p2)) => {
+                p2.insert(0, false);
+                Some(p2)
+            }
+            (Some(mut p1), Some(mut p2)) => {
+                if rand::rng().random_bool(0.5) {
+                    p1.insert(0, true);
+                    Some(p1)
+                } else {
+                    p2.insert(0, false);
+                    Some(p2)
+                }
+            }
         }
     }
 

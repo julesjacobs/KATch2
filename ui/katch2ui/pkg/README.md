@@ -76,6 +76,16 @@ value ::= 0 | 1
 
 Note: The parser takes `k` as an argument to determine the number of available fields.
 
+## Web UI
+
+KATch2 includes a self-contained web UI for interactive NetKAT analysis. See `ui/` directory:
+
+- **Deploy**: Copy `ui/katch2ui/` to your website
+- **Use**: `<script type="module" src="katch2ui/katch2-editor.js"></script>`
+- **Write**: `<netkat>x0 := 0; x1 := 1</netkat>`
+
+For complete documentation, see [`ui/README.md`](ui/README.md).
+
 ## Future
 
 Immediate TODOs:

@@ -56,6 +56,7 @@ pub struct Aut {
     epsilon_map: HashMap<State, spp::SPP>,
     eliminate_dup_cache: HashMap<State, spp::SPP>,
     spp: spp::SPPstore,
+    // num_vars: u32,
     num_calls: u32,
 }
 
@@ -68,6 +69,7 @@ impl Aut {
             epsilon_map: HashMap::new(),
             eliminate_dup_cache: HashMap::new(),
             spp: spp::SPPstore::new(num_vars),
+            // num_vars,
             num_calls: 0,
         };
         aut
@@ -977,6 +979,62 @@ impl Aut {
             }
         }
         ST::new(new_transitions)
+    }
+
+    pub fn random_packet_pair(&mut self, state: State) -> Option<(Vec<bool>, Vec<bool>)> {
+        let epsilon = self.epsilon(state);
+        return self.spp.random_packet_pair(epsilon);
+    }
+
+    // pub fn random_packet(&self) -> Vec<bool> {
+    //     let mut packet = vec![false; self.num_vars as usize];
+    //     for i in 0..self.num_vars as usize {
+    //         packet[i] = rand::rng().random_bool(0.5);
+    //     }
+    //     packet
+    // }
+
+    pub fn random_trace(&mut self, state: State, max_length: usize) -> Option<(Vec<Vec<bool>>, Option<Vec<bool>>)> {
+        let mut trace = vec![];
+        let dup_spp = self.eliminate_dup(state);
+        if dup_spp == self.spp.zero {
+            return None;
+        }
+        let mut current_packet = self.spp.random_input_packet(dup_spp)?;
+        let mut current_state = state;
+        while trace.len() < max_length {
+            trace.push(current_packet.clone());
+            // Check if the current packet can be accepted by the current state
+            let epsilon = self.epsilon(current_state);
+            // Or transitioned from the current state
+            let deltas = self.delta_pruned(current_state);
+            let deltas_vec = deltas.get_transitions().into_iter().collect::<Vec<_>>();
+            loop {
+                // Pick randomly among outputting the current packet or taking one of the transitions
+                // i.e. a random number between 0 and 1 + the number of transitions
+                let choice = rand::random_range(0..deltas_vec.len() + 1);
+                if choice < deltas_vec.len() {
+                    // Try to take transition `choice`
+                    let (target_state, spp) = deltas_vec[choice];
+                    if let Some(next_packet) = self.spp.random_output_packet_from_input(*spp, current_packet.clone()) {
+                        current_state = *target_state;
+                        current_packet = next_packet;
+                        break;
+                    } else {
+                        continue; // Try again
+                    }
+                } else {
+                    // Try and output the current packet
+                    if let Some(out_packet) = self.spp.random_output_packet_from_input(epsilon, current_packet.clone()) {
+                        return Some((trace, Some(out_packet)));
+                    } else {
+                        continue; // Try again
+                    }
+                }
+            }
+        }
+        // If we get here, we have a trace that is too long
+        Some((trace, None))
     }
 
     /// Returns a string representation of the AExpr for the given state
