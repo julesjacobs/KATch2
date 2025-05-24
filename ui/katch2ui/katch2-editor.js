@@ -178,8 +178,15 @@ class KATch2Editor {
             } else {
                 // This element will become an editor itself (regular, example, or self-contained exercise)
                 let lines = element.getAttribute('lines');
-                if (!lines) { lines = Math.max(1, initialCode.split('\n').length); }
-                else { lines = parseInt(lines, 10) || 1; }
+                if (!lines) { 
+                    lines = Math.max(1, initialCode.split('\n').length);
+                    // For exercise editors, ensure minimum 3 lines
+                    if (isExerciseAttr) {
+                        lines = Math.max(3, lines);
+                    }
+                } else { 
+                    lines = parseInt(lines, 10) || 1; 
+                }
                 const showLineNumbers = element.hasAttribute('show-line-numbers');
 
                 if (targetId) { // No isExerciseAttr, so it's an EXAMPLE editor

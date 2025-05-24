@@ -77,14 +77,13 @@
         <p>This tutorial will guide you through the basics of NetKAT.</p>
 
         <h2>Packets and Variables</h2>
-        <p>In NetKAT, a <strong>packet</strong> is represented as a sequence (or vector) of bits. We use variables like <code>x0</code>, <code>x1</code>, <code>x2</code>, and so on, to refer to these bits. The variable <code>xN</code> refers to the N-th bit of the packet (starting from 0).</p>
+        <p>In NetKAT, a <strong>packet</strong> is represented as a sequence (or vector) of bits. We use variables like <code>x0</code>, <code>x1</code>, <code>x2</code>, and so on, to refer to these bits.</p>
         <p>For example, if a packet is <code>[1, 0, 1]</code>, then:</p>
         <ul>
             <li><code>x0</code> would be 1</li>
             <li><code>x1</code> would be 0</li>
             <li><code>x2</code> would be 1</li>
         </ul>
-        <p>The KATch2 analyzer currently simulates packets with a fixed number of bits, which you can configure in the settings.</p>
 
         <h2>Tests (Packet Filters)</h2>
         <p>Tests are conditions that check the value of a packet bit. They act as filters: if the condition is true, the packet passes through; otherwise, it is dropped (or "filtered out").</p>
@@ -95,16 +94,19 @@
 
         <netkat exercise="Write a test that only allows packets where x1 is 0" id="exercise1">x1 == 0</netkat>
 
+        Note that the examples displayed are as wide as the largest bit mentioned in the program.
+
         <h2>Sequential Composition</h2>
         <p>Sequential composition, denoted by a semicolon <code>;</code>, combines two NetKAT expressions by executing them one after the other. The packet output by the first expression becomes the input to the second.</p>
-        <p>For example, <code>x0 == 1; x1 == 0</code> first tests if <code>x0</code> is 1. If true, that (potentially modified) packet is then passed to <code>x1 == 0</code>, which tests if its second bit is 0.</p>
+        <p>For example, <code>x0 == 1; x1 == 0</code> first tests if <code>x0</code> is 1. If true, that packet is then passed to <code>x1 == 0</code>, which tests if its second bit is 0.</p>
         <netkat>x0 == 1; x1 == 0</netkat>
+
+        <p></p>
 
         <netkat exercise="Write a policy that tests x0 == 1, then tests x2 == 0" id="exercise2">x0 == 1; x2 == 0</netkat>
 
         <h2>Assignments</h2>
-        <p>Assignments modify the packet's bits. The expression <code>xN := V</code> sets the N-th bit of the packet to V (where V is 0 or 1).</p>
-        <p>For instance, <code>x0 := 1</code> sets the first bit of the packet to 1, regardless of its previous value. <code>x2 := 0</code> sets the third bit to 0.</p>
+        <p>Assignments modify the packet's bits. The expression <code>x0 := 1</code> sets the first bit of the packet to 1, regardless of its previous value. <code>x2 := 0</code> sets the third bit to 0.</p>
         <netkat>x0 := 1; x2 := 0</netkat>
         <p>Observe how the packet bits change after the assignments in the trace.</p>
 
@@ -133,31 +135,27 @@
 
         <netkat exercise="If x1 == 0 then set x0 := 1, else set x0 := 0" id="exercise5">(x1 == 0; x0 := 1) + (x1 == 1; x0 := 0)</netkat>
 
-        <h2>Iteration (Kleene Star)</h2>
-        <p>Iteration, denoted by an asterisk <code>*</code> (Kleene star) after an expression <code>e</code> (i.e., <code>e*</code>), allows an expression to be executed zero or more times.</p>
-        <p>For example, <code>(x0 == 0; x0 := 1)*</code> means: as long as <code>x0</code> is 0, set <code>x0</code> to 1, and repeat. This particular example isn't very interesting because once <code>x0</code> becomes 1, the condition <code>x0 == 0</code> fails, and the loop terminates. Effectively, it runs at most once.</p>
-        <netkat>(x0 == 0; x0 := 1)*</netkat>
-
-        <p>A more common use is to repeat a sequence of operations. Consider a policy that flips the first bit <code>x0</code> and then, if <code>x1</code> was 0, flips <code>x1</code> as well. This whole operation can be repeated:</p>
-        <netkat>( (x0==0; x0:=1 + x0==1; x0:=0); (x1==0; x1:=1) )*</netkat>
-        <p>This will show multiple paths in the trace, corresponding to 0, 1, 2, etc., iterations, up to a limit defined by the analyzer to prevent infinite loops in the visualization.</p>
-
-        <netkat exercise="Write an iteration that sets x0 to 1 when it's 0" id="exercise6">(x0 == 0; x0 := 1)*</netkat>
-        
 
         <h2>Dup (Logging)</h2>
-        <p>The <code>dup</code> keyword is a special NetKAT operator that doesn't change the packet but instead "duplicates" it and sends one copy to a log or trace, while the other copy continues through the policy. This is extremely useful for observing the state of the packet at various points in your NetKAT expression.</p>
-        <p>In KATch2, <code>dup</code> causes the current packet state to be explicitly shown in the trace output for that step.</p>
+        <p>The <code>dup</code> keyword is a special NetKAT operator that records the current packet state to the trace output without modifying it. This is extremely useful for observing the packet state at various points in your NetKAT expression.</p>
         <p>Example: Set <code>x0</code> to 1, log the packet, then set <code>x1</code> to 1.</p>
         <netkat>x0 := 1; dup</netkat>
         <p>You'll see an entry in the trace specifically for the <code>dup</code> operation, showing the packet state after <code>x0 := 1</code> but before <code>x1 := 1</code>.</p>
-        <p>Here's another example showing <code>dup</code> inside an iteration to see the packet at each step of a loop (that eventually terminates because the condition <code>x0 == 0</code> becomes false):</p>
-        <netkat>((x0 == 0; x0 := 1); dup)*</netkat>
 
         <netkat exercise="Set x1 to 1, log with dup, then set x2 to 0" id="exercise7">x1 := 1; dup; x2 := 0</netkat>
 
-        <netkat exercise="Create a policy that checks if x0 is 1, and if so, either sets x1 to 0 or sets x2 to 1" id="final-challenge">x0 == 1; (x1 := 0 + x2 := 1)</netkat>
+        <h2>Iteration (Kleene Star)</h2>
+        <p>Iteration, denoted by an asterisk <code>*</code> (Kleene star) after an expression <code>e</code> (i.e., <code>e*</code>), allows an expression to be executed zero or more times.</p>
+        <p>For example, this program uses <code>dup</code> inside an iteration to see the packet at each step of a loop:</p>
+        <netkat>(((x0 == 0; x0 := 1) + (x0 == 1; x0 := 0)); dup)*; x1 := 1</netkat>
+        <p>This will show multiple paths in the trace, corresponding to 0, 1, 2, etc., iterations, up to a limit defined by the analyzer to prevent infinite loops in the visualization.
+        The program above will flip the first bit of the packet, then flip it back, then flip it again, etc., and finally output the packet after setting the second bit to 1.
+        </p>
 
+        <netkat exercise="Write an iteration that nondeterministically modifies x0 in a loop." id="exercise6">((x0 := 0 + x0 := 1); dup)*</netkat>
+
+        <h2>Further exercises</h2>
+        
         <p>This concludes the basic NetKAT tutorial. Experiment with these constructs to build more complex network policies!</p>
         
     </div>
