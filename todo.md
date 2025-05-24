@@ -7,22 +7,10 @@ Implement an interactive exercise system where users write NetKAT programs to ma
 
 ### 1. Unified Difference Analysis (`src/`)
 - [ ] **Single difference analysis function**
-  - Implement `analyze_difference(expr1: &str, expr2: &str, max_traces: usize) -> DifferenceResult`
+  - Implement `analyze_difference(expr1: &str, expr2: &str, max_traces, max_length) -> DifferenceResult`
   - Computes `expr1 - expr2` and returns example traces or syntax errors
-  - Returns `DifferenceResult { expr1_errors, expr2_errors, example_traces: Vec<Trace> }`
+  - Returns `DifferenceResult { expr1_errors, expr2_errors, example_traces }`
   - When no syntax errors and `example_traces` is empty → expressions are equivalent (for this direction), i.e., difference expr1 - expr2 is empty.
-
-- [ ] **Simple structures**
-  ```rust
-  struct Trace {
-      packets: Vec<Packet>, // Sequence of packets in the trace
-  }
-  ```
-
-- [ ] **WASM Export**
-  - Export `analyze_difference(expr1: &str, expr2: &str, max_traces: usize)` to JavaScript
-  - Keep existing `analyze_expression(expr: &str)` for backward compatibility
-  - Handle all error cases and serialization properly
 
 ## Frontend/JavaScript Changes
 

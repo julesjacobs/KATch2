@@ -2,14 +2,14 @@
 /* eslint-disable */
 export function greet(name: string): string;
 export function init_panic_hook(): void;
-export function analyze_expression(expr_str: string): any;
+export function analyze_expression(expr_str: string, num_traces: number, max_trace_length: number): any;
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
 export interface InitOutput {
   readonly memory: WebAssembly.Memory;
   readonly greet: (a: number, b: number) => [number, number];
-  readonly analyze_expression: (a: number, b: number) => any;
+  readonly analyze_expression: (a: number, b: number, c: number, d: number) => any;
   readonly init_panic_hook: () => void;
   readonly __wbindgen_free: (a: number, b: number, c: number) => void;
   readonly __wbindgen_exn_store: (a: number) => void;
