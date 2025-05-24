@@ -195,7 +195,7 @@ class KATch2Editor {
         const height = Math.max(50, lines * 22 + 30);
         const isExercise = exerciseDescriptionText !== null;
         const targetSolution = isExercise ? initialCode : null;
-        const editorInitialCode = isExercise ? '// Start your solution here\n' : initialCode;
+        const editorInitialCode = isExercise ? '// Type your solution here\n' : initialCode;
         
         const wrapper = document.createElement('div');
         wrapper.className = 'katch2-editor-wrapper'; // Add a class for easier identification
@@ -255,8 +255,7 @@ class KATch2Editor {
             color: #555;
             display: none;
         `;
-        exerciseFeedbackArea.style.display = isExercise ? 'block' : 'none';
-        if (isExercise) exerciseFeedbackArea.innerHTML = 'Equivalence: Pending...';
+        exerciseFeedbackArea.style.display = 'none'; // Initially hidden, will show when there's feedback
         
         if (isExercise) resultArea.style.display = 'none';
         else resultArea.style.display = 'block';
@@ -498,8 +497,7 @@ class KATch2Editor {
                         
                         if (isEmptyOrPlaceholder) {
                             // Don't show errors for empty/placeholder content
-                            currentExerciseFeedbackArea.innerHTML = 'Equivalence: Pending...';
-                            this.setResultStyle(currentExerciseFeedbackArea, 'neutral');
+                            currentExerciseFeedbackArea.style.display = 'none'; // Hide feedback area entirely
                             resultArea.style.display = 'none'; // Hide standard analysis result area
                         } else {
                             // User has entered actual code, proceed with analysis
@@ -551,16 +549,18 @@ class KATch2Editor {
 
                             if (overallEquivalent && !diff1_result.expr1_errors && !diff1_result.expr2_errors && !diff2_result.expr1_errors) {
                                 currentExerciseFeedbackArea.innerHTML = '<strong>✅ Equivalent!</strong>';
+                                currentExerciseFeedbackArea.style.display = 'block';
                                 this.setResultStyle(currentExerciseFeedbackArea, 'success'); 
                             } else if (!overallEquivalent || (diff1_result.expr2_errors || diff2_result.expr1_errors)) { // If not equivalent OR there were user errors
                                 currentExerciseFeedbackArea.innerHTML = feedbackHtml;
+                                currentExerciseFeedbackArea.style.display = 'block';
                                 this.setResultStyle(currentExerciseFeedbackArea, 'error');
                             } else if (feedbackHtml) { // Only target errors, no counterexamples and no user errors (should be rare)
                                  currentExerciseFeedbackArea.innerHTML = feedbackHtml;
+                                 currentExerciseFeedbackArea.style.display = 'block';
                                  this.setResultStyle(currentExerciseFeedbackArea, 'error'); // Still an error state due to target issue
                             } else {
-                                currentExerciseFeedbackArea.innerHTML = 'Equivalence: Pending...'; // Should not happen if no errors and no traces
-                                this.setResultStyle(currentExerciseFeedbackArea, 'neutral');
+                                currentExerciseFeedbackArea.style.display = 'none'; // Hide if no meaningful feedback
                             }
                             resultArea.style.display = 'none'; // Hide standard analysis result area
                         }
@@ -606,11 +606,13 @@ class KATch2Editor {
                                 }
                             }
                             resultArea.innerHTML = errorString; // Overwrite if there is an error
+                            resultArea.style.display = 'block'; // Show result area for errors
                             this.setResultStyle(resultArea, 'error');
-                        } else if (analysis.status && (analysis.status.includes("Empty (no input)") || analysis.status === "Waiting for input...")) {
-                            this.setResultStyle(resultArea, 'neutral');
+                        } else if (analysis.status && (analysis.status.includes("Empty (no input)") || analysis.status.includes("Empty (parsed as no expressions)") || analysis.status === "Waiting for input...")) {
+                            resultArea.style.display = 'none'; // Hide result area for empty states
                             if (editor.getModel()) this.monacoInstance.editor.setModelMarkers(editor.getModel(), 'katch2-parser', []);
                     } else {
+                            resultArea.style.display = 'block'; // Show result area when there's content
                             this.setResultStyle(resultArea, 'success');
                             if (editor.getModel()) this.monacoInstance.editor.setModelMarkers(editor.getModel(), 'katch2-parser', []);
                     }
@@ -755,9 +757,7 @@ class KATch2Editor {
         }
 
         if (instance.exerciseFeedbackArea) {
-            instance.exerciseFeedbackArea.innerHTML = 'Equivalence: Pending...'; // Reset feedback
-            instance.exerciseFeedbackArea.style.display = 'block';
-            this.setResultStyle(instance.exerciseFeedbackArea, 'neutral'); // Reset style
+            instance.exerciseFeedbackArea.style.display = 'none'; // Hide initially until there's feedback
         }  else {
             console.warn("exerciseFeedbackArea not found on instance for targetId:", targetId)
         }
@@ -766,7 +766,7 @@ class KATch2Editor {
             instance.resultArea.style.display = 'none'; // Hide standard analysis area
         }
 
-        const startingCode = `// Solve: ${description.substring(0, 70)}${description.length > 70 ? '...' : ''}\n`;
+        const startingCode = '// Type your solution here\n';
         instance.editor.setValue(startingCode);
         instance.editor.focus();
         // Position cursor at the end of the content
