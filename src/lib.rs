@@ -126,7 +126,6 @@ pub fn analyze_difference(
     let parsed_expr1 = match parser::parse_expressions(expr1_str) {
         Ok(mut exprs) => {
             if exprs.is_empty() {
-                // Treat as a form of parse error for this context if no actual expression is found
                 expr1_parse_result = Some(parser::ParseErrorDetails {
                     message: "Expression 1 is empty or only comments".to_string(),
                     span: None,
@@ -172,36 +171,22 @@ pub fn analyze_difference(
     let expr1 = parsed_expr1.unwrap();
     let expr2 = parsed_expr2.unwrap();
 
-    // Ensure field counts are compatible for difference operation
-    // This is a simplified check; a more robust system might try to align fields
-    // or the Aut struct might handle this internally during `expr_to_state` or difference.
-    // For now, we assume they must be equal or the `difference` operation will handle it.
-    let num_fields = expr1.num_fields(); // Use num_fields from expr1 as the primary
-    if expr1.num_fields() != expr2.num_fields() {
-        // This is a semantic error, not a parse error for expr2 necessarily.
-        // We can choose to represent this as an expr2_error or a top-level error.
-        // For now, let's add a specific error to expr2_errors for simplicity.
-        let expr2_error_msg = format!(
-            "Field count mismatch: expr1 has {}, expr2 has {}. Cannot compute difference.", 
-            expr1.num_fields(), expr2.num_fields()
-        );
-        return serde_wasm_bindgen::to_value(&DifferenceResult {
-            expr1_errors: None, // expr1 parsed fine
-            expr2_errors: Some(parser::ParseErrorDetails { message: expr2_error_msg, span: None }),
-            example_traces: None,
-        }).unwrap();
-    }
+    // Determine the unified field count (take the maximum of both expressions)
+    let expr1_fields = expr1.num_fields();
+    let expr2_fields = expr2.num_fields();
+    let unified_field_count = std::cmp::max(expr1_fields, expr2_fields);
 
-    let mut aut_handler = aut::Aut::new(num_fields);
+    // Create the difference expression at the AST level: expr1 - expr2
+    let difference_expr = expr::Expr::Difference(
+        Box::new(expr1.as_ref().clone()),
+        Box::new(expr2.as_ref().clone())
+    );
 
-    // Compute expr1 - expr2
-    // This requires having a difference operation in aut::Aut that returns a state representing the difference.
-    // Let's assume `aut_handler.difference(state1, state2)` exists.
-    let state1_id = aut_handler.expr_to_state(expr1.as_ref());
-    let state2_id = aut_handler.expr_to_state(expr2.as_ref());
-    
-    // Use the mk_difference smart constructor
-    let diff_state_id = aut_handler.mk_difference(state1_id, state2_id);
+    // Create automaton handler with the unified field count
+    let mut aut_handler = aut::Aut::new(unified_field_count);
+
+    // Convert the difference expression to an automaton state
+    let diff_state_id = aut_handler.expr_to_state(&difference_expr);
     let is_diff_empty = aut_handler.is_empty(diff_state_id);
 
     let traces = if is_diff_empty {

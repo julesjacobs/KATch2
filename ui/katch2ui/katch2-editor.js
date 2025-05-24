@@ -270,7 +270,7 @@ class KATch2Editor {
         this.createEditor(wrapper, container, resultArea, exerciseDescriptionElement, exerciseFeedbackArea, editorInitialCode, showLineNumbers, false, id, isExercise, targetSolution, exerciseDescriptionText);
     }
 
-    replaceWithExampleEditor(element, initialCode, lines = 1, showLineNumbers = false, target) {
+    replaceWithExampleEditor(element, initialCode, lines = 1, showLineNumbers = false, targetId) {
         // Calculate height based on lines (approximately 22px per line + padding)
         const height = Math.max(50, lines * 22 + 30);
         
@@ -351,7 +351,7 @@ class KATch2Editor {
         
         // Add click handler to load content into target
         const loadIntoTarget = () => {
-            const targetElement = document.getElementById(target);
+            const targetElement = document.getElementById(targetId);
             if (targetElement) {
                 // Find the Monaco editor in the target element
                 const targetEditors = this.editorInstances.filter(instance => {
@@ -362,14 +362,19 @@ class KATch2Editor {
                     const targetEditor = targetEditors[0].editor;
                     targetEditor.setValue(initialCode);
                     targetEditor.focus();
+                    // Position cursor at the end of the content
+                    const model = targetEditor.getModel();
+                    const lineCount = model.getLineCount();
+                    const lineLength = model.getLineMaxColumn(lineCount);
+                    targetEditor.setPosition({ lineNumber: lineCount, column: lineLength });
                     
                     // Visual feedback
                     showSuccess();
                 } else {
-                    console.warn(`Target editor with id "${target}" not found or not initialized`);
+                    console.warn(`Target editor with id "${targetId}" not found or not initialized`);
                 }
             } else {
-                console.warn(`Target element with id "${target}" not found`);
+                console.warn(`Target element with id "${targetId}" not found`);
             }
         };
         
@@ -482,68 +487,83 @@ class KATch2Editor {
                     if (currentIsExercise && currentTargetSolution && this.wasmModule.analyze_difference) {
                         // Exercise Mode: Call analyze_difference twice
                         const userCode = codeToAnalyze;
-                        // Use numTraces and maxTraceLength from attributes if available, otherwise default for exercises
-                        const exerciseNumTraces = numTraces !== null ? numTraces : 3; 
-                        const exerciseMaxTraceLength = maxTraceLength !== null ? maxTraceLength : 5;
-
-                        const diff1_result = this.wasmModule.analyze_difference(currentTargetSolution, userCode, exerciseNumTraces, exerciseMaxTraceLength);
-                        const diff2_result = this.wasmModule.analyze_difference(userCode, currentTargetSolution, exerciseNumTraces, exerciseMaxTraceLength);
-
-                        let feedbackHtml = '';
-                        let overallEquivalent = true;
-
-                        // Check target - user (missing traces)
-                        if (diff1_result.expr1_errors) feedbackHtml += `<p><strong>Error in target expression (should not happen):</strong> ${this.htmlEscape(diff1_result.expr1_errors.message)}</p>`;
-                        if (diff1_result.expr2_errors) {
-                            feedbackHtml += `<p><strong>Error in your solution:</strong> ${this.htmlEscape(diff1_result.expr2_errors.message)}</p>`;
-                            overallEquivalent = false; // An error in the user's code means it's not equivalent
-                        }
                         
-                        if (diff1_result.example_traces && diff1_result.example_traces.length > 0) {
-                            overallEquivalent = false;
-                            feedbackHtml += '<div><strong>❌ Missing (target has, you don\'t):</strong>';
-                            diff1_result.example_traces.forEach(trace => {
-                                const [inputTrace, finalOutput] = trace;
-                                const traceString = inputTrace.map(p => p.join('')).join(' → ');
-                                const outputString = finalOutput ? ` → ${finalOutput.join('')}` : ' → (dropped)';
-                                feedbackHtml += `<div class="trace">- ${this.htmlEscape(traceString + outputString)}</div>`;
-                            });
-                            feedbackHtml += '</div>';
-                        }
-
-                        // Check user - target (extra traces)
-                        if (diff2_result.expr1_errors && !diff1_result.expr2_errors) {
-                             feedbackHtml += `<p><strong>Error in your solution:</strong> ${this.htmlEscape(diff2_result.expr1_errors.message)}</p>`;
-                             overallEquivalent = false; // An error in the user's code means it's not equivalent
-                        }
-
-                        if (diff2_result.example_traces && diff2_result.example_traces.length > 0) {
-                            overallEquivalent = false;
-                            feedbackHtml += '<div><strong>➕ Extra (you have, target doesn\'t):</strong>';
-                            diff2_result.example_traces.forEach(trace => {
-                                const [inputTrace, finalOutput] = trace;
-                                const traceString = inputTrace.map(p => p.join('')).join(' → ');
-                                const outputString = finalOutput ? ` → ${finalOutput.join('')}` : ' → (dropped)';
-                                feedbackHtml += `<div class="trace">+ ${this.htmlEscape(traceString + outputString)}</div>`;
-                            });
-                            feedbackHtml += '</div>';
-                        }
-
-                        if (overallEquivalent && !diff1_result.expr1_errors && !diff1_result.expr2_errors && !diff2_result.expr1_errors) {
-                            currentExerciseFeedbackArea.innerHTML = '<strong>✅ Equivalent!</strong>';
-                            this.setResultStyle(currentExerciseFeedbackArea, 'success'); 
-                        } else if (!overallEquivalent || (diff1_result.expr2_errors || diff2_result.expr1_errors)) { // If not equivalent OR there were user errors
-                            currentExerciseFeedbackArea.innerHTML = feedbackHtml;
-                            this.setResultStyle(currentExerciseFeedbackArea, 'error');
-                        } else if (feedbackHtml) { // Only target errors, no counterexamples and no user errors (should be rare)
-                             currentExerciseFeedbackArea.innerHTML = feedbackHtml;
-                             this.setResultStyle(currentExerciseFeedbackArea, 'error'); // Still an error state due to target issue
-                        } else {
-                            currentExerciseFeedbackArea.innerHTML = 'Equivalence: Pending...'; // Should not happen if no errors and no traces
+                        // Check if user code is essentially empty (whitespace, comments, or default placeholder)
+                        const trimmedCode = userCode.trim();
+                        const isEmptyOrPlaceholder = !trimmedCode || 
+                            trimmedCode.startsWith('// Solve:') || 
+                            trimmedCode.startsWith('// Start your solution') ||
+                            trimmedCode.startsWith('// Enter your') ||
+                            /^\/\/.*$/.test(trimmedCode); // Only comments
+                        
+                        if (isEmptyOrPlaceholder) {
+                            // Don't show errors for empty/placeholder content
+                            currentExerciseFeedbackArea.innerHTML = 'Equivalence: Pending...';
                             this.setResultStyle(currentExerciseFeedbackArea, 'neutral');
-                        }
-                        resultArea.style.display = 'none'; // Hide standard analysis result area
+                            resultArea.style.display = 'none'; // Hide standard analysis result area
+                        } else {
+                            // User has entered actual code, proceed with analysis
+                            const exerciseNumTraces = numTraces !== null ? numTraces : 3; 
+                            const exerciseMaxTraceLength = maxTraceLength !== null ? maxTraceLength : 5;
 
+                            const diff1_result = this.wasmModule.analyze_difference(currentTargetSolution, userCode, exerciseNumTraces, exerciseMaxTraceLength);
+                            const diff2_result = this.wasmModule.analyze_difference(userCode, currentTargetSolution, exerciseNumTraces, exerciseMaxTraceLength);
+
+                            let feedbackHtml = '';
+                            let overallEquivalent = true;
+
+                            // Check target - user (missing traces)
+                            if (diff1_result.expr1_errors) feedbackHtml += `<p><strong>Error in target expression (should not happen):</strong> ${this.htmlEscape(diff1_result.expr1_errors.message)}</p>`;
+                            if (diff1_result.expr2_errors) {
+                                feedbackHtml += `<p><strong>Error in your solution:</strong> ${this.htmlEscape(diff1_result.expr2_errors.message)}</p>`;
+                                overallEquivalent = false; // An error in the user's code means it's not equivalent
+                            }
+                            
+                            if (diff1_result.example_traces && diff1_result.example_traces.length > 0) {
+                                overallEquivalent = false;
+                                feedbackHtml += '<div><strong>❌ Missing (target has, you don\'t):</strong>';
+                                diff1_result.example_traces.forEach(trace => {
+                                    const [inputTrace, finalOutput] = trace;
+                                    const traceString = inputTrace.map(p => p.map(bit => bit ? '1' : '0').join('')).join(' → ');
+                                    const outputString = finalOutput ? ` → ${finalOutput.map(bit => bit ? '1' : '0').join('')}` : ' → (dropped)';
+                                    feedbackHtml += `<div class="trace" style="margin-left: 20px; font-family: monospace;">${this.htmlEscape(traceString + outputString)}</div>`;
+                                });
+                                feedbackHtml += '</div>';
+                            }
+
+                            // Check user - target (extra traces)
+                            if (diff2_result.expr1_errors && !diff1_result.expr2_errors) {
+                                 feedbackHtml += `<p><strong>Error in your solution:</strong> ${this.htmlEscape(diff2_result.expr1_errors.message)}</p>`;
+                                 overallEquivalent = false; // An error in the user's code means it's not equivalent
+                            }
+
+                            if (diff2_result.example_traces && diff2_result.example_traces.length > 0) {
+                                overallEquivalent = false;
+                                feedbackHtml += '<div><strong>➕ Extra (you have, target doesn\'t):</strong>';
+                                diff2_result.example_traces.forEach(trace => {
+                                    const [inputTrace, finalOutput] = trace;
+                                    const traceString = inputTrace.map(p => p.map(bit => bit ? '1' : '0').join('')).join(' → ');
+                                    const outputString = finalOutput ? ` → ${finalOutput.map(bit => bit ? '1' : '0').join('')}` : ' → (dropped)';
+                                    feedbackHtml += `<div class="trace" style="margin-left: 20px; font-family: monospace;">${this.htmlEscape(traceString + outputString)}</div>`;
+                                });
+                                feedbackHtml += '</div>';
+                            }
+
+                            if (overallEquivalent && !diff1_result.expr1_errors && !diff1_result.expr2_errors && !diff2_result.expr1_errors) {
+                                currentExerciseFeedbackArea.innerHTML = '<strong>✅ Equivalent!</strong>';
+                                this.setResultStyle(currentExerciseFeedbackArea, 'success'); 
+                            } else if (!overallEquivalent || (diff1_result.expr2_errors || diff2_result.expr1_errors)) { // If not equivalent OR there were user errors
+                                currentExerciseFeedbackArea.innerHTML = feedbackHtml;
+                                this.setResultStyle(currentExerciseFeedbackArea, 'error');
+                            } else if (feedbackHtml) { // Only target errors, no counterexamples and no user errors (should be rare)
+                                 currentExerciseFeedbackArea.innerHTML = feedbackHtml;
+                                 this.setResultStyle(currentExerciseFeedbackArea, 'error'); // Still an error state due to target issue
+                            } else {
+                                currentExerciseFeedbackArea.innerHTML = 'Equivalence: Pending...'; // Should not happen if no errors and no traces
+                                this.setResultStyle(currentExerciseFeedbackArea, 'neutral');
+                            }
+                            resultArea.style.display = 'none'; // Hide standard analysis result area
+                        }
                     } else {
                         // Standard Analysis Mode
                         if (currentExerciseFeedbackArea) currentExerciseFeedbackArea.style.display = 'none'; // Hide exercise feedback area
@@ -732,7 +752,6 @@ class KATch2Editor {
             instance.exerciseDescriptionElement.style.display = 'block';
         } else {
             console.warn("exerciseDescriptionElement not found on instance for targetId:", targetId)
-            // Potentially create it here if absolutely necessary, but it should exist from createEditor
         }
 
         if (instance.exerciseFeedbackArea) {
@@ -747,13 +766,14 @@ class KATch2Editor {
             instance.resultArea.style.display = 'none'; // Hide standard analysis area
         }
 
-        instance.editor.setValue(`// Solve: ${description.substring(0, 70)}${description.length > 70 ? '...' : ''}\n`);
+        const startingCode = `// Solve: ${description.substring(0, 70)}${description.length > 70 ? '...' : ''}\n`;
+        instance.editor.setValue(startingCode);
         instance.editor.focus();
-        
-        // The editor's onDidChangeModelContent will trigger processAnalysisQueue,
-        // which should pick up the new isExercise and targetSolution from katch2ExerciseInfo
-        // or from the re-setup analysis context if we chose to re-call setupAnalysis.
-        // For now, relying on katch2ExerciseInfo being picked up by the existing analysis loop.
+        // Position cursor at the end of the content
+        const model = instance.editor.getModel();
+        const lineCount = model.getLineCount();
+        const lineLength = model.getLineMaxColumn(lineCount);
+        instance.editor.setPosition({ lineNumber: lineCount, column: lineLength });
     }
 
     findEditorInstanceById(id) {
