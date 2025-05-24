@@ -646,7 +646,7 @@ class KATch2Editor {
                             
                             if (diff1_result.example_traces && diff1_result.example_traces.length > 0) {
                                 overallEquivalent = false;
-                                feedbackHtml += '<div><strong>❌ Missing (target has, you don\'t):</strong>';
+                                feedbackHtml += '<div><strong>❌ Missing (solution has, you don\'t):</strong>';
                                 diff1_result.example_traces.forEach(trace => {
                                     const [inputTrace, finalOutput] = trace;
                                     const traceString = inputTrace.map(p => p.map(bit => bit ? '1' : '0').join('')).join(' → ');
@@ -664,7 +664,7 @@ class KATch2Editor {
 
                             if (diff2_result.example_traces && diff2_result.example_traces.length > 0) {
                                 overallEquivalent = false;
-                                feedbackHtml += '<div><strong>❌ Extra (you have, target doesn\'t):</strong>';
+                                feedbackHtml += '<div><strong>❌ Extra (you have, solution doesn\'t):</strong>';
                                 diff2_result.example_traces.forEach(trace => {
                                     const [inputTrace, finalOutput] = trace;
                                     const traceString = inputTrace.map(p => p.map(bit => bit ? '1' : '0').join('')).join(' → ');
