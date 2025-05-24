@@ -650,7 +650,7 @@ class KATch2Editor {
                                 diff1_result.example_traces.forEach(trace => {
                                     const [inputTrace, finalOutput] = trace;
                                     const traceString = inputTrace.map(p => p.map(bit => bit ? '1' : '0').join('')).join(' → ');
-                                    const outputString = finalOutput ? ` → ${finalOutput.map(bit => bit ? '1' : '0').join('')}` : ' → (dropped)';
+                                    const outputString = finalOutput ? ` → ${finalOutput.map(bit => bit ? '1' : '0').join('')}` : ' → ...';
                                     feedbackHtml += `<div class="trace" style="margin-left: 20px; font-family: monospace;">${this.htmlEscape(traceString + outputString)}</div>`;
                                 });
                                 feedbackHtml += '</div>';
@@ -668,7 +668,7 @@ class KATch2Editor {
                                 diff2_result.example_traces.forEach(trace => {
                                     const [inputTrace, finalOutput] = trace;
                                     const traceString = inputTrace.map(p => p.map(bit => bit ? '1' : '0').join('')).join(' → ');
-                                    const outputString = finalOutput ? ` → ${finalOutput.map(bit => bit ? '1' : '0').join('')}` : ' → (dropped)';
+                                    const outputString = finalOutput ? ` → ${finalOutput.map(bit => bit ? '1' : '0').join('')}` : ' → ...';
                                     feedbackHtml += `<div class="trace" style="margin-left: 20px; font-family: monospace;">${this.htmlEscape(traceString + outputString)}</div>`;
                                 });
                                 feedbackHtml += '</div>';
