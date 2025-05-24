@@ -93,10 +93,14 @@
         <netkat>x0 == 1</netkat>
         <p>You can also test for equality to 0, like <code>x3 == 0</code>.</p>
 
+        <netkat exercise="Write a test that only allows packets where x1 is 0" id="exercise1">x1 == 0</netkat>
+
         <h2>Sequential Composition</h2>
         <p>Sequential composition, denoted by a semicolon <code>;</code>, combines two NetKAT expressions by executing them one after the other. The packet output by the first expression becomes the input to the second.</p>
         <p>For example, <code>x0 == 1; x1 == 0</code> first tests if <code>x0</code> is 1. If true, that (potentially modified) packet is then passed to <code>x1 == 0</code>, which tests if its second bit is 0.</p>
         <netkat>x0 == 1; x1 == 0</netkat>
+
+        <netkat exercise="Write a policy that tests x0 == 1, then tests x2 == 0" id="exercise2">x0 == 1; x2 == 0</netkat>
 
         <h2>Assignments</h2>
         <p>Assignments modify the packet's bits. The expression <code>xN := V</code> sets the N-th bit of the packet to V (where V is 0 or 1).</p>
@@ -104,11 +108,15 @@
         <netkat>x0 := 1; x2 := 0</netkat>
         <p>Observe how the packet bits change after the assignments in the trace.</p>
 
+        <netkat exercise="Set x0 to 0 and x2 to 1" id="exercise3">x0 := 0; x2 := 1</netkat>
+
         <h2>Choice (Union)</h2>
         <p>Choice, denoted by a plus sign <code>+</code>, represents a non-deterministic selection between two NetKAT expressions. The network can choose to follow either path.</p>
         <p>For example, <code>x0 := 1 + x1 := 1</code> means the policy can either set <code>x0</code> to 1 OR set <code>x1</code> to 1. The analyzer will explore both possibilities.</p>
         <netkat>x0 := 1 + x1 := 1</netkat>
         <p>You'll see multiple paths in the trace if the input packet allows for both choices to be taken, or if the choices lead to different packet states.</p>
+
+        <netkat exercise="Write a policy that either tests x0 == 1 or assigns x1 := 0" id="exercise4">x0 == 1 + x1 := 0</netkat>
 
         <h2>Encoding If-Then-Else</h2>
         <p>NetKAT can express conditional logic (if-then-else) by combining tests, assignments, and choice.</p>
@@ -123,6 +131,8 @@
         </ul>
         <p>Try an input packet where <code>x0</code> is 1, and then one where <code>x0</code> is 0.</p>
 
+        <netkat exercise="If x1 == 0 then set x0 := 1, else set x0 := 0" id="exercise5">(x1 == 0; x0 := 1) + (x1 == 1; x0 := 0)</netkat>
+
         <h2>Iteration (Kleene Star)</h2>
         <p>Iteration, denoted by an asterisk <code>*</code> (Kleene star) after an expression <code>e</code> (i.e., <code>e*</code>), allows an expression to be executed zero or more times.</p>
         <p>For example, <code>(x0 == 0; x0 := 1)*</code> means: as long as <code>x0</code> is 0, set <code>x0</code> to 1, and repeat. This particular example isn't very interesting because once <code>x0</code> becomes 1, the condition <code>x0 == 0</code> fails, and the loop terminates. Effectively, it runs at most once.</p>
@@ -131,6 +141,8 @@
         <p>A more common use is to repeat a sequence of operations. Consider a policy that flips the first bit <code>x0</code> and then, if <code>x1</code> was 0, flips <code>x1</code> as well. This whole operation can be repeated:</p>
         <netkat>( (x0==0; x0:=1 + x0==1; x0:=0); (x1==0; x1:=1) )*</netkat>
         <p>This will show multiple paths in the trace, corresponding to 0, 1, 2, etc., iterations, up to a limit defined by the analyzer to prevent infinite loops in the visualization.</p>
+
+        <netkat exercise="Write an iteration that sets x0 to 1 when it's 0" id="exercise6">(x0 == 0; x0 := 1)*</netkat>
         
 
         <h2>Dup (Logging)</h2>
@@ -141,6 +153,11 @@
         <p>You'll see an entry in the trace specifically for the <code>dup</code> operation, showing the packet state after <code>x0 := 1</code> but before <code>x1 := 1</code>.</p>
         <p>Here's another example showing <code>dup</code> inside an iteration to see the packet at each step of a loop (that eventually terminates because the condition <code>x0 == 0</code> becomes false):</p>
         <netkat>((x0 == 0; x0 := 1); dup)*</netkat>
+
+        <netkat exercise="Set x1 to 1, log with dup, then set x2 to 0" id="exercise7">x1 := 1; dup; x2 := 0</netkat>
+
+        <netkat exercise="Create a policy that checks if x0 is 1, and if so, either sets x1 to 0 or sets x2 to 1" id="final-challenge">x0 == 1; (x1 := 0 + x2 := 1)</netkat>
+
         <p>This concludes the basic NetKAT tutorial. Experiment with these constructs to build more complex network policies!</p>
         
     </div>
