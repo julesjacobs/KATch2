@@ -2,6 +2,7 @@ use crate::expr::Expr;
 use crate::spp;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::hash::Hash;
 // An AExpr represents an automaton state.
 // This is essentially a compressed and hash-consed form of a NetKAT expression.
@@ -851,14 +852,100 @@ impl Aut {
     }
 
     /// Computes a packet transformer for the given state (equivalent to eliminating dup)
-    pub fn eliminate_dup(&mut self, state: State) -> spp::SPP {
-        // We implement this using Kleene's algorithm
-        // We start by using the delta function to explore the automaton forward from this state
-        // And store the automaton's SPP edges we find
-        // We add an additional end state and from each state add the transition epsilon(state) to the end state
-        // We then use Kleene's algorithm to eliminate all states except the end state
-        // The self loop stored at the end state is the packet transformer SPP that we are looking for
-        todo!()
+    pub fn eliminate_dup(&mut self, initial_state: State) -> spp::SPP {
+        // Phase 1: Discover all reachable states using BFS
+        let mut q: VecDeque<State> = VecDeque::new();
+        let mut visited_states: HashSet<State> = HashSet::new();
+
+        q.push_back(initial_state);
+        visited_states.insert(initial_state);
+
+        let mut head = 0;
+        while head < q.len() {
+            let u = q[head];
+            head += 1;
+
+            for (v_state, _) in self.delta(u).get_transitions() {
+                if !visited_states.contains(v_state) {
+                    visited_states.insert(*v_state);
+                    q.push_back(*v_state);
+                }
+            }
+        }
+        
+        let all_reachable_states: Vec<State> = visited_states.into_iter().collect();
+
+        // Phase 2: Construct initial graph for Kleene's algorithm
+        // NodeRepresentation: None represents the synthetic END_NODE, Some(state) represents an original state.
+        type NodeRepr = Option<State>;
+        const END_NODE: NodeRepr = None;
+
+        let mut edges: HashMap<(NodeRepr, NodeRepr), spp::SPP> = HashMap::new();
+
+        let get_edge = |edge_map: &HashMap<(NodeRepr, NodeRepr), spp::SPP>, from_node: NodeRepr, to_node: NodeRepr, zero_spp: spp::SPP| -> spp::SPP {
+            edge_map.get(&(from_node, to_node)).cloned().unwrap_or(zero_spp)
+        };
+        
+        // Edge from synthetic start (implicit) into the initial_state, represented as END_NODE -> initial_state
+        edges.insert((END_NODE, Some(initial_state)), self.spp.one);
+
+        // Populate edges from delta and epsilon transitions
+        for &u_state in &all_reachable_states {
+            let u_node_repr = Some(u_state);
+
+            // Delta transitions: u -> v
+            for (v_state, spp_uv) in self.delta(u_state).get_transitions() {
+                let v_node_repr = Some(*v_state);
+                let current_spp = get_edge(&edges, u_node_repr, v_node_repr, self.spp.zero);
+                edges.insert((u_node_repr, v_node_repr), self.spp.union(current_spp, *spp_uv));
+            }
+
+            // Epsilon transitions: u -> END_NODE
+            let eps_u = self.epsilon(u_state);
+            if eps_u != self.spp.zero {
+                let current_spp = get_edge(&edges, u_node_repr, END_NODE, self.spp.zero);
+                edges.insert((u_node_repr, END_NODE), self.spp.union(current_spp, eps_u));
+            }
+        }
+
+        // Phase 3: State Elimination
+        let mut nodes_for_kleene: Vec<NodeRepr> = all_reachable_states.iter().map(|&s| Some(s)).collect();
+        nodes_for_kleene.push(END_NODE);
+
+
+        for &k_to_eliminate_state in &all_reachable_states { // Iterate through original states to eliminate
+            let k_node = Some(k_to_eliminate_state);
+            
+            let r_kk = get_edge(&edges, k_node, k_node, self.spp.zero);
+            let r_kk_star = self.spp.star(r_kk);
+
+            for &i_node in &nodes_for_kleene {
+                if i_node == k_node { continue; }
+
+                let r_ik = get_edge(&edges, i_node, k_node, self.spp.zero);
+                if r_ik == self.spp.zero { continue; }
+
+                for &j_node in &nodes_for_kleene {
+                    if j_node == k_node { continue; } 
+                    
+                    let r_kj = get_edge(&edges, k_node, j_node, self.spp.zero);
+                    if r_kj == self.spp.zero { continue; }
+
+                    // Ensure mutable borrows of self.spp are clearly separated
+                    let temp_seq = self.spp.sequence(r_ik, r_kk_star);
+                    let path_spp = self.spp.sequence(temp_seq, r_kj);
+                    
+                    if path_spp != self.spp.zero {
+                        let current_r_ij = get_edge(&edges, i_node, j_node, self.spp.zero);
+                        let new_edge_val = self.spp.union(current_r_ij, path_spp);
+                        edges.insert((i_node, j_node), new_edge_val);
+                    }
+                }
+            }
+        }
+        
+        // Phase 4: Result is the self-loop on END_NODE
+        get_edge(&edges, END_NODE, END_NODE, self.spp.zero)
     }
 
 
