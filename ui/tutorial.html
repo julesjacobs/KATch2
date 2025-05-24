@@ -205,11 +205,13 @@ dup</netkat>
                 
                 <netkat exercise="Write a policy that copies x0 to x1" target="analysis-editor">(x0 == 1; x1 := 1) + (x0 == 0; x1 := 0)</netkat>
                 
-                <netkat exercise="Create a policy that accepts packets only if both x0 and x1 are 1" target="analysis-editor">x0 == 1; x1 == 1</netkat>
+                <netkat exercise="Create a policy that accepts packets only if x0 and x1 are equal" target="analysis-editor">(x0 == 0; x1 == 0) + (x0 == 1; x1 == 1)</netkat>
 
                 <netkat exercise="Write a policy that swaps x0 and x1" target="analysis-editor">
-                    (x0 == 0; x1 == 1; x0 := 1; x1 := 0) + 
-                    (x0 == 1; x1 == 0; x0 := 0; x1 := 1)
+(x0 == 0; x1 == 1; x0 := 1; x1 := 0) + 
+(x0 == 1; x1 == 0; x0 := 0; x1 := 1) +
+(x0 == 0; x1 == 0) +
+(x0 == 1; x1 == 1)
                 </netkat>
             </div>
             
