@@ -14,17 +14,49 @@ class KATch2Editor {
 
     // Get the base URL for this script to resolve relative paths
     getBaseUrl() {
+        // First try document.currentScript (works for non-module scripts)
         const currentScript = document.currentScript;
         if (currentScript && currentScript.src) {
             return currentScript.src.substring(0, currentScript.src.lastIndexOf('/') + 1);
         }
+        
+        // For module scripts, document.currentScript is null, so use import.meta.url if available
+        try {
+            if (typeof document !== 'undefined' && window.location) {
+                // Use a different approach for module scripts
+                const errorStack = new Error().stack;
+                if (errorStack) {
+                    const matches = errorStack.match(/https?:\/\/[^)\s]+katch2-editor\.js/);
+                    if (matches && matches[0]) {
+                        return matches[0].substring(0, matches[0].lastIndexOf('/') + 1);
+                    }
+                }
+            }
+        } catch (e) {
+            // Ignore errors in stack trace parsing
+        }
+        
         // Fallback: try to find this script in the DOM
         const scripts = document.querySelectorAll('script[src*="katch2-editor.js"]');
         if (scripts.length > 0) {
             const src = scripts[scripts.length - 1].src;
             return src.substring(0, src.lastIndexOf('/') + 1);
         }
-        // Final fallback
+        
+        // More robust fallback: look for any script containing katch2
+        const katch2Scripts = document.querySelectorAll('script[src*="katch2"]');
+        if (katch2Scripts.length > 0) {
+            const src = katch2Scripts[katch2Scripts.length - 1].src;
+            const basePath = src.substring(0, src.lastIndexOf('/') + 1);
+            // If the script is in a katch2ui directory, use that as base
+            if (basePath.includes('katch2ui/')) {
+                return basePath;
+            }
+            // Otherwise, assume katch2ui is relative to the script location
+            return basePath + 'katch2ui/';
+        }
+        
+        // Final fallback - relative to current page
         return './katch2ui/';
     }
 
@@ -95,6 +127,8 @@ class KATch2Editor {
 
     async loadWASM(wasmPath) {
         try {
+            console.log(`KATch2: Attempting to load WASM module from: ${wasmPath}`);
+            
             // Dynamic import of the WASM module
             const wasmModule = await import(wasmPath);
             await wasmModule.default(); // Initialize WASM
@@ -102,8 +136,39 @@ class KATch2Editor {
             
             this.wasmModule = wasmModule;
             this.analyzeFunction = wasmModule.analyze_expression;
+            
+            console.log('KATch2: WASM module loaded successfully');
         } catch (error) {
-            throw new Error(`Failed to load WASM module from ${wasmPath}: ${error.message}`);
+            console.error(`KATch2: Failed to load WASM module from ${wasmPath}:`, error);
+            
+            // Try alternative paths
+            const alternatives = [
+                wasmPath.replace('/pkg/katch2.js', '/katch2.js'),
+                './pkg/katch2.js',
+                '../pkg/katch2.js',
+                './katch2.js'
+            ];
+            
+            for (const altPath of alternatives) {
+                if (altPath !== wasmPath) {
+                    try {
+                        console.log(`KATch2: Trying alternative path: ${altPath}`);
+                        const wasmModule = await import(altPath);
+                        await wasmModule.default();
+                        wasmModule.init_panic_hook();
+                        
+                        this.wasmModule = wasmModule;
+                        this.analyzeFunction = wasmModule.analyze_expression;
+                        
+                        console.log(`KATch2: WASM module loaded successfully from alternative path: ${altPath}`);
+                        return;
+                    } catch (altError) {
+                        console.log(`KATch2: Alternative path ${altPath} also failed:`, altError.message);
+                    }
+                }
+            }
+            
+            throw new Error(`Failed to load WASM module from ${wasmPath} and all alternative paths: ${error.message}`);
         }
     }
 
