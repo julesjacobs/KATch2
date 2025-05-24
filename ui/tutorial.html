@@ -164,7 +164,7 @@
         <h2>Tests (Packet Filters)</h2>
         <p>Tests are conditions that check the value of a packet bit. They act as filters: if the condition is true, the packet passes through; otherwise, it is dropped (or "filtered out").For example, <code>x0 == 1</code> tests if the first bit of the packet is 1. If it is, the packet continues. If <code>x0</code> is 0, the packet is dropped.</p>
         <p>Here's an example. Try changing the packet bits in the "Input Packet" field and see how the trace changes based on the test:</p>
-        <netkat num-traces="1">x0 == 1</netkat>
+        <netkat example="This example shows a simple test that checks if the first bit (x0) is 1" num-traces="1">x0 == 1</netkat>
         <p>You can also test for equality to 0, like <code>x3 == 0</code>.</p>
 
         <netkat exercise="Write a test that only allows packets where x1 is 0">x1 == 0</netkat>
@@ -179,7 +179,7 @@
 
         <h2>Assignments</h2>
         <p>Assignments modify the packet's bits. The expression <code>x0 := 1</code> sets the first bit of the packet to 1, regardless of its previous value. <code>x2 := 0</code> sets the third bit to 0.</p>
-        <netkat>x0 := 1; x2 := 0</netkat>
+        <netkat example="This demonstrates how assignments change packet bits - x0 becomes 1 and x2 becomes 0">x0 := 1; x2 := 0</netkat>
         <p>Observe how the packet bits change after the assignments in the trace.</p>
 
         <netkat exercise="Set x0 to 0 and x2 to 1">x0 := 0; x2 := 1</netkat>

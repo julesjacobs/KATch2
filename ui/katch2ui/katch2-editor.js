@@ -233,6 +233,7 @@ class KATch2Editor {
         const elements = document.querySelectorAll(selector); // E.g., 'netkat' or 'pre.netkat'
         elements.forEach(element => {
             const isExerciseAttr = element.getAttribute('exercise');
+            const isExampleAttr = element.getAttribute('example');
             const targetId = element.getAttribute('target');
             const initialCode = element.textContent.trim(); // Solution if exercise loader, or code if editor
             const id = element.getAttribute('id') || this.generateUniqueId('keditor-');
@@ -256,16 +257,17 @@ class KATch2Editor {
 
                 if (targetId) { // No isExerciseAttr, so it's an EXAMPLE editor
                     this.replaceWithExampleEditor(element, initialCode, lines, showLineNumbers, targetId);
-                } else { // Regular editor or a self-contained EXERCISE editor
-                    this.replaceWithEditor(element, initialCode, lines, showLineNumbers, id, isExerciseAttr);
+                } else { // Regular editor or a self-contained EXERCISE editor or EXAMPLE with description
+                    this.replaceWithEditor(element, initialCode, lines, showLineNumbers, id, isExerciseAttr, isExampleAttr);
                 }
             }
         });
     }
 
-    replaceWithEditor(element, initialCode, lines = 1, showLineNumbers = false, id = null, exerciseDescriptionText = null) {
+    replaceWithEditor(element, initialCode, lines = 1, showLineNumbers = false, id = null, exerciseDescriptionText = null, exampleDescriptionText = null) {
         const height = Math.max(50, lines * 22 + 30);
         const isExercise = exerciseDescriptionText !== null;
+        const isExample = exampleDescriptionText !== null;
         const targetSolution = isExercise ? initialCode : null;
         const editorInitialCode = isExercise ? '// Type your solution here\n' : initialCode;
         
@@ -303,6 +305,20 @@ class KATch2Editor {
             border-bottom: ${isExercise ? '1px solid #aed6f1' : 'none'};
         `;
         if (isExercise) exerciseDescriptionElement.innerHTML = `<strong>Exercise:</strong> ${this.htmlEscape(exerciseDescriptionText)}`;
+
+        // Example description (optional top section)
+        const exampleDescriptionElement = document.createElement('div');
+        exampleDescriptionElement.className = 'katch2-example-description';
+        exampleDescriptionElement.style.cssText = `
+            padding: 10px 15px;
+            background-color: #f8f9fa;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-size: 0.98em;
+            color: #495057;
+            display: ${isExample ? 'block' : 'none'};
+            border-bottom: ${isExample ? '1px solid #dee2e6' : 'none'};
+        `;
+        if (isExample) exampleDescriptionElement.innerHTML = `<strong>Example:</strong> ${this.htmlEscape(exampleDescriptionText)}`;
 
         // Editor container (middle section - no individual styling)
         const container = document.createElement('div');
@@ -384,6 +400,7 @@ class KATch2Editor {
 
         // Assemble the component
         unifiedContainer.appendChild(exerciseDescriptionElement);
+        unifiedContainer.appendChild(exampleDescriptionElement);
         unifiedContainer.appendChild(container);
         unifiedContainer.appendChild(resultArea);
         unifiedContainer.appendChild(exerciseFeedbackArea);
@@ -392,7 +409,7 @@ class KATch2Editor {
         wrapper.appendChild(showSolutionButton);
         element.parentNode.replaceChild(wrapper, element);
         
-        this.createEditor(wrapper, container, resultArea, exerciseDescriptionElement, exerciseFeedbackArea, editorInitialCode, showLineNumbers, false, id, isExercise, targetSolution, exerciseDescriptionText, showSolutionButton);
+        this.createEditor(wrapper, container, resultArea, exerciseDescriptionElement, exerciseFeedbackArea, editorInitialCode, showLineNumbers, false, id, isExercise, targetSolution, exerciseDescriptionText, exampleDescriptionText, exampleDescriptionElement, showSolutionButton);
     }
 
     replaceWithExampleEditor(element, initialCode, lines = 1, showLineNumbers = false, targetId) {
@@ -506,7 +523,7 @@ class KATch2Editor {
         analyzeButton.addEventListener('click', loadIntoTarget);
     }
 
-    createEditor(customElementDOM, container, resultArea, exerciseDescriptionElement, exerciseFeedbackArea, initialCode, showLineNumbers = false, readOnly = false, id = null, isExercise = false, targetSolution = null, exerciseDescriptionText = null, showSolutionButton = null) {
+    createEditor(customElementDOM, container, resultArea, exerciseDescriptionElement, exerciseFeedbackArea, initialCode, showLineNumbers = false, readOnly = false, id = null, isExercise = false, targetSolution = null, exerciseDescriptionText = null, exampleDescriptionText = null, exampleDescriptionElement = null, showSolutionButton = null) {
         const monaco = this.monacoInstance;
         if (!id && customElementDOM && customElementDOM.id) id = customElementDOM.id; // Ensure ID if customElementDOM has one
         else if (!id) id = this.generateUniqueId('keditor-'); // Generate if still no ID
@@ -519,6 +536,7 @@ class KATch2Editor {
             customElementDOM.katch2ExerciseInfo.isExercise = isExercise;
             customElementDOM.katch2ExerciseInfo.targetSolution = targetSolution;
             customElementDOM.katch2ExerciseInfo.exerciseDescriptionText = exerciseDescriptionText; // Store raw text
+            customElementDOM.katch2ExerciseInfo.exampleDescriptionText = exampleDescriptionText; // Store raw text
             // Note: DOM elements for feedback/description are passed directly, not via katch2ExerciseInfo here
         }
         
@@ -564,19 +582,19 @@ class KATch2Editor {
         // Setup analysis logic only for non-readonly editors with result areas
         if (!readOnly && resultArea) {
             // Pass exercise info to setupAnalysis
-            this.setupAnalysis(editor, resultArea, isExercise, targetSolution, exerciseFeedbackArea, exerciseDescriptionElement);
+            this.setupAnalysis(editor, resultArea, isExercise, targetSolution, exerciseFeedbackArea, exerciseDescriptionElement, exampleDescriptionText);
         }
         
         this.editorInstances.push({ 
             editor, resultArea, id, 
-            isExercise, targetSolution, exerciseDescriptionText, 
-            exerciseDescriptionElement, exerciseFeedbackArea, showSolutionButton,
+            isExercise, targetSolution, exerciseDescriptionText, exampleDescriptionText,
+            exerciseDescriptionElement, exerciseFeedbackArea, exampleDescriptionElement, showSolutionButton,
             customElementDOM // This is the key: the wrapper div or <netkat-editor> tag
         });
         return editor;
     }
 
-    setupAnalysis(editor, resultArea, isExercise = false, targetSolution = null, exerciseFeedbackArea = null, exerciseDescriptionElement = null) {
+    setupAnalysis(editor, resultArea, isExercise = false, targetSolution = null, exerciseFeedbackArea = null, exerciseDescriptionElement = null, exampleDescriptionText = null) {
         let isAnalysisInProgress = false;
         let needsAnalysis = false; // Flag to indicate if analysis is pending
 
@@ -602,10 +620,12 @@ class KATch2Editor {
                     let currentTargetSolution = targetSolution;
                     let currentExerciseFeedbackArea = exerciseFeedbackArea;
                     let currentExerciseDescriptionText = null; // Initialize to null, will be set from katch2ExerciseInfo if available
+                    let currentExampleDescriptionText = null; // Initialize to null, will be set from katch2ExerciseInfo if available
                     if (netkatElement && netkatElement.katch2ExerciseInfo) {
                         currentIsExercise = netkatElement.katch2ExerciseInfo.isExercise;
                         currentTargetSolution = netkatElement.katch2ExerciseInfo.targetSolution;
                         currentExerciseDescriptionText = netkatElement.katch2ExerciseInfo.exerciseDescriptionText;
+                        currentExampleDescriptionText = netkatElement.katch2ExerciseInfo.exampleDescriptionText;
                     }
 
                     let numTraces = null;
@@ -664,12 +684,12 @@ class KATch2Editor {
                             
                             if (diff1_result.example_traces && diff1_result.example_traces.length > 0) {
                                 overallEquivalent = false;
-                                feedbackHtml += '<div><strong>❌ Missing (solution has, you don\'t):</strong>';
+                                feedbackHtml += '<div><strong>❌ Missing (solution has, you don\'t): </strong><br>';
                                 diff1_result.example_traces.forEach(trace => {
                                     const [inputTrace, finalOutput] = trace;
                                     const traceString = inputTrace.map(p => p.map(bit => bit ? '1' : '0').join('')).join(' → ');
                                     const outputString = finalOutput ? ` → ${finalOutput.map(bit => bit ? '1' : '0').join('')}` : ' → ...';
-                                    feedbackHtml += `<div class="trace" style="margin-left: 20px; font-family: monospace; background-color: white; padding: 2px 4px; border-radius: 3px; border: 1px solid #e9ecef; display: inline-block;">${this.htmlEscape(traceString + outputString)}</div>`;
+                                    feedbackHtml += `<span style="${this.getTraceStyle()}">${this.htmlEscape(traceString + outputString)}</span>`;
                                 });
                                 feedbackHtml += '</div>';
                             }
@@ -682,12 +702,12 @@ class KATch2Editor {
 
                             if (diff2_result.example_traces && diff2_result.example_traces.length > 0) {
                                 overallEquivalent = false;
-                                feedbackHtml += '<div><strong>❌ Extra (you have, solution doesn\'t):</strong>';
+                                feedbackHtml += '<div><strong>❌ Extra (you have, solution doesn\'t): </strong><br>';
                                 diff2_result.example_traces.forEach(trace => {
                                     const [inputTrace, finalOutput] = trace;
                                     const traceString = inputTrace.map(p => p.map(bit => bit ? '1' : '0').join('')).join(' → ');
                                     const outputString = finalOutput ? ` → ${finalOutput.map(bit => bit ? '1' : '0').join('')}` : ' → ...';
-                                    feedbackHtml += `<div class="trace" style="margin-left: 20px; font-family: monospace; background-color: white; padding: 2px 4px; border-radius: 3px; border: 1px solid #e9ecef; display: inline-block;">${this.htmlEscape(traceString + outputString)}</div>`;
+                                    feedbackHtml += `<span style="${this.getTraceStyle()}">${this.htmlEscape(traceString + outputString)}</span>`;
                                 });
                                 feedbackHtml += '</div>';
                             }
@@ -726,9 +746,9 @@ class KATch2Editor {
                                 const [inputTrace, finalOutput] = analysis.traces[i];
                             const traceString = inputTrace.map(formatPacket).join(' → ');
                             const outputString = finalOutput ? ` → ${formatPacket(finalOutput)}` : ' → ...';
-                            tracesHtml += `<div style="margin: 2px 0;"><span style="font-family: monospace; background-color: white; padding: 2px 4px; border-radius: 3px; border: 1px solid #e9ecef;">${traceString}${outputString}</span></div>`;
+                            tracesHtml += `<span style="${this.getTraceStyle()}">${traceString}${outputString}</span>`;
                             }
-                            html += `<br><strong>Example traces:</strong><br>` + tracesHtml;
+                            html += `<br><strong>Example traces:</strong> ` + tracesHtml;
                         }
                         
                         resultArea.innerHTML = html;
@@ -888,17 +908,20 @@ class KATch2Editor {
         instance.isExercise = true;
         instance.targetSolution = solution;
         instance.exerciseDescriptionText = description; // Store the raw text
+        instance.exampleDescriptionText = description; // Store the example description
 
         // Update katch2ExerciseInfo on the DOM element for persistence/consistency
         if (instance.customElementDOM && instance.customElementDOM.katch2ExerciseInfo) {
             instance.customElementDOM.katch2ExerciseInfo.isExercise = true;
             instance.customElementDOM.katch2ExerciseInfo.targetSolution = solution;
             instance.customElementDOM.katch2ExerciseInfo.exerciseDescriptionText = description;
+            instance.customElementDOM.katch2ExerciseInfo.exampleDescriptionText = description;
         } else if (instance.customElementDOM) {
             instance.customElementDOM.katch2ExerciseInfo = {
                 isExercise: true,
                 targetSolution: solution,
-                exerciseDescriptionText: description
+                exerciseDescriptionText: description,
+                exampleDescriptionText: description
             };
         }
 
@@ -1002,6 +1025,11 @@ class KATch2Editor {
 
     findEditorInstanceById(id) {
         return this.editorInstances.find(inst => inst.id === id);
+    }
+
+    // Helper function to generate consistent trace styling
+    getTraceStyle(backgroundColor = 'white', borderColor = '#e9ecef') {
+        return `font-family: monospace; font-size: 14px; background-color: ${backgroundColor}; padding: 2px 4px; border-radius: 3px; border: 1px solid ${borderColor}; display: inline-block; margin: 2px 4px 2px 0;`;
     }
 }
 
