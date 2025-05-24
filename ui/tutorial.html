@@ -227,6 +227,8 @@
             </div>
         </div>
         
+        <p style="font-style: italic; color: #666; margin: 10px 0;">Try this example in the interactive editor below:</p>
+        
         <netkat example="A test that checks if the third bit (x2) is 1. Try changing the input packet to see how different packets are filtered.">x2 == 1</netkat>
 
         <p>You can also test for equality to 0, like <code>x3 == 0</code>.</p>
@@ -267,6 +269,8 @@
             </div>
         </div>
         
+        <p style="font-style: italic; color: #666; margin: 10px 0;">Experiment with this assignment in the editor below:</p>
+        
         <netkat example="Sets x2 to 1, regardless of its original value. Watch how only the targeted bit changes in the trace.">x2 := 1</netkat>
 
         <netkat exercise="Set x2 to 0">x2 := 0</netkat>
@@ -298,6 +302,8 @@
                 </div>
             </div>
         </div>
+        
+        <p style="font-style: italic; color: #666; margin: 10px 0;">See this sequential flow in action in the editor below:</p>
         
         <netkat example="First tests if x2 is 1, then assigns x1 to 0. Both the test and assignment must succeed for the packet to reach the output." num-traces="1">x2 == 1; x1 := 0</netkat>
 
@@ -345,6 +351,8 @@
             </div>
         </div>
         
+        <p style="font-style: italic; color: #666; margin: 10px 0;">Watch the nondeterministic branching in the editor below:</p>
+        
         <netkat example="Either sets x0 to 1 OR sets x1 to 1. The analyzer explores both possibilities, showing multiple traces.">x0 := 1 + x1 := 1</netkat>
 
         <netkat exercise="Write a policy that either tests x0 == 1 or assigns x1 := 0">x0 == 1 + x1 := 0</netkat>
@@ -388,6 +396,8 @@
                 </div>
             </div>
         </div>
+        
+        <p style="font-style: italic; color: #666; margin: 10px 0;">Test this conditional logic in the editor below:</p>
         
         <netkat example="If-then-else: if x0 is 1, set x1 to 1; otherwise set x1 to 0. Try packets with different x0 values.">(x0 == 1; x1 := 1) + (x0 == 0; x1 := 0)</netkat>
 
@@ -442,6 +452,8 @@
                 </div>
             </div>
         </div>
+        
+        <p style="font-style: italic; color: #666; margin: 10px 0;">Explore the multiple iteration paths in the editor below:</p>
         
         <netkat example="Progressive bit setting: sets x0, then x1, then x2 in sequence. Starting from 000, watch how it builds up to 111 through multiple iterations.">(x0:=1 + (x0==1;x1:=1) + (x1==1; x2:=1))*</netkat>
         
