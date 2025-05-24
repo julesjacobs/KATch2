@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KATch2 NetKAT Analyzer</title>
+    <link rel="icon" type="image/png" href="assets/favicon.png">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f6f8;
+            color: #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .container {
+            background-color: #fff;
+            padding: 25px;
+            border-radius: 8px;
+            box-shadow: 0 6px 12px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 850px;
+            display: flex;
+            flex-direction: column;
+        }
+        h1 {
+            color: #000;
+            text-align: center;
+            margin-top: 0;
+            margin-bottom: 20px;
+            font-size: 1.8em;
+        }
+        h1 img {
+            vertical-align: middle;
+            margin-right: -50px;
+            margin-bottom: -10px;
+            width: 100px;
+            height: 100px;
+        }
+        .initial-message {
+            color: #555;
+            text-align: center;
+            margin-bottom: 25px;
+            font-size: 0.95em;
+        }
+
+        .github-link {
+            text-align: center;
+            margin-top: 10px;
+            padding-top: 20px;
+        }
+        .github-link a {
+            text-decoration: none;
+            color: #333;
+            font-size: 0.9em;
+        }
+        .github-link svg {
+            width: 20px;
+            height: 20px;
+            vertical-align: middle;
+            margin-right: 5px;
+            fill: currentColor;
+        }
+
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>
+            <img src="assets/katch2-logo-black.webp" alt="KATch2 Logo">
+            KATch<sup style="font-size: 0.6em">2</sup> NetKAT Tutorial
+        </h1>
+        
+        <p>This tutorial will guide you through the basics of NetKAT.</p>
+
+        Explain that the packet is a vector of bits.
+        Explain that variables are x0, x1, x2, etc. 
+        Represents the n-th bit of the packet.
+
+        Explain tests: x3==0, x3==1 (packet filters)
+
+        Explain sequential composition: x1==0; x2==0.
+
+        Explain assignments: x0:=0; x1:=1.
+
+        Explain choice: x0:=1 + x1:=1.
+
+        Explain how to encode if then else using tests and choice.
+
+        Explain iteration: e*. Give some nice examples.
+
+        Explain dup: logs the current packet to the trace. Give examples.
+        
+    </div>
+
+    <div class="github-link">
+        <a href="https://github.com/julesjacobs/KATch2" target="_blank" rel="noopener noreferrer">
+            <svg viewBox="0 0 16 16" version="1.1" aria-hidden="true">
+                <path fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path>
+            </svg>
+            View KATch2 source on GitHub
+        </a>
+    </div>
+
+    <!-- Include the new KATch2 UI library -->
+    <script type="module" src="katch2ui/katch2-editor.js"></script>
+</body>
+</html> 
