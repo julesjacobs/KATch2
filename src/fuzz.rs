@@ -764,7 +764,7 @@ mod tests {
         let num_fields = 3;
 
         let max_trials = 5;
-        for n in 0..=ax_depth {
+        for _n in 0..=ax_depth {
             for _ in 0..=max_trials {
                 let e1 = gen_random_expr(num_fields, expr_depth);
                 let e2 = gen_random_expr(num_fields, expr_depth);

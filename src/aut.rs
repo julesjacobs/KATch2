@@ -963,7 +963,9 @@ impl Aut {
 
     pub fn delta_pruned(&mut self, state: State) -> ST {
         let original_st = self.delta(state); // Memoized
-        let pruning_spp = self.eliminate_dup(state); // Memoized
+        let eliminate_dup_spp = self.eliminate_dup(state); // Memoized
+        let possible_input_packets = self.spp.bwd(eliminate_dup_spp);
+        let pruning_spp = self.spp.ibwd(possible_input_packets);
 
         let mut new_transitions = HashMap::new();
         for (&target_state, &original_edge_spp) in original_st.get_transitions() {

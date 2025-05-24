@@ -229,107 +229,52 @@ pub fn render_spp(index: SPP, store: &SPPstore, output_dir: &Path) -> Result<()>
     Ok(())
 }
 
-/// Renders the Aut automaton into visualizations and an HTML report.
-///
-/// This function:
-/// 1. Explores all reachable states starting from the given root state
-/// 2. Renders all SPPs involved in transitions
-/// 3. Renders all SPPs from epsilon outputs
-/// 4. Creates a graphviz representation of the automaton
-/// 5. Generates an HTML report that includes all visualizations
-pub fn render_aut(root_state: usize, aut: &mut Aut, output_dir: &Path) -> Result<()> {
-    // Ensure the output directory exists
-    fs::create_dir_all(output_dir)?;
-
-    // Set up tracking structures
-    let mut visited_states = HashSet::new();
-    let mut states_to_process = vec![root_state];
-    let mut transitions = Vec::new();
-    let mut spp_ids = HashSet::new();
-    let mut state_expressions = HashMap::new();
-
-    // Explore the automaton
-    while let Some(state) = states_to_process.pop() {
-        if !visited_states.insert(state) {
-            continue; // Skip if already visited
-        }
-
-        // Get expression string for this state
-        let expr_string = aut.state_to_string(state);
-        state_expressions.insert(state, expr_string);
-
-        // Get epsilon for this state
-        let epsilon_spp = aut.epsilon(state);
-        spp_ids.insert(epsilon_spp);
-
-        // Collect SPPs from the expression
-        aut.collect_spps(state, &mut spp_ids);
-
-        // Get transitions (delta) for this state
-        let delta = aut.delta(state);
-        for (&target_state, &spp) in delta.get_transitions() {
-            transitions.push((state, target_state, spp));
-            spp_ids.insert(spp);
-
-            // Add target state to processing queue if not already visited
-            if !visited_states.contains(&target_state) {
-                states_to_process.push(target_state);
-            }
-        }
-    }
-
-    // Render all SPPs
-    for spp_id in &spp_ids {
-        render_spp(*spp_id, &aut.spp_store(), output_dir)?;
-    }
-
-    // Generate dot file for the automaton
-    let dot_path = output_dir.join("automaton.dot");
-    let svg_path = output_dir.join("automaton.svg");
+/// Helper function to generate DOT and SVG for a specific automaton variant.
+fn generate_specific_automaton_dot(
+    aut: &Aut,
+    visited_states: &HashSet<usize>,
+    transitions: &[(usize, usize, crate::spp::SPP)], // Use fully qualified path
+    state_expressions: &HashMap<usize, String>,
+    epsilon_spps_map: &HashMap<usize, crate::spp::SPP>, // Use fully qualified path
+    dot_filename: &str,
+    svg_filename: &str,
+    output_dir: &Path,
+) -> Result<()> {
+    let dot_path = output_dir.join(dot_filename);
+    let svg_path = output_dir.join(svg_filename);
 
     let mut dot_content = String::from("digraph Automaton {\n  rankdir=LR;\n");
 
-    // Add nodes with clickable SPP references
-    for state in &visited_states {
-        let epsilon_spp = aut.epsilon(*state);
-        let unknown = String::from("Unknown");
-        let expr = state_expressions.get(state).unwrap_or(&unknown);
+    let spp_pattern = regex::Regex::new(r"SPP\((\d+)\)").unwrap();
 
-        // Format the expression to include HTML-like labels
-        // This will make SPP references clickable in the SVG
-        let spp_pattern = regex::Regex::new(r"SPP\((\d+)\)").unwrap();
-
-        // First, escape the entire expression for HTML
-        let html_safe_expr = html_escape(expr);
-
-        // Then replace the SPP references with properly formatted HTML
+    for state_idx in visited_states {
+        let epsilon_spp = epsilon_spps_map.get(state_idx).cloned().unwrap_or_else(|| aut.spp_store().zero ); // Fallback, though should always exist
+        let unknown_expr = String::from("Unknown Expression");
+        let expr_str = state_expressions.get(state_idx).unwrap_or(&unknown_expr);
+        
+        let html_safe_expr = html_escape(expr_str);
         let expr_with_links = spp_pattern.replace_all(&html_safe_expr, |caps: &regex::Captures| {
-            let spp_id = &caps[1];
-            format!("<FONT COLOR=\"#3498db\"><U>SPP({})</U></FONT>", spp_id)
+            let spp_id_val = &caps[1];
+            format!("<FONT COLOR=\"#3498db\"><U>SPP({})</U></FONT>", spp_id_val)
         });
 
-        // Create the node with HTML-like label
         dot_content.push_str(&format!(
-            "  node{} [label=<{} ε:{}<BR/>{}>; shape=box; style=rounded];\n",
-            state, state, epsilon_spp, expr_with_links
+            "  node{} [label=<{}<BR/>ε:{}<BR/>{}>; shape=box; style=rounded];\n",
+            state_idx, state_idx, epsilon_spp, expr_with_links
         ));
     }
 
-    // Add edges
-    for (src, dst, spp) in &transitions {
+    for (src, dst, spp) in transitions {
         let edge_label = format!("{}", spp);
         dot_content.push_str(&format!(
             "  node{} -> node{} [label=\"{}\"];\n",
             src, dst, edge_label
         ));
     }
-
     dot_content.push_str("}\n");
 
-    // Write dot file
     fs::write(&dot_path, &dot_content)?;
 
-    // Generate SVG from dot
     let output = Command::new("dot")
         .arg("-Tsvg")
         .arg(&dot_path)
@@ -341,9 +286,171 @@ pub fn render_aut(root_state: usize, aut: &mut Aut, output_dir: &Path) -> Result
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(Error::new(
             ErrorKind::Other,
-            format!("Graphviz 'dot' command failed: {}", stderr.trim()),
+            format!("Graphviz 'dot' command failed for {}: {}", dot_filename, stderr.trim()),
         ));
     }
+    Ok(())
+}
+
+/// Helper function to generate the HTML table body for state information.
+fn generate_state_table_body_html(
+    aut: &Aut, // Needed for spp_store if on-demand rendering of ed_spp were added here
+    visited_states_sorted: &[&usize],
+    state_expressions: &HashMap<usize, String>,
+    epsilon_spps_map: &HashMap<usize, crate::spp::SPP>,
+    eliminate_dup_spps_map: &Option<HashMap<usize, crate::spp::SPP>>, // Option because pruned doesn't have it
+) -> String {
+    let mut body_html = String::new();
+    for state_idx in visited_states_sorted {
+        let epsilon_spp = epsilon_spps_map.get(state_idx).cloned().unwrap_or_else(|| aut.spp_store().zero);
+        let unknown_expr = String::from("Unknown Expression");
+        let expr_str = state_expressions.get(state_idx).unwrap_or(&unknown_expr);
+        let expr_with_links = make_spp_clickable(expr_str);
+
+        let ed_spp_html = if let Some(ed_map) = eliminate_dup_spps_map {
+            if let Some(s) = ed_map.get(state_idx) {
+                format!("<span class=\"spp-reference\" data-spp=\"{}\">{}</span>", s, s)
+            } else {
+                String::from("-")
+            }
+        } else {
+            String::from("N/A") // For pruned automaton where we don't calculate it
+        };
+
+        body_html.push_str(&format!(
+            "                <tr>\n                    <td>{}</td>\n                    <td><div class=\"expr-text\">{}</div></td>\n                    <td><span class=\"spp-reference\" data-spp=\"{}\">{}</span></td>\n                    <td>{}</td>\n                </tr>\n",
+            state_idx, expr_with_links, epsilon_spp, epsilon_spp, ed_spp_html
+        ));
+    }
+    body_html
+}
+
+/// Helper function to generate the HTML table body for transitions.
+fn generate_transitions_table_body_html(
+    transitions_sorted: &[(usize, usize, crate::spp::SPP)],
+) -> String {
+    let mut body_html = String::new();
+    for (src, dst, spp) in transitions_sorted {
+        body_html.push_str(&format!(
+            "                <tr>\n                    <td>{}</td>\n                    <td>{}</td>\n                    <td><span class=\"spp-reference\" data-spp=\"{}\">{}</span></td>\n                </tr>\n",
+            src, dst, spp, spp
+        ));
+    }
+    body_html
+}
+
+/// Renders the Aut automaton into visualizations and an HTML report.
+///
+/// This function:
+/// 1. Explores all reachable states starting from the given root state for the main automaton.
+/// 2. Explores all reachable states for the pruned automaton.
+/// 3. Renders all unique SPPs involved in transitions or as epsilon/eliminate_dup outputs from both.
+/// 4. Creates graphviz representations for both automata.
+/// 5. Generates an HTML report that includes all visualizations.
+pub fn render_aut(root_state: usize, aut: &mut Aut, output_dir: &Path) -> Result<()> {
+    // Ensure the output directory exists
+    fs::create_dir_all(output_dir)?;
+
+    let mut spp_ids = HashSet::new(); // Collects all SPPs that need rendering from ALL explorations
+
+    // --- Main Automaton Exploration ---
+    let mut main_visited_states = HashSet::new();
+    let mut main_states_to_process = vec![root_state];
+    let mut main_transitions = Vec::new();
+    let mut main_state_expressions = HashMap::new();
+    let mut main_epsilon_spps_map = HashMap::new();
+    let mut main_eliminate_dup_spps_map = HashMap::new(); // Specific to main automaton
+
+    while let Some(state) = main_states_to_process.pop() {
+        if !main_visited_states.insert(state) {
+            continue; 
+        }
+        let expr_string = aut.state_to_string(state);
+        main_state_expressions.insert(state, expr_string);
+
+        let epsilon_spp = aut.epsilon(state);
+        spp_ids.insert(epsilon_spp);
+        main_epsilon_spps_map.insert(state, epsilon_spp); 
+
+        let ed_spp = aut.eliminate_dup(state);
+        spp_ids.insert(ed_spp);
+        main_eliminate_dup_spps_map.insert(state, ed_spp);
+
+        aut.collect_spps(state, &mut spp_ids);
+
+        let delta = aut.delta(state);
+        for (&target_state, &spp) in delta.get_transitions() {
+            main_transitions.push((state, target_state, spp));
+            spp_ids.insert(spp);
+            if !main_visited_states.contains(&target_state) {
+                main_states_to_process.push(target_state);
+            }
+        }
+    }
+
+    // --- Pruned Automaton Exploration ---
+    let mut pruned_visited_states = HashSet::new();
+    let mut pruned_states_to_process = vec![root_state];
+    let mut pruned_transitions = Vec::new();
+    let mut pruned_state_expressions = HashMap::new(); // Can re-use main_state_expressions if states are the same
+    let mut pruned_epsilon_spps_map = HashMap::new(); // Can re-use main_epsilon_spps_map if states are the same
+
+    while let Some(state) = pruned_states_to_process.pop() {
+        if !pruned_visited_states.insert(state) {
+            continue;
+        }
+        // For expressions and epsilon SPPs, we can re-use data from the main exploration 
+        // if the state ID implies the same underlying expression properties.
+        // However, to be safe and decoupled, we can re-fetch or copy. Here, we copy for simplicity.
+        if let Some(expr_str) = main_state_expressions.get(&state) {
+            pruned_state_expressions.insert(state, expr_str.clone());
+        }
+        if let Some(eps_spp) = main_epsilon_spps_map.get(&state) {
+            pruned_epsilon_spps_map.insert(state, *eps_spp);
+            spp_ids.insert(*eps_spp); // Ensure it's in the global set
+        }
+        
+        // Ensure SPPs from the expression itself are in the global set (if not already from main exploration)
+        aut.collect_spps(state, &mut spp_ids);
+
+        let delta_pruned = aut.delta_pruned(state);
+        for (&target_state, &spp) in delta_pruned.get_transitions() {
+            pruned_transitions.push((state, target_state, spp));
+            spp_ids.insert(spp);
+            if !pruned_visited_states.contains(&target_state) {
+                pruned_states_to_process.push(target_state);
+            }
+        }
+    }
+
+    // Render all unique SPPs collected from all sources
+    for spp_id in &spp_ids {
+        render_spp(*spp_id, aut.spp_store(), output_dir)?;
+    }
+
+    // Generate dot file for the main automaton
+    generate_specific_automaton_dot(
+        aut,
+        &main_visited_states,
+        &main_transitions,
+        &main_state_expressions,
+        &main_epsilon_spps_map,
+        "automaton.dot",
+        "automaton.svg",
+        output_dir,
+    )?;
+
+    // Generate dot file for the pruned automaton
+    generate_specific_automaton_dot(
+        aut,
+        &pruned_visited_states,
+        &pruned_transitions,
+        &pruned_state_expressions, // Use data populated from pruned exploration
+        &pruned_epsilon_spps_map,  // Use data populated from pruned exploration
+        "automaton_pruned.dot",
+        "automaton_pruned.svg",
+        output_dir,
+    )?;
 
     // Generate HTML report
     let html_path = output_dir.join("report.html");
@@ -581,6 +688,13 @@ pub fn render_aut(root_state: usize, aut: &mut Aut, output_dir: &Path) -> Result
     </div>
     
     <div class="section">
+        <h2>Automaton Structure (Pruned)</h2>
+        <div class="svg-container" id="automaton-pruned-container">
+            <object id="automaton-pruned-svg" data="automaton_pruned.svg" type="image/svg+xml" class="visualization"></object>
+        </div>
+    </div>
+    
+    <div class="section">
         <h2>SPP Visualizations</h2>
         <div class="flex-container" id="spp-container">
 "#,
@@ -645,6 +759,7 @@ pub fn render_aut(root_state: usize, aut: &mut Aut, output_dir: &Path) -> Result
                         <th>State</th>
                         <th>Expression</th>
                         <th>Epsilon SPP</th>
+                        <th>EliminateDup SPP</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -652,21 +767,16 @@ pub fn render_aut(root_state: usize, aut: &mut Aut, output_dir: &Path) -> Result
     );
 
     // Add state information rows with clickable SPP references
-    let mut state_vec: Vec<_> = visited_states.iter().collect();
-    state_vec.sort();
-    for state in state_vec {
-        let epsilon_spp = aut.epsilon(*state);
-        let unknown = String::from("Unknown");
-        let expr_string = state_expressions.get(state).unwrap_or(&unknown);
-
-        // Replace SPP(n) with clickable spans
-        let expr_with_links = make_spp_clickable(expr_string);
-
-        html_content.push_str(&format!(
-            "                <tr>\n                    <td>{}</td>\n                    <td><div class=\"expr-text\">{}</div></td>\n                    <td><span class=\"spp-reference\" data-spp=\"{}\">{}</span></td>\n                </tr>\n",
-            state, expr_with_links, epsilon_spp, epsilon_spp
-        ));
-    }
+    let mut main_state_vec: Vec<_> = main_visited_states.iter().collect();
+    main_state_vec.sort();
+    let state_table_body_html = generate_state_table_body_html(
+        aut,
+        &main_state_vec,
+        &main_state_expressions,
+        &main_epsilon_spps_map,
+        &Some(main_eliminate_dup_spps_map) // Pass the map for the main automaton
+    );
+    html_content.push_str(&state_table_body_html);
 
     html_content.push_str(
         r#"                </tbody>
@@ -688,15 +798,62 @@ pub fn render_aut(root_state: usize, aut: &mut Aut, output_dir: &Path) -> Result
     );
 
     // Add transition rows
-    let mut sorted_transitions = transitions.clone();
-    sorted_transitions.sort_by_key(|(src, dst, _)| (*src, *dst));
-    for (src, dst, spp) in sorted_transitions {
-        html_content.push_str(&format!(
-            "                <tr>\n                    <td>{}</td>\n                    <td>{}</td>\n                    <td><span class=\"spp-reference\" data-spp=\"{}\">{}</span></td>\n                </tr>\n",
-            src, dst, spp, spp
-        ));
-    }
+    let mut sorted_main_transitions = main_transitions.clone();
+    sorted_main_transitions.sort_by_key(|(src, dst, _)| (*src, *dst));
+    let main_transitions_table_body_html = generate_transitions_table_body_html(&sorted_main_transitions);
+    html_content.push_str(&main_transitions_table_body_html);
 
+    html_content.push_str(
+        r#"                </tbody>
+            </table>
+        </div>
+        
+        <div class="section">
+            <h2>State Information (Pruned)</h2>
+            <table id="state-table-pruned">
+                <thead>
+                    <tr>
+                        <th>State</th>
+                        <th>Expression</th>
+                        <th>Epsilon SPP</th>
+                        <th>EliminateDup SPP</th>
+                    </tr>
+                </thead>
+                <tbody>
+"#,
+    );
+    let mut pruned_state_vec: Vec<_> = pruned_visited_states.iter().collect();
+    pruned_state_vec.sort();
+    let pruned_state_table_body_html = generate_state_table_body_html(
+        aut,
+        &pruned_state_vec,
+        &pruned_state_expressions,
+        &pruned_epsilon_spps_map,
+        &None // No eliminate_dup for pruned view in this table
+    );
+    html_content.push_str(&pruned_state_table_body_html);
+    html_content.push_str(
+        r#"                </tbody>
+            </table>
+        </div>
+        
+        <div class="section">
+            <h2>Transitions (Pruned)</h2>
+            <table id="transitions-table-pruned">
+                <thead>
+                    <tr>
+                        <th>From</th>
+                        <th>To</th>
+                        <th>SPP</th>
+                    </tr>
+                </thead>
+                <tbody>
+"#,
+    );
+    let mut sorted_pruned_transitions = pruned_transitions.clone();
+    sorted_pruned_transitions.sort_by_key(|(src, dst, _)| (*src, *dst));
+    let pruned_transitions_table_body_html = generate_transitions_table_body_html(&sorted_pruned_transitions);
+    html_content.push_str(&pruned_transitions_table_body_html);
     html_content.push_str(
         r#"                </tbody>
             </table>
