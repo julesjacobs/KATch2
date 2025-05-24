@@ -406,9 +406,44 @@
         <h2>Dup (Logging)</h2>
         <p>The <code>dup</code> keyword is a special NetKAT operator that records the current packet state to the trace output without modifying it. This is extremely useful for observing the packet state at various points in your NetKAT expression.</p>
         
-        <netkat example="Sets x0 to 1, then logs the packet state with dup. Notice the dup entry appears in the trace output.">x0 := 1; dup</netkat>
-
-        <netkat exercise="Set x1 to 1, log with dup, then set x2 to 0">x1 := 1; dup; x2 := 0</netkat>
+        <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 20px; margin: 15px 0; font-family: monospace;">
+            <div style="margin-bottom: 12px; font-weight: bold; color: #495057; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">Dup Logging: x1 := 1; dup; x2 := 1</div>
+            <div style="display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 12px;">
+                <div style="text-align: center;">
+                    <div style="background: #e3f2fd; padding: 8px 12px; border-radius: 4px; margin-bottom: 4px;">Input</div>
+                    <div style="background: white; padding: 4px 8px; border: 1px solid #ccc; border-radius: 3px;">000</div>
+                </div>
+                <span style="font-size: 18px; color: #666;">→</span>
+                <div style="text-align: center;">
+                    <div style="background: #f3e5f5; padding: 8px 12px; border-radius: 4px; margin-bottom: 4px;">Assign x1 := 1</div>
+                    <div style="background: white; padding: 4px 8px; border: 1px solid #ccc; border-radius: 3px;">010</div>
+                </div>
+                <span style="font-size: 18px; color: #666;">→</span>
+                <div style="text-align: center;">
+                    <div style="background: #fff3e0; padding: 8px 12px; border-radius: 4px; margin-bottom: 4px;">dup (log)</div>
+                    <div style="background: #fffacd; padding: 4px 8px; border: 1px solid #ddd; border-radius: 3px; font-style: italic;">010 logged</div>
+                </div>
+                <span style="font-size: 18px; color: #666;">→</span>
+                <div style="text-align: center;">
+                    <div style="background: #f3e5f5; padding: 8px 12px; border-radius: 4px; margin-bottom: 4px;">Assign x2 := 1</div>
+                    <div style="background: white; padding: 4px 8px; border: 1px solid #ccc; border-radius: 3px;">011</div>
+                </div>
+                <span style="font-size: 18px; color: #666;">→</span>
+                <div style="text-align: center;">
+                    <div style="background: #e8f5e8; padding: 8px 12px; border-radius: 4px; margin-bottom: 4px;">Output</div>
+                    <div style="background: white; padding: 4px 8px; border: 1px solid #ccc; border-radius: 3px;">011</div>
+                </div>
+            </div>
+            <div style="margin-top: 15px; padding: 10px; background: #f0f8ff; border-radius: 4px; border-left: 4px solid #4a90e2;">
+                <div style="font-weight: bold; margin-bottom: 5px; color: #4a90e2;">Trace Result:</div>
+                <div style="font-family: monospace; color: #333;">000 → 010 → 011</div>
+                <div style="font-size: 11px; color: #666; margin-top: 3px;">Three entries: input → logged state → final output</div>
+            </div>
+        </div>
+        
+        <p style="font-style: italic; color: #666; margin: 10px 0;">See how dup creates intermediate trace entries in the editor below:</p>
+        
+        <netkat example="Sets x1 to 1, logs the intermediate state with dup, then sets x2 to 1. Notice how the trace shows all three states.">x1 := 1; dup; x2 := 1</netkat>
 
         <h2>Iteration (Kleene Star)</h2>
         <p>Iteration, denoted by an asterisk <code>*</code> (Kleene star) after an expression <code>e</code> (i.e., <code>e*</code>), allows an expression to be executed zero or more times.</p>
