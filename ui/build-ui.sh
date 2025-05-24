@@ -67,6 +67,39 @@ if [ $? -eq 0 ]; then
             echo ""
             echo "📁 Deployed files:"
             ls -la "$DEPLOY_DIR"
+            echo ""
+            
+            # Navigate to the GitHub Pages repo and commit changes
+            echo "🔄 Committing and pushing changes to GitHub Pages repository..."
+            cd "$DEPLOY_DIR"
+            
+            # Check if there are any changes to commit
+            if git diff --quiet && git diff --cached --quiet; then
+                echo "ℹ️  No changes to commit"
+            else
+                # Add all changes
+                git add .
+                
+                # Create a commit with timestamp
+                TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+                git commit -m "Update KATch2 tutorial - $TIMESTAMP"
+                
+                if [ $? -eq 0 ]; then
+                    # Push to remote
+                    git push
+                    
+                    if [ $? -eq 0 ]; then
+                        echo "✅ Successfully pushed changes to GitHub Pages!"
+                        echo "🌐 Changes are now live at: https://julesjacobs.com/misc/katch2/tutorial.html"
+                    else
+                        echo "❌ Failed to push changes to remote repository"
+                        exit 1
+                    fi
+                else
+                    echo "❌ Failed to commit changes"
+                    exit 1
+                fi
+            fi
         else
             echo "❌ Failed to deploy files"
             exit 1

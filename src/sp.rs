@@ -6,7 +6,8 @@
 use std::collections::HashMap;
 use std::fmt;
 
-use rand::Rng;
+
+use rand::seq::SliceRandom;
 
 /// We use indices into the SP store to represent SPs.
 /// The zero SP is represented by SP(0) and the one SP is represented by SP(1).
@@ -52,6 +53,7 @@ pub struct SPstore {
     intersect_memo: HashMap<(SP, SP), SP>,
     complement_memo: HashMap<SP, SP>,
     ifelse_memo: HashMap<(Var, SP, SP), SP>,
+    is_zero_memo: HashMap<SP, bool>,
 }
 
 /// A node in the SP store. Has two children, one for this variable being 0 and one for it being 1.
@@ -86,6 +88,7 @@ impl SPstore {
             ]),
             complement_memo: HashMap::from([(SP::new(0), SP::new(1)), (SP::new(1), SP::new(0))]),
             ifelse_memo: HashMap::new(),
+            is_zero_memo: HashMap::from([(SP::new(0), true), (SP::new(1), false)]),
         };
         store.zero = store.zero();
         store.one = store.one();
@@ -199,6 +202,22 @@ impl SPstore {
         self.intersect(sp1, not_sp2)
     }
 
+    /// Checks if an SP is zero (represents the empty set of packets)
+    pub fn is_zero(&mut self, sp: SP) -> bool {
+        // First, check the memo table
+        if let Some(&result) = self.is_zero_memo.get(&sp) {
+            return result;
+        }
+        // Because we prefilled the memo with base cases,
+        // we now know that we've got a real node, so we don't need to handle 0 or 1 cases here.
+        let node = self.get(sp);
+        let x0_is_zero = self.is_zero(node.x0);
+        let x1_is_zero = self.is_zero(node.x1);
+        let result = x0_is_zero && x1_is_zero;
+        self.is_zero_memo.insert(sp, result);
+        result
+    }
+
     pub fn ifelse(&mut self, var: Var, then_branch: SP, else_branch: SP) -> SP {
         assert!(var < self.num_vars);
         self.ifelse_helper(var, then_branch, else_branch)
@@ -236,39 +255,29 @@ impl SPstore {
 
 
     /// Generates a random packet accepted by this SP
-    pub fn random_packet(&self, sp: SP) -> Option<Vec<bool>> {
+    pub fn random_packet(&mut self, sp: SP) -> Option<Vec<bool>> {
         self.random_packet_helper(sp)
     }
 
-    pub fn random_packet_helper(&self, sp: SP) -> Option<Vec<bool>> {
-        if sp == SP::new(0) {
+    pub fn random_packet_helper(&mut self, sp: SP) -> Option<Vec<bool>> {
+        if self.is_zero(sp) {
             return None;
         } else if sp == SP::new(1) {
             return Some(vec![]);
         }
         let node = self.get(sp);
-        let option1 = self.random_packet_helper(node.x0);
-        let option2 = self.random_packet_helper(node.x1);
-        match (option1, option2) {
-            (None, None) => None,
-            (Some(mut p1), None) => {
-                p1.insert(0, true);
-                Some(p1)
-            }
-            (None, Some(mut p2)) => {
-                p2.insert(0, false);
-                Some(p2)
-            }
-            (Some(mut p1), Some(mut p2)) => {
-                if rand::rng().random_bool(0.5) {
-                    p1.insert(0, true);
-                    Some(p1)
-                } else {
-                    p2.insert(0, false);
-                    Some(p2)
-                }
+        let mut options = vec![];
+        options.push((false, node.x0));
+        options.push((true, node.x1));
+        // Shuffle the options to randomize
+        options.shuffle(&mut rand::rng());
+        for (bit_value, child) in options {
+            if let Some(mut packet) = self.random_packet_helper(child) {
+                packet.insert(0, bit_value);
+                return Some(packet);
             }
         }
+        None
     }
 
     /// Enumerates all possible SPs with `num_vars` fields
@@ -364,6 +373,34 @@ mod tests {
                     );
                 }
             }
+        }
+    }
+
+    #[test]
+    fn test_is_zero() {
+        let mut s = SPstore::new(N);
+        
+        // Test base cases
+        assert!(s.is_zero(s.zero));
+        assert!(!s.is_zero(s.one));
+        
+        // Test that zero built at any depth is detected as zero
+        let mut zero_depth_2 = SP::new(0);
+        for _ in 0..2 {
+            zero_depth_2 = s.mk(zero_depth_2, zero_depth_2);
+        }
+        assert!(s.is_zero(zero_depth_2));
+        
+        // Test a non-zero SP
+        let non_zero = s.mk(s.zero, s.one);
+        assert!(!s.is_zero(non_zero));
+        
+        // Test all SPs
+        let all = s.all();
+        for sp in all {
+            let is_zero_result = s.is_zero(sp);
+            // An SP is zero if it equals the zero SP
+            assert_eq!(is_zero_result, sp == s.zero);
         }
     }
 }

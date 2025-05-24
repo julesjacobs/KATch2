@@ -59,6 +59,7 @@ pub struct SPPstore {
     test_memo: HashMap<(Var, bool), SPP>,
     assign_memo: HashMap<(Var, bool), SPP>,
     flip_memo: HashMap<SPP, SPP>,
+    is_zero_memo: HashMap<SPP, bool>,
 
     pub sp: SPstore,
     fwd_memo: HashMap<SPP, SP>,
@@ -124,6 +125,7 @@ impl SPPstore {
             test_memo: HashMap::new(),
             assign_memo: HashMap::new(),
             flip_memo: HashMap::from([(SPP::new(0), SPP::new(0)), (SPP::new(1), SPP::new(1))]),
+            is_zero_memo: HashMap::from([(SPP::new(0), true), (SPP::new(1), false)]),
             sp: SPstore::new(num_vars),
 
             // in the memo tables, we only want the base cases for 0 and 1
@@ -336,6 +338,24 @@ impl SPPstore {
         res
     }
 
+    /// Checks if an SPP is zero (represents the empty relation)
+    pub fn is_zero(&mut self, spp: SPP) -> bool {
+        // First, check the memo table
+        if let Some(&result) = self.is_zero_memo.get(&spp) {
+            return result;
+        }
+        // Because we prefilled the memo with base cases,
+        // we now know that we've got a real node, so we don't need to handle 0 or 1 cases here.
+        let node = self.get(spp);
+        let x00_is_zero = self.is_zero(node.x00);
+        let x01_is_zero = self.is_zero(node.x01);
+        let x10_is_zero = self.is_zero(node.x10);
+        let x11_is_zero = self.is_zero(node.x11);
+        let result = x00_is_zero && x01_is_zero && x10_is_zero && x11_is_zero;
+        self.is_zero_memo.insert(spp, result);
+        result
+    }
+
     pub fn sequence(&mut self, a: SPP, b: SPP) -> SPP {
         // First, check the memo table
         if let Some(&result) = self.sequence_memo.get(&(a, b)) {
@@ -492,12 +512,12 @@ impl SPPstore {
         res
     }
 
-    pub fn random_packet_pair(&self, spp: SPP) -> Option<(Vec<bool>, Vec<bool>)> {
+    pub fn random_packet_pair(&mut self, spp: SPP) -> Option<(Vec<bool>, Vec<bool>)> {
         return self.random_packet_pair_helper(spp);
     }
 
-    fn random_packet_pair_helper(&self, spp: SPP) -> Option<(Vec<bool>, Vec<bool>)> {
-        if spp == SPP::new(0) {
+    fn random_packet_pair_helper(&mut self, spp: SPP) -> Option<(Vec<bool>, Vec<bool>)> {
+        if self.is_zero(spp) {
             return None;
         } else if spp == SPP::new(1) {
             return Some((vec![], vec![]));
@@ -523,7 +543,7 @@ impl SPPstore {
         None
     }
 
-    pub fn random_input_packet(&self, spp: SPP) -> Option<Vec<bool>> {
+    pub fn random_input_packet(&mut self, spp: SPP) -> Option<Vec<bool>> {
         // get a random packet pair, then return first element
         let random_packet_pair = self.random_packet_pair(spp);
         if let Some((v1, _)) = random_packet_pair {
@@ -532,13 +552,12 @@ impl SPPstore {
         None
     }
 
-    pub fn random_output_packet_from_input(&self, spp: SPP, input: Vec<bool>) -> Option<Vec<bool>> {
+    pub fn random_output_packet_from_input(&mut self, spp: SPP, input: Vec<bool>) -> Option<Vec<bool>> {
         return self.random_output_packet_from_input_helper(spp, input);
     }
     
-    fn random_output_packet_from_input_helper(&self, spp: SPP, input: Vec<bool>) -> Option<Vec<bool>> {
-        if spp == SPP::new(0) {
-            assert!(input.len() == 0);
+    fn random_output_packet_from_input_helper(&mut self, spp: SPP, input: Vec<bool>) -> Option<Vec<bool>> {
+        if self.is_zero(spp) {
             return None;
         } else if spp == SPP::new(1) {
             assert!(input.len() == 0);
@@ -559,8 +578,8 @@ impl SPPstore {
         // Shuffle the options
         options.shuffle(&mut rand::rng());
         for (_b1, b2, child) in options {
-            let random_packet_pair = self.random_output_packet_from_input_helper(child, rest.clone());
-            if let Some(v2) = random_packet_pair {
+            let random_packet = self.random_output_packet_from_input_helper(child, rest.clone());
+            if let Some(v2) = random_packet {
                 let mut w2 = v2.clone();
                 w2.insert(0, b2);
                 return Some(w2);
@@ -789,6 +808,35 @@ mod tests {
                 let flip_seq = s.sequence(spp2_flip, spp1_flip);
                 assert_eq!(seq_flip, flip_seq);
             }
+        }
+    }
+
+    #[test]
+    fn test_is_zero() {
+        let mut s = SPPstore::new(N);
+        
+        // Test base cases
+        assert!(s.is_zero(s.zero));
+        assert!(!s.is_zero(s.one));
+        assert!(!s.is_zero(s.top));
+        
+        // Test that zero built at any depth is detected as zero
+        let mut zero_depth_2 = SPP::new(0);
+        for _ in 0..2 {
+            zero_depth_2 = s.mk(zero_depth_2, zero_depth_2, zero_depth_2, zero_depth_2);
+        }
+        assert!(s.is_zero(zero_depth_2));
+        
+        // Test a non-zero SPP
+        let non_zero = s.mk(s.zero, s.one, s.zero, s.zero);
+        assert!(!s.is_zero(non_zero));
+        
+        // Test all SPPs
+        let all = s.all();
+        for spp in all {
+            let is_zero_result = s.is_zero(spp);
+            // An SPP is zero if it equals the zero SPP
+            assert_eq!(is_zero_result, spp == s.zero);
         }
     }
 }
