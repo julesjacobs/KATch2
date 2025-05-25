@@ -318,7 +318,11 @@ x2 == 1
         <netkat example="Demonstrates chaining multiple assignments: first sets x0 to 1, then sets x2 to 0. Watch how the packet transforms through both steps.">x0 := 1; x2 := 0</netkat>
 
         <h2>Choice (Union)</h2>
-        <p>Choice, denoted by a plus sign <code>+</code>, represents a non-deterministic selection between two NetKAT expressions. The network can choose to follow either path.</p>
+        <p>Choice, denoted by a plus sign <code>+</code>, combines two NetKAT expressions and can be interpreted in two ways:</p>
+        
+        <p><strong>Nondeterministic Interpretation:</strong> The network can choose to follow either path - it's an "either/or" decision where one path is selected.</p>
+        
+        <p><strong>Multicast Interpretation:</strong> The network simultaneously sends copies of the packet down both paths - it's a "both" scenario. This is useful for modeling broadcast scenarios, load balancing, or redundant forwarding where you want a packet to reach multiple destinations.</p>
         
         <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 20px; margin: 15px 0; font-family: monospace;">
             <div style="margin-bottom: 12px; font-weight: bold; color: #495057; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">Choice Branching: x0 := 1 + x1 := 1</div>
@@ -355,7 +359,7 @@ x2 == 1
             </div>
         </div>
         
-        <p style="font-style: italic; color: #666; margin: 10px 0;">Watch the nondeterministic branching in the editor below:</p>
+        <p style="font-style: italic; color: #666; margin: 10px 0;">Watch the effect of branching in the editor below:</p>
         
         <netkat example="Either sets x0 to 1 OR sets x1 to 1. The analyzer explores both possibilities, showing multiple traces.">x0 := 1 + x1 := 1</netkat>
 
@@ -496,7 +500,7 @@ x2 == 1
         
         <p style="font-style: italic; color: #666; margin: 10px 0;">Explore the multiple iteration paths in the editor below:</p>
         
-        <netkat example="Progressive bit setting: sets x0, then x1, then x2 in sequence. Starting from 000, watch how it builds up to 111 through multiple iterations.">((x0:=1 + (x0==1;x1:=1) + (x1==1; x2:=1)); dup)*</netkat>
+        <netkat example="Iteratively set a bit to 1 if the previous bit was 1">((x0:=1 + (x0==1;x1:=1) + (x1==1; x2:=1)); dup)*</netkat>
         
         <p>This shows multiple paths in the trace, corresponding to 0, 1, 2, etc., iterations, up to a limit defined by the analyzer to prevent infinite loops in the visualization.</p>
 
