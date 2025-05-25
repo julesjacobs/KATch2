@@ -614,36 +614,35 @@ x2 == 1
                 <div class="diagram-box">
                     <svg width="120" height="80" viewBox="0 0 120 80">
                         <defs>
-                            <mask id="maskA">
+                            <mask id="equalityMaskA2">
                                 <rect width="120" height="80" fill="white"/>
-                                <circle cx="80" cy="40" r="25" fill="black"/>
+                                <circle cx="62" cy="40" r="25" fill="black"/>
                             </mask>
-                            <mask id="maskB">
+                            <mask id="equalityMaskB2">
                                 <rect width="120" height="80" fill="white"/>
-                                <circle cx="40" cy="40" r="25" fill="black"/>
+                                <circle cx="58" cy="40" r="25" fill="black"/>
                             </mask>
                         </defs>
                         <!-- Draw base white fills first -->
-                        <circle cx="40" cy="40" r="25" fill="white"/>
-                        <circle cx="80" cy="40" r="25" fill="white"/>
-                        <!-- Draw non-overlapping areas on top -->
-                        <circle cx="40" cy="40" r="25" fill="#ce93d8" mask="url(#maskA)"/>
-                        <circle cx="80" cy="40" r="25" fill="#ce93d8" mask="url(#maskB)"/>
+                        <circle cx="58" cy="40" r="25" fill="white"/>
+                        <circle cx="62" cy="40" r="25" fill="white"/>
+                        <!-- Draw tiny XOR areas (almost empty) -->
+                        <circle cx="58" cy="40" r="25" fill="#ce93d8" mask="url(#equalityMaskA2)"/>
+                        <circle cx="62" cy="40" r="25" fill="#ce93d8" mask="url(#equalityMaskB2)"/>
                         <!-- Draw borders on top of everything -->
-                        <circle cx="40" cy="40" r="25" fill="none" stroke="#333" stroke-width="2"/>
-                        <circle cx="80" cy="40" r="25" fill="none" stroke="#333" stroke-width="2"/>
-                        <text x="30" y="45" font-size="12" fill="black" font-weight="bold">A</text>
-                        <text x="86" y="45" font-size="12" fill="black" font-weight="bold">B</text>
+                        <circle cx="58" cy="40" r="25" fill="none" stroke="#333" stroke-width="2"/>
+                        <circle cx="62" cy="40" r="25" fill="none" stroke="#333" stroke-width="2"/>
+                        <text x="20" y="45" font-size="12" fill="black" font-weight="bold">A</text>
+                        <text x="92" y="45" font-size="12" fill="black" font-weight="bold">B</text>
                     </svg>
                     <div>
-                        <strong>A ^ B (Symmetric Difference)</strong><br>
-                        <span style="font-size: 14px; color: #666;">Traces in exactly one set</span>
+                        <strong>A = B when A ^ B is empty</strong>
                     </div>
                 </div>
             </div>
             
             <div class="editor-container">
-                <netkat example="XOR: traces that are in exactly one of the two trace sets.">(x0 == 1) ^ (x1 == 1)</netkat>
+                <netkat example="Equality verification: do these expressions generate the same trace set?">(x0 == 1; x1 == 0) ^ (x1 == 0 & x0 == 1)</netkat>
             </div>
         </div>
         
@@ -686,15 +685,80 @@ x2 == 1
         <h3>Using Logical Operators for Verification</h3>
         <p>These set operations are particularly powerful for network verification:</p>
         
-        <p><strong>Subset Check (e1 ⊆ e2):</strong> To verify that the trace set of e1 is a subset of the trace set of e2, check if <code>e1 - e2</code> is empty. If it's not empty, the analyzer will show you traces that are in e1's set but not in e2's set.</p>
+        <h4>Subset Check (A ⊆ B)</h4>
+        <p>To verify that the trace set of A is a subset of the trace set of B, check if <code>A - B</code> is empty. If it's not empty, the analyzer will show you traces that are in A's set but not in B's set.</p>
         
-        <netkat example="Subset verification: is the trace set of (x0 == 1) ⊆ trace set of (x0 == 1 + x1 == 1)?">(x0 == 1) - (x0 == 1 + x1 == 1)</netkat>
+        <div class="diagram-editor-container">
+            <div class="diagram-container">
+                <div class="diagram-box">
+                    <svg width="120" height="80" viewBox="0 0 120 80">
+                        <defs>
+                            <mask id="subsetVerifyMask">
+                                <rect width="120" height="80" fill="white"/>
+                                <circle cx="65" cy="40" r="30" fill="black"/>
+                            </mask>
+                        </defs>
+                        <!-- Draw base white fills first -->
+                        <circle cx="45" cy="40" r="20" fill="white"/>
+                        <circle cx="65" cy="40" r="30" fill="white"/>
+                        <!-- Draw tiny difference (almost empty) -->
+                        <circle cx="45" cy="40" r="20" fill="#ce93d8" mask="url(#subsetVerifyMask)"/>
+                        <!-- Draw borders on top of everything -->
+                        <circle cx="45" cy="40" r="20" fill="none" stroke="#333" stroke-width="2"/>
+                        <circle cx="65" cy="40" r="30" fill="none" stroke="#333" stroke-width="2"/>
+                        <text x="10" y="45" font-size="12" fill="black" font-weight="bold">A</text>
+                        <text x="100" y="45" font-size="12" fill="black" font-weight="bold">B</text>
+                    </svg>
+                    <div>
+                        <strong>A ⊆ B when A - B is empty</strong>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="editor-container">
+                <netkat example="Subset verification: is the trace set of (x0 == 1) ⊆ trace set of (x0 == 1 + x1 == 1)?">(x0 == 1) - (x0 == 1 + x1 == 1)</netkat>
+            </div>
+        </div>
         
-        <p><strong>Equality Check (e1 = e2):</strong> To verify that two expressions generate the same trace set, check if <code>e1 ^ e2</code> is empty. If it's not empty, the traces show you which traces appear in one set but not the other.</p>
+        <h4>Equality Check (A = B)</h4>
+        <p>To verify that two expressions generate the same trace set, check if <code>A ^ B</code> is empty. If it's not empty, the traces show you which traces appear in one set but not the other.</p>
         
-        <netkat example="Equality verification: do these expressions generate the same trace set?">(x0 == 1; x1 := 1) ^ ((x0 == 1) & (x1 := 1))</netkat>
-        
-        <netkat exercise="Check if these expressions generate equivalent trace sets">(x0 := 1; x1 := 1) ^ (x1 := 1; x0 := 1)</netkat>
+        <div class="diagram-editor-container">
+            <div class="diagram-container">
+                <div class="diagram-box">
+                    <svg width="120" height="80" viewBox="0 0 120 80">
+                        <defs>
+                            <mask id="equalityMaskA2">
+                                <rect width="120" height="80" fill="white"/>
+                                <circle cx="62" cy="40" r="25" fill="black"/>
+                            </mask>
+                            <mask id="equalityMaskB2">
+                                <rect width="120" height="80" fill="white"/>
+                                <circle cx="58" cy="40" r="25" fill="black"/>
+                            </mask>
+                        </defs>
+                        <!-- Draw base white fills first -->
+                        <circle cx="58" cy="40" r="25" fill="white"/>
+                        <circle cx="62" cy="40" r="25" fill="white"/>
+                        <!-- Draw tiny XOR areas (almost empty) -->
+                        <circle cx="58" cy="40" r="25" fill="#ce93d8" mask="url(#equalityMaskA2)"/>
+                        <circle cx="62" cy="40" r="25" fill="#ce93d8" mask="url(#equalityMaskB2)"/>
+                        <!-- Draw borders on top of everything -->
+                        <circle cx="58" cy="40" r="25" fill="none" stroke="#333" stroke-width="2"/>
+                        <circle cx="62" cy="40" r="25" fill="none" stroke="#333" stroke-width="2"/>
+                        <text x="20" y="45" font-size="12" fill="black" font-weight="bold">A</text>
+                        <text x="92" y="45" font-size="12" fill="black" font-weight="bold">B</text>
+                    </svg>
+                    <div>
+                        <strong>A = B when A ^ B is empty</strong>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="editor-container">
+                <netkat example="Equality verification: do these expressions generate the same trace set?">(x0 == 1; x1 == 0) ^ (x1 == 0 & x0 == 1)</netkat>
+            </div>
+        </div>
 
         <div class="practice-section">
             <h2>Additional Examples</h2>
