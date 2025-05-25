@@ -374,6 +374,59 @@ impl<'a> Iterator for Lexer<'a> {
 // --- Parser ---
 // This will need to be updated to use SpannedToken and ParseError
 
+/*
+OPERATOR PRECEDENCE AND ASSOCIATIVITY TABLE
+===========================================
+
+The parser implements the following precedence hierarchy (highest to lowest precedence):
+
+1. PRIMARY EXPRESSIONS (highest precedence)
+   - Literals: 0, 1, T, dup, end
+   - Field operations: x1:=0, x2==1 (atomic constructs)
+   - Parenthesized expressions: (expr)
+
+2. POSTFIX OPERATORS
+   - Star: *  (left-associative)
+   - Example: a** = (a*)*
+
+3. PREFIX OPERATORS  
+   - Complement: !
+   - LTL Next: X
+   - LTL Future: F  
+   - LTL Globally: G
+   - All prefix operators are right-associative
+   - Example: !!a = !(!(a)), !X a = !(X(a))
+
+4. INTERSECTION (left-associative)
+   - And: &
+   - Example: a & b & c = ((a & b) & c)
+
+5. SEQUENCE (left-associative)
+   - Semicolon: ;
+   - Example: a ; b ; c = ((a ; b) ; c)
+
+6. ADDITIVE (left-associative)
+   - Union: +
+   - XOR: ^  
+   - Difference: -
+   - Example: a + b - c = ((a + b) - c)
+
+7. TEMPORAL OPERATORS (lowest precedence, right-associative)
+   - Until: U
+   - Release: R
+   - Example: a U b U c = (a U (b U c))
+
+PRECEDENCE INTERACTION EXAMPLES:
+- !a* + b ; c & d U e  =>  (!(a*) + (b ; (c & d))) U e
+- (a + b) ; c  =>  forces additive before sequence
+- a ; b + c  =>  (a ; b) + c  (sequence binds tighter than additive)
+- !a*  =>  !(a*)  (postfix binds tighter than prefix)
+- a + b*  =>  a + (b*)  (postfix binds tighter than infix)
+
+Field operations like x1:=0 and x2==1 are parsed as atomic expressions 
+at the primary level and have the highest precedence.
+*/
+
 pub struct Parser<'a> {
     // The lexer now yields Result<Token, ParseError>, where Token is SpannedToken
     lexer: Peekable<Lexer<'a>>,
@@ -430,9 +483,6 @@ impl<'a> Parser<'a> {
                 // So if next_token_internal is called when peek is Eof, it consumes Eof and returns it.
                 // If called again, it would hit this None.
                 // This feels like an unexpected state if the parser always checks peek_token.
-                // For now, let's make it an error or a specific "unexpected end of stream"
-                // that uses the *last known* position.
-                // This needs careful thought based on parser structure.
 
                 // Safest for now: if lexer iterator is exhausted, it means an EOF token was the last thing
                 // it would have produced (or an error).
@@ -486,10 +536,16 @@ impl<'a> Parser<'a> {
 
 
     // Recursive descent parsing functions based on operator precedence:
-    // These will now use consume_token() and peek_kind()/peek_token() and return Result<Exp, ParseError>
+    // New precedence hierarchy (highest to lowest):
+    // 1. Postfix: * 
+    // 2. Prefix: !, X, F, G
+    // 3. Intersection: & (left-associative)
+    // 4. Sequence: ; (left-associative)
+    // 5. Additive: +, ^, - (left-associative)
+    // 6. Until/Release: U, R (right-associative)
 
     fn parse_until(&mut self) -> Result<Exp, ParseError> {
-        let left = self.parse_sequence()?;
+        let left = self.parse_additive()?;
         // Peek at the kind directly, to keep the token for its span if needed for error
         // This loop structure is for right-associativity. A single check is enough.
         match self.peek_token() { 
@@ -551,19 +607,8 @@ impl<'a> Parser<'a> {
         }
     }
 
-
-    fn parse_sequence(&mut self) -> Result<Exp, ParseError> {
-        let mut left = self.parse_additive()?;
-        while self.peek_kind()? == &TokenKind::Semicolon {
-            let _op_token = self.consume_token()?; // Consume ';'
-            let right = self.parse_additive()?;
-            left = Expr::sequence(left, right);
-        }
-        Ok(left)
-    }
-
     fn parse_additive(&mut self) -> Result<Exp, ParseError> {
-        let mut left = self.parse_intersect()?;
+        let mut left = self.parse_sequence()?;
         loop {
             // Peek at the kind directly, to keep the token for its span if needed for error
             let peeked_token_result = self.peek_token();
@@ -580,7 +625,7 @@ impl<'a> Parser<'a> {
                                     op_token.span, // Span of the operator
                                 ));
                             }
-                            let right = self.parse_intersect()?;
+                            let right = self.parse_sequence()?;
                             left = Expr::union(left, right);
                         }
                         TokenKind::Xor => {
@@ -592,7 +637,7 @@ impl<'a> Parser<'a> {
                                     op_token.span,
                                 ));
                             }
-                            let right = self.parse_intersect()?;
+                            let right = self.parse_sequence()?;
                             left = Expr::xor(left, right);
                         }
                         TokenKind::Minus => {
@@ -604,7 +649,7 @@ impl<'a> Parser<'a> {
                                     op_token.span,
                                 ));
                             }
-                            let right = self.parse_intersect()?;
+                            let right = self.parse_sequence()?;
                             left = Expr::difference(left, right);
                         }
                         _ => break, // Not Plus, Xor, or Minus
@@ -616,17 +661,27 @@ impl<'a> Parser<'a> {
         Ok(left)
     }
 
+    fn parse_sequence(&mut self) -> Result<Exp, ParseError> {
+        let mut left = self.parse_intersect()?;
+        while self.peek_kind()? == &TokenKind::Semicolon {
+            let _op_token = self.consume_token()?; // Consume ';'
+            let right = self.parse_intersect()?;
+            left = Expr::sequence(left, right);
+        }
+        Ok(left)
+    }
+
     fn parse_intersect(&mut self) -> Result<Exp, ParseError> {
-        let mut left = self.parse_unary()?;
+        let mut left = self.parse_prefix()?;
         while self.peek_kind()? == &TokenKind::And {
             self.consume_token()?; // Consume '&'
-            let right = self.parse_unary()?;
+            let right = self.parse_prefix()?;
             left = Expr::intersect(left, right);
         }
         Ok(left)
     }
 
-    fn parse_unary(&mut self) -> Result<Exp, ParseError> {
+    fn parse_prefix(&mut self) -> Result<Exp, ParseError> {
         match self.peek_kind()? {
             TokenKind::Not => {
                 let op_token = self.consume_token()?; // Consume '!'
@@ -637,7 +692,7 @@ impl<'a> Parser<'a> {
                         op_token.span,
                     ));
                 }
-                let operand = self.parse_unary()?; // Unary ops often bind to their own kind
+                let operand = self.parse_prefix()?; // Right-associative
                 Ok(Expr::complement(operand))
             }
             TokenKind::LtlX => { // LTL Next
@@ -649,7 +704,7 @@ impl<'a> Parser<'a> {
                         op_token.span,
                     ));
                 }
-                let operand = self.parse_unary()?;
+                let operand = self.parse_prefix()?;
                 Ok(Expr::ltl_next(operand))
             }
             TokenKind::LtlF => { // LTL Future: F e ≡ T U e
@@ -661,7 +716,7 @@ impl<'a> Parser<'a> {
                         op_token.span,
                     ));
                 }
-                let operand = self.parse_unary()?;
+                let operand = self.parse_prefix()?;
                 Ok(Expr::ltl_until(Expr::top(), operand)) // Uses helper from expr.rs
             }
             TokenKind::LtlG => { // LTL Globally: G e ≡ ¬F¬e ≡ ¬(T U ¬e)
@@ -673,23 +728,27 @@ impl<'a> Parser<'a> {
                         op_token.span,
                     ));
                 }
-                let operand = self.parse_unary()?;
+                let operand = self.parse_prefix()?;
                 Ok(Expr::ltl_globally(operand)) // Uses helper from expr.rs
             }
             _ => {
-                // Handles atoms (0, 1, T, dup), field constructs (xN := V, xN == V), and parenthesized expressions
-                let mut base_expr = self.parse_atom_or_field_expression()?;
-                
-                // Postfix star
-                if self.peek_kind()? == &TokenKind::Star {
-                    let _star_token = self.consume_token()?; // Consume '*'
-                    base_expr = Expr::star(base_expr);
-                }
-                Ok(base_expr)
+                // No prefix operator, parse postfix
+                self.parse_postfix()
             }
         }
     }
-    
+
+    fn parse_postfix(&mut self) -> Result<Exp, ParseError> {
+        let mut base_expr = self.parse_atom_or_field_expression()?;
+        
+        // Handle postfix star (left-associative, though only one postfix operator exists)
+        while self.peek_kind()? == &TokenKind::Star {
+            let _star_token = self.consume_token()?; // Consume '*'
+            base_expr = Expr::star(base_expr);
+        }
+        Ok(base_expr)
+    }
+
     // This function replaces the old parse_primary_and_assign_eq and parts of parse_primary.
     // It parses atomic literals, dup, parenthesized expressions, and field assignments/tests.
     fn parse_atom_or_field_expression(&mut self) -> Result<Exp, ParseError> {
@@ -1096,6 +1155,234 @@ mod tests {
         }
         println!("--- Finished Checking Syntax Error Messages ---");
         assert!(true); // Dummy assertion
+    }
+
+    // ===== OPERATOR PRECEDENCE TESTS =====
+    
+    #[test]
+    fn test_precedence_postfix_vs_prefix() {
+        // Postfix should bind tighter than prefix
+        // !a* should be !(a*), not (!a)*
+        assert_eq!(parse_single_unwrap("!0*"), 
+                   parse_single_unwrap("!(0*)"));
+        assert_eq!(parse_single_unwrap("X 1*"), 
+                   parse_single_unwrap("X (1*)"));
+        assert_eq!(parse_single_unwrap("F T*"), 
+                   parse_single_unwrap("F (T*)"));
+        assert_eq!(parse_single_unwrap("G dup*"), 
+                   parse_single_unwrap("G (dup*)"));
+    }
+
+    #[test]
+    fn test_precedence_prefix_vs_infix() {
+        // Prefix should bind tighter than infix
+        // !a + b should be (!a) + b, not !(a + b)
+        assert_eq!(parse_single_unwrap("!0 + 1"), 
+                   parse_single_unwrap("(!0) + 1"));
+        assert_eq!(parse_single_unwrap("X 0 & 1"), 
+                   parse_single_unwrap("(X 0) & 1"));
+        assert_eq!(parse_single_unwrap("F 0 ; 1"), 
+                   parse_single_unwrap("(F 0) ; 1"));
+        assert_eq!(parse_single_unwrap("G 0 U 1"), 
+                   parse_single_unwrap("(G 0) U 1"));
+    }
+
+    #[test]
+    fn test_precedence_infix_vs_postfix() {
+        // Postfix should bind tighter than infix
+        // a + b* should be a + (b*), not (a + b)*
+        assert_eq!(parse_single_unwrap("0 + 1*"), 
+                   parse_single_unwrap("0 + (1*)"));
+        assert_eq!(parse_single_unwrap("0 & T*"), 
+                   parse_single_unwrap("0 & (T*)"));
+        assert_eq!(parse_single_unwrap("0 ; dup*"), 
+                   parse_single_unwrap("0 ; (dup*)"));
+        assert_eq!(parse_single_unwrap("0 U 1*"), 
+                   parse_single_unwrap("0 U (1*)"));
+    }
+
+    #[test]
+    fn test_precedence_intersection_vs_sequence() {
+        // Intersection should bind tighter than sequence
+        // a & b ; c should be (a & b) ; c
+        assert_eq!(parse_single_unwrap("0 & 1 ; T"), 
+                   parse_single_unwrap("(0 & 1) ; T"));
+        // a ; b & c should be a ; (b & c)
+        assert_eq!(parse_single_unwrap("0 ; 1 & T"), 
+                   parse_single_unwrap("0 ; (1 & T)"));
+    }
+
+    #[test]
+    fn test_precedence_sequence_vs_additive() {
+        // Sequence should bind tighter than additive (this was the original issue)
+        // a ; b + c should be (a ; b) + c
+        assert_eq!(parse_single_unwrap("0 ; 1 + T"), 
+                   parse_single_unwrap("(0 ; 1) + T"));
+        // a + b ; c should be a + (b ; c)
+        assert_eq!(parse_single_unwrap("0 + 1 ; T"), 
+                   parse_single_unwrap("0 + (1 ; T)"));
+        
+        // Same for other additive operators
+        assert_eq!(parse_single_unwrap("0 ; 1 ^ T"), 
+                   parse_single_unwrap("(0 ; 1) ^ T"));
+        assert_eq!(parse_single_unwrap("0 ; 1 - T"), 
+                   parse_single_unwrap("(0 ; 1) - T"));
+    }
+
+    #[test]
+    fn test_precedence_additive_vs_until() {
+        // Additive should bind tighter than until/release
+        // a + b U c should be (a + b) U c
+        assert_eq!(parse_single_unwrap("0 + 1 U T"), 
+                   parse_single_unwrap("(0 + 1) U T"));
+        // a U b + c should be a U (b + c)
+        assert_eq!(parse_single_unwrap("0 U 1 + T"), 
+                   parse_single_unwrap("0 U (1 + T)"));
+        
+        // Same for release
+        assert_eq!(parse_single_unwrap("0 + 1 R T"), 
+                   parse_single_unwrap("(0 + 1) R T"));
+    }
+
+    #[test]
+    fn test_associativity_left_associative() {
+        // Left-associative operators: &, ;, +, ^, -
+        
+        // Intersection
+        assert_eq!(parse_single_unwrap("0 & 1 & T"), 
+                   parse_single_unwrap("(0 & 1) & T"));
+        
+        // Sequence
+        assert_eq!(parse_single_unwrap("0 ; 1 ; T"), 
+                   parse_single_unwrap("(0 ; 1) ; T"));
+        
+        // Union
+        assert_eq!(parse_single_unwrap("0 + 1 + T"), 
+                   parse_single_unwrap("(0 + 1) + T"));
+        
+        // XOR
+        assert_eq!(parse_single_unwrap("0 ^ 1 ^ T"), 
+                   parse_single_unwrap("(0 ^ 1) ^ T"));
+        
+        // Difference
+        assert_eq!(parse_single_unwrap("0 - 1 - T"), 
+                   parse_single_unwrap("(0 - 1) - T"));
+    }
+
+    #[test]
+    fn test_associativity_right_associative() {
+        // Right-associative operators: U, R, prefix operators
+        
+        // Until
+        assert_eq!(parse_single_unwrap("0 U 1 U T"), 
+                   parse_single_unwrap("0 U (1 U T)"));
+        
+        // Release
+        assert_eq!(parse_single_unwrap("0 R 1 R T"), 
+                   parse_single_unwrap("0 R (1 R T)"));
+        
+        // Prefix operators
+        assert_eq!(parse_single_unwrap("!!0"), 
+                   parse_single_unwrap("!(!0)"));
+        assert_eq!(parse_single_unwrap("!X 0"), 
+                   parse_single_unwrap("!(X 0)"));
+        assert_eq!(parse_single_unwrap("X F 0"), 
+                   parse_single_unwrap("X (F 0)"));
+    }
+
+    #[test]
+    fn test_associativity_postfix() {
+        // Multiple stars should be left-associative: a** = (a*)*
+        assert_eq!(parse_single_unwrap("0**"), 
+                   parse_single_unwrap("(0*)*"));
+        assert_eq!(parse_single_unwrap("T***"), 
+                   parse_single_unwrap("((T*)*)*"));
+    }
+
+    #[test]
+    fn test_mixed_precedence_complex() {
+        // Complex mixed precedence tests
+        
+        // !a* + b ; c & d U e should be ((!((a)*)) + (b ; (c & d))) U e
+        assert_eq!(parse_single_unwrap("!0* + 1 ; T & dup U x1==0"), 
+                   parse_single_unwrap("(!(0*) + (1 ; (T & dup))) U x1==0"));
+        
+        // a & !b* ; c + d should be ((a & (!(b*))) ; c) + d 
+        // Precedence: postfix (*), prefix (!), intersection (&), sequence (;), additive (+)
+        assert_eq!(parse_single_unwrap("0 & !1* ; T + dup"), 
+                   parse_single_unwrap("((0 & !(1*)) ; T) + dup"));
+    }
+
+    #[test]
+    fn test_parentheses_override_precedence() {
+        // Parentheses should override precedence - test meaningful differences
+        
+        // Show that parentheses change the default precedence behavior
+        assert_ne!(parse_single_unwrap("(0 + 1) ; T"), 
+                   parse_single_unwrap("0 + 1 ; T")); // Default: 0 + (1 ; T)
+        
+        assert_ne!(parse_single_unwrap("0 + (1 ; T)"), 
+                   parse_single_unwrap("0 ; 1 + T")); // Default: (0 ; 1) + T
+        
+        assert_ne!(parse_single_unwrap("(!0)*"), 
+                   parse_single_unwrap("!0*")); // Default: !(0*)
+        
+        assert_ne!(parse_single_unwrap("(0 U 1) + T"), 
+                   parse_single_unwrap("0 U 1 + T")); // Default: 0 U (1 + T)
+    }
+
+    #[test]
+    fn test_field_operations_precedence() {
+        // Field operations should be atomic (highest precedence)
+        assert_eq!(parse_single_unwrap("x1 := 0 + x2 == 1"), 
+                   parse_single_unwrap("(x1 := 0) + (x2 == 1)"));
+        assert_eq!(parse_single_unwrap("!x1 := 0"), 
+                   parse_single_unwrap("!(x1 := 0)"));
+        assert_eq!(parse_single_unwrap("x1 == 1*"), 
+                   parse_single_unwrap("(x1 == 1)*"));
+    }
+
+    #[test]
+    fn test_precedence_edge_cases() {
+        // Edge cases that might be tricky
+        
+        // Prefix followed by postfix should work
+        assert_eq!(parse_single_unwrap("!T*"), 
+                   parse_single_unwrap("!(T*)"));
+        
+        // Multiple prefix operators
+        assert_eq!(parse_single_unwrap("!!X F 0"), 
+                   parse_single_unwrap("!(!(X (F 0)))"));
+        
+        // Mixing all operator types
+        assert_eq!(parse_single_unwrap("!(x1:=0)* + T ; dup & 1 U 0"), 
+                   parse_single_unwrap("(!(x1:=0)* + (T ; (dup & 1))) U 0"));
+    }
+
+    #[test]
+    fn test_original_user_issue() {
+        // Test the specific issue reported by the user:
+        // (a ; b + c) should be parsed as (a ; b) + c, not a ; (b + c)
+        
+        // Using concrete expressions to make the test clearer
+        assert_eq!(parse_single_unwrap("x1==0 ; x2==1 + T"), 
+                   parse_single_unwrap("(x1==0 ; x2==1) + T"));
+        
+        // Verify the opposite case with parentheses
+        assert_eq!(parse_single_unwrap("x1==0 ; (x2==1 + T)"), 
+                   parse_single_unwrap("x1==0 ; (x2==1 + T)")); // Already correct
+        
+        // They should be different expressions
+        assert_ne!(parse_single_unwrap("x1==0 ; x2==1 + T"), 
+                   parse_single_unwrap("x1==0 ; (x2==1 + T)"));
+        
+        // More examples showing the fix
+        assert_eq!(parse_single_unwrap("0 ; 1 + T"), 
+                   parse_single_unwrap("(0 ; 1) + T"));
+        assert_eq!(parse_single_unwrap("dup ; T ^ 1"), 
+                   parse_single_unwrap("(dup ; T) ^ 1"));
+        assert_eq!(parse_single_unwrap("T ; 0 - 1"), 
+                   parse_single_unwrap("(T ; 0) - 1"));
     }
 }
 
