@@ -46,8 +46,8 @@ pub fn init_panic_hook() {
 fn analyze_expressions_internal(
     expr1_str: &str,
     expr2_str: &str,
-    num_traces_opt: Option<usize>,
-    max_trace_length_opt: Option<usize>
+    num_traces: usize,
+    max_trace_length: usize
 ) -> Result<(bool, Option<Vec<(Vec<Vec<bool>>, Option<Vec<bool>>)>>), (Option<parser::ParseErrorDetails>, Option<parser::ParseErrorDetails>)> {
     let mut expr1_parse_result = None;
     let mut expr2_parse_result = None;
@@ -118,11 +118,8 @@ fn analyze_expressions_internal(
         None
     } else {
         let mut traces_vec = Vec::new();
-        let num_traces = num_traces_opt.unwrap_or(if expr2_str == "0" { 5 } else { 3 });
-        let max_len = max_trace_length_opt.unwrap_or(5);
-        
         for _ in 0..num_traces {
-            if let Some(trace) = aut_handler.random_trace(state_id, max_len) {
+            if let Some(trace) = aut_handler.random_trace(state_id, max_trace_length) {
                 traces_vec.push(trace);
             }
         }
@@ -147,7 +144,7 @@ pub fn analyze_expression(
         .unwrap();
     }
 
-    match analyze_expressions_internal(expr_str, "0", num_traces_opt, max_trace_length_opt) {
+    match analyze_expressions_internal(expr_str, "0", num_traces_opt.unwrap_or(5), max_trace_length_opt.unwrap_or(5)) {
         Ok((is_empty, traces)) => {
             let status = if is_empty {
                 "Analysis result: Drops all packets".to_string()
@@ -181,7 +178,7 @@ pub fn analyze_difference(
     num_traces_opt: Option<usize>, 
     max_trace_length_opt: Option<usize>
 ) -> JsValue {
-    match analyze_expressions_internal(expr1_str, expr2_str, num_traces_opt, max_trace_length_opt) {
+    match analyze_expressions_internal(expr1_str, expr2_str, num_traces_opt.unwrap_or(3), max_trace_length_opt.unwrap_or(5)) {
         Ok((_is_empty, traces)) => {
             serde_wasm_bindgen::to_value(&DifferenceResult {
                 expr1_errors: None,
@@ -348,7 +345,7 @@ mod perf_tests {
         
         // Test the full analyze_expression function
         let start = Instant::now();
-        let result = analyze_expressions_internal(expr_str, "0", Some(5), Some(5));
+        let result = analyze_expressions_internal(expr_str, "0", 5, 5);
         let full_analysis_time = start.elapsed();
         match result {
             Ok((_is_empty, _traces)) => println!("Full analyze_expression time: {:?}", full_analysis_time),
