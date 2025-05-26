@@ -569,7 +569,7 @@ class KATch2Editor {
                     const targetInstance = targetEditors[0];
                     const targetEditor = targetInstance.editor;
                     
-                    // Clear exercise mode state
+                    // Clear exercise mode state completely
                     targetInstance.isExercise = false;
                     targetInstance.targetSolution = null;
                     targetInstance.exerciseDescriptionText = null;
@@ -611,6 +611,12 @@ class KATch2Editor {
                     const lineCount = model.getLineCount();
                     const lineLength = model.getLineMaxColumn(lineCount);
                     targetEditor.setPosition({ lineNumber: lineCount, column: lineLength });
+                    
+                    // Force re-analysis in normal mode by triggering content change
+                    // This ensures the analysis switches from exercise mode to normal mode
+                    setTimeout(() => {
+                        targetEditor.trigger('katch2', 'type', { text: '' });
+                    }, 10);
                     
                     // Visual feedback
                     showSuccess();
