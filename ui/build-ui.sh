@@ -3,6 +3,9 @@
 # KATch2 UI Build Script
 # Builds WASM files and copies them to the katch2ui directory
 
+# Where your GitHub Pages repo is
+DEPLOY_DIR="/Users/jules/git/julesjacobs.github.io/misc/katch2"
+
 # Parse command line arguments
 DEPLOY=false
 if [ "$1" = "--deploy" ]; then
@@ -40,7 +43,6 @@ if [ $? -eq 0 ]; then
     
     # Handle deployment if --deploy flag is provided
     if [ "$DEPLOY" = true ]; then
-        DEPLOY_DIR="/Users/jules/git/julesjacobs.github.io/misc/katch2"
         
         echo "🚀 Deploying to GitHub Pages..."
         
