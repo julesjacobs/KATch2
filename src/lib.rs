@@ -117,13 +117,27 @@ fn analyze_expressions_internal(
     let traces = if is_empty {
         None
     } else {
-        let mut traces_vec = Vec::new();
-        for _ in 0..num_traces {
+        let mut traces_set = std::collections::HashSet::new();
+        let max_attempts = num_traces * 10; // Try up to 10x the requested number
+        
+        for _ in 0..max_attempts {
             if let Some(trace) = aut_handler.random_trace(state_id, max_trace_length) {
-                traces_vec.push(trace);
+                traces_set.insert(trace);
+                // Stop early if we have enough unique traces
+                if traces_set.len() >= num_traces {
+                    break;
+                }
             }
         }
-        if traces_vec.is_empty() { None } else { Some(traces_vec) }
+        
+        if traces_set.is_empty() {
+            None
+        } else {
+            // Convert to vector and sort lexicographically
+            let mut traces_vec: Vec<_> = traces_set.into_iter().collect();
+            traces_vec.sort();
+            Some(traces_vec)
+        }
     };
 
     Ok((is_empty, traces))

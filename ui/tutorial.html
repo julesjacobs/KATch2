@@ -326,7 +326,7 @@ x2 == 1
             <div style="display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 12px;">
                 <div style="text-align: center;">
                     <div style="background: #e3f2fd; padding: 8px 12px; border-radius: 4px; margin-bottom: 4px;">Input</div>
-                    <div style="background: white; padding: 4px 8px; border: 1px solid #ccc; border-radius: 3px;">101</div>
+                    <div style="background: white; padding: 4px 8px; border: 1px solid #ccc; border-radius: 3px;">111</div>
                 </div>
                 <span style="font-size: 18px; color: #666;">→</span>
                 <div style="text-align: center;">
@@ -336,19 +336,19 @@ x2 == 1
                 <span style="font-size: 18px; color: #666;">→</span>
                 <div style="text-align: center;">
                     <div style="background: #f3e5f5; padding: 8px 12px; border-radius: 4px; margin-bottom: 4px;">Assign x1 := 0</div>
-                    <div style="background: white; padding: 4px 8px; border: 1px solid #ccc; border-radius: 3px;">100</div>
+                    <div style="background: white; padding: 4px 8px; border: 1px solid #ccc; border-radius: 3px;">101</div>
                 </div>
                 <span style="font-size: 18px; color: #666;">→</span>
                 <div style="text-align: center;">
                     <div style="background: #e8f5e8; padding: 8px 12px; border-radius: 4px; margin-bottom: 4px;">Output</div>
-                    <div style="background: white; padding: 4px 8px; border: 1px solid #ccc; border-radius: 3px;">100</div>
+                    <div style="background: white; padding: 4px 8px; border: 1px solid #ccc; border-radius: 3px;">101</div>
                 </div>
             </div>
         </div>
         
         <p style="font-style: italic; color: #666; margin: 10px 0;">See this sequential flow in action in the editor below:</p>
         
-        <netkat example="First tests if x2 is 1, then assigns x1 to 0. Both the test and assignment must succeed for the packet to reach the output." num-traces="1">x2 == 1; x1 := 0</netkat>
+        <netkat example="First tests if x2 is 1, then assigns x1 to 0. Both the test and assignment must succeed for the packet to reach the output.">x2 == 1; x1 := 0</netkat>
 
         <netkat exercise="Write a policy that tests x0 == 1, then sets x2 to 0">x0 == 1; x2 := 0</netkat>
         
