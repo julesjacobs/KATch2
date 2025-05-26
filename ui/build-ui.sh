@@ -18,7 +18,6 @@ echo "🔨 Building KATch2 WASM module..."
 cd ..
 
 # Build WASM files
-export RUSTFLAGS="--cfg getrandom_backend=\"wasm_js\" -C link-arg=-z -C link-arg=stack-size=1048576"
 wasm-pack build --target web
 
 if [ $? -ne 0 ]; then
