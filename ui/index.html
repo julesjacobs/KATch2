@@ -3,95 +3,728 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>KATch2 NetKAT Analyzer</title>
+    <title>NetKAT - Network Programming Language</title>
     <link rel="icon" type="image/png" href="assets/favicon.png">
     <style>
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             margin: 0;
-            padding: 20px;
-            background-color: #f4f6f8;
+            padding: 0;
+            background: #ffffff;
             color: #333;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-        .container {
-            background-color: #fff;
-            padding: 25px;
-            border-radius: 8px;
-            box-shadow: 0 6px 12px rgba(0,0,0,0.1);
-            width: 100%;
-            max-width: 850px;
-            display: flex;
-            flex-direction: column;
-        }
-        h1 {
-            color: #000;
-            text-align: center;
-            margin-top: 0;
-            margin-bottom: 20px;
-            font-size: 1.8em;
-        }
-        h1 img {
-            vertical-align: middle;
-            margin-right: -50px;
-            margin-bottom: -10px;
-            width: 100px;
-            height: 100px;
-        }
-        .initial-message {
-            color: #555;
-            text-align: center;
-            margin-bottom: 25px;
-            font-size: 0.95em;
+            line-height: 1.6;
         }
 
-        .github-link {
+        .header {
+            background: #f8f9fa;
+            border-bottom: 1px solid #e9ecef;
+            padding: 40px 20px;
             text-align: center;
-            margin-top: 10px;
-            padding-top: 20px;
         }
-        .github-link a {
+
+        .header-content {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .header h1 {
+            font-size: 3em;
+            margin: 0 0 10px 0;
+            font-weight: 600;
+            color: #2c3e50;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+        }
+
+        .cat-logo {
+            height: 80px;
+            width: auto;
+        }
+
+        .header .subtitle {
+            font-size: 1.1em;
+            margin-bottom: 30px;
+            color: #6c757d;
+            font-weight: 400;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .nav-links {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            flex-wrap: wrap;
+            margin-top: 30px;
+        }
+
+        .nav-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 24px;
+            background: #ffffff;
+            color: #495057;
             text-decoration: none;
-            color: #333;
-            font-size: 0.9em;
+            border-radius: 6px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            border: 1px solid #dee2e6;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
-        .github-link svg {
-            width: 20px;
-            height: 20px;
-            vertical-align: middle;
-            margin-right: 5px;
+
+        .nav-link:hover {
+            background: #e9ecef;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+
+        .nav-link.primary {
+            background: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+
+        .nav-link.primary:hover {
+            background: #0056b3;
+            border-color: #0056b3;
+        }
+
+        .github-icon {
+            width: 16px;
+            height: 16px;
             fill: currentColor;
         }
 
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        .section {
+            padding: 50px 0;
+        }
+
+        .section:nth-child(even) {
+            background: #f8f9fa;
+        }
+
+        .section h2 {
+            font-size: 2em;
+            margin-bottom: 30px;
+            color: #2c3e50;
+            font-weight: 600;
+            border-bottom: 2px solid #e9ecef;
+            padding-bottom: 10px;
+        }
+
+        .intro-text {
+            font-size: 1.1em;
+            color: #495057;
+            margin-bottom: 40px;
+            line-height: 1.8;
+        }
+
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 30px;
+            margin-top: 30px;
+        }
+
+        .feature {
+            padding: 25px;
+            background: white;
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .feature h3 {
+            font-size: 1.3em;
+            margin-bottom: 15px;
+            color: #495057;
+            font-weight: 600;
+        }
+
+        .feature p {
+            color: #6c757d;
+            margin: 0;
+            line-height: 1.6;
+        }
+
+        .tools-section {
+            margin-top: 30px;
+        }
+
+        .tools-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 25px;
+            margin-top: 30px;
+        }
+
+        .tool {
+            background: white;
+            padding: 25px;
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .tool h4 {
+            margin: 0 0 15px 0;
+            color: #495057;
+            font-size: 1.2em;
+            font-weight: 600;
+        }
+
+        .tool .description {
+            color: #6c757d;
+            margin-bottom: 15px;
+            line-height: 1.6;
+        }
+
+        .tool-link {
+            display: inline-block;
+            padding: 8px 16px;
+            background: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            font-weight: 500;
+            font-size: 0.9em;
+            transition: background 0.2s ease;
+        }
+
+        .tool-link:hover {
+            background: #0056b3;
+        }
+
+        .subsection h3 {
+            font-size: 1.5em;
+            margin-bottom: 25px;
+            color: #495057;
+            font-weight: 600;
+            border-bottom: 1px solid #dee2e6;
+            padding-bottom: 8px;
+        }
+
+        .people-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 10px;
+            margin-top: 30px;
+        }
+
+        .person {
+            text-align: center;
+            padding: 10px;
+            background: white;
+            border-radius: 6px;
+            border: 1px solid #e9ecef;
+        }
+
+        .person h4 {
+            margin: 0;
+            color: #495057;
+            font-size: 0.9em;
+            font-weight: 600;
+        }
+
+        .person h4 a {
+            color: #495057;
+            text-decoration: none;
+        }
+
+        .person h4 a:hover {
+            color: #007bff;
+            text-decoration: underline;
+        }
+
+        .papers-section {
+            margin-top: 30px;
+        }
+
+        .papers-grid {
+            display: grid;
+            gap: 20px;
+            margin-top: 30px;
+        }
+
+        .paper {
+            background: white;
+            padding: 25px;
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
+            border-left: 4px solid #007bff;
+        }
+
+        .paper h4 {
+            margin: 0 0 10px 0;
+            color: #495057;
+            font-size: 1.1em;
+            font-weight: 600;
+        }
+
+        .paper h4 a {
+            color: #495057;
+            text-decoration: none;
+        }
+
+        .paper h4 a:hover {
+            color: #007bff;
+            text-decoration: underline;
+        }
+
+        .paper .authors {
+            color: #6c757d;
+            margin-bottom: 5px;
+            font-size: 0.95em;
+        }
+
+        .paper .venue {
+            color: #007bff;
+            font-weight: 600;
+            margin-bottom: 10px;
+            font-size: 0.9em;
+        }
+
+        .paper .venue a {
+            color: #007bff;
+            text-decoration: none;
+        }
+
+        .paper .venue a:hover {
+            text-decoration: underline;
+        }
+
+        .paper .summary {
+            color: #495057;
+            line-height: 1.6;
+            font-size: 0.95em;
+        }
+
+        .footer {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 30px 0;
+            text-align: center;
+            margin-top: 50px;
+        }
+
+        .footer p {
+            margin: 10px 0;
+        }
+
+        .footer a {
+            color: #74b9ff;
+            text-decoration: none;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2.2em;
+                flex-direction: column;
+                gap: 15px;
+            }
+            
+            .cat-logo {
+                height: 60px;
+            }
+
+            .header .subtitle {
+                white-space: normal;
+                overflow: visible;
+                text-overflow: initial;
+            }
+            
+            .nav-links {
+                flex-direction: column;
+                align-items: center;
+                gap: 15px;
+            }
+            
+            .section h2 {
+                font-size: 1.6em;
+            }
+        }
     </style>
 </head>
 <body>
-    <div class="container">
+    <div class="header">
+        <div class="header-content">
         <h1>
-            <img src="assets/katch2-logo-black.webp" alt="KATch2 Logo">
-            KATch<sup style="font-size: 0.6em">2</sup> NetKAT Analyzer
+                <img src="assets/katch2-head.webp" alt="KATch Cat" class="cat-logo">
+                NetKAT
         </h1>
-        
-        <p class="initial-message">Enter a NetKAT expression into the editor below. The emptiness analysis will be done as you type.</p>
-
-        <netkat lines="10" line-numbers="true">// Example NetKAT expression
-x0:=0; x1:=0;
-((x0==0; x0:=1 + x0==1; x1:=1); dup)*;
-x0==0; x1==1</netkat>
+            <p class="subtitle">A Domain-Specific Language for Network Programming with Formal Foundations</p>
+            
+            <div class="nav-links">
+                <a href="#papers" class="nav-link">📄 Papers</a>
+                <a href="tutorial.html" class="nav-link">📚 Tutorial</a>
+                <a href="playground.html" class="nav-link">🛝 Playground</a>
+                <a href="https://github.com/julesjacobs/KATch2" class="nav-link">
+                    <svg class="github-icon" viewBox="0 0 16 16" version="1.1" aria-hidden="true">
+                        <path fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path>
+                    </svg>
+                    Code
+                </a>
+            </div>
+        </div>
     </div>
 
-    <div class="github-link">
-        <a href="https://github.com/julesjacobs/KATch2" target="_blank" rel="noopener noreferrer">
-            <svg viewBox="0 0 16 16" version="1.1" aria-hidden="true">
-                <path fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path>
-            </svg>
-            View KATch2 source on GitHub
-        </a>
+    <div class="section">
+        <div class="container">
+            <h2>About NetKAT</h2>
+            <p class="intro-text">
+                NetKAT is a domain-specific language for specifying and reasoning about packet-forwarding networks. 
+                It is grounded in Kleene Algebra with Tests (KAT) and provides a sound and complete equational theory 
+                for reasoning about network behavior. NetKAT enables both high-level network programming and automated 
+                verification of network properties.
+            </p>
+            
+            <div class="features">
+                <div class="feature">
+                    <h3>Formal Semantics</h3>
+                    <p>Built on Kleene Algebra with Tests, providing rigorous mathematical foundations for network programming with provable correctness guarantees.</p>
+                </div>
+                <div class="feature">
+                    <h3>Automated Verification</h3>
+                    <p>Check network properties like reachability, isolation, and program equivalence automatically using decision procedures and symbolic tools.</p>
+                </div>
+                <div class="feature">
+                    <h3>Algebraic Reasoning</h3>
+                    <p>Express complex network behaviors using algebraic operators, enabling equational reasoning about network programs.</p>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <!-- Include the new KATch2 UI library -->
-    <script type="module" src="katch2ui/katch2-editor.js"></script>
+    <div class="section">
+        <div class="container">
+            <h2>Tools & Resources</h2>
+            
+            <div class="tools-grid">
+                <div class="tool">
+                    <h4>Interactive Tutorial</h4>
+                    <p class="description">Learn NetKAT concepts step-by-step with interactive examples, from basic packet tests to advanced verification techniques.</p>
+                    <a href="tutorial.html" class="tool-link">Start Tutorial</a>
+                </div>
+                <div class="tool">
+                    <h4>NetKAT Playground</h4>
+                    <p class="description">Experiment with NetKAT expressions in an interactive environment with curated examples and exercises.</p>
+                    <a href="playground.html" class="tool-link">Open Playground</a>
+                </div>
+                <div class="tool">
+                    <h4>KATch2 Verifier</h4>
+                    <p class="description">A fast symbolic verifier for NetKAT that efficiently checks program equivalence and network properties.</p>
+                    <a href="https://github.com/julesjacobs/KATch2" class="tool-link">View on GitHub</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="container">
+            <div class="subsection">
+                <h3 id="papers">Papers</h3>
+                
+                <div class="papers-grid">
+                    <div class="paper">
+                        <h4><a href="https://doi.org/10.1145/3729295" target="_blank">Active Learning of Symbolic NetKAT Automata</a></h4>
+                        <p class="authors">Mark Moeller, Tiago Ferreira, Thomas Lu, Nate Foster, Alexandra Silva</p>
+                        <p class="venue">PLDI 2025 • <a href="https://doi.org/10.1145/3729295" target="_blank">DOI</a></p>
+                        <p class="summary">Develops algorithms for actively learning NetKAT automata models of unknown networks, facilitating automated inference of network behaviors for verification purposes.</p>
+                    </div>
+
+                    <div class="paper">
+                        <h4><a href="https://doi.org/10.1145/3729257" target="_blank">StacKAT: Infinite State Network Verification</a></h4>
+                        <p class="authors">Jules Jacobs, Nate Foster, Tobias Kappé, Dexter Kozen, Lily Saada, Alexandra Silva, Jana Wagemaker</p>
+                        <p class="venue">PLDI 2025 • <a href="https://doi.org/10.1145/3729257" target="_blank">DOI</a></p>
+                        <p class="summary">Introduces StacKAT, an extension of NetKAT with a stack data structure for modeling networks that manipulate packet stacks (e.g. MPLS or tunneling protocols).</p>
+                    </div>
+
+                    <div class="paper">
+                        <h4><a href="https://doi.org/10.1145/3656454" target="_blank">KATch: A Fast Symbolic Verifier for NetKAT</a></h4>
+                        <p class="authors">Mark Moeller, Jules Jacobs, Olivier Savary Belanger, David Darais, Cole Schlesinger, Steffen Smolka, Nate Foster, Alexandra Silva</p>
+                        <p class="venue">PLDI 2024 • <a href="https://doi.org/10.1145/3656454" target="_blank">DOI</a></p>
+                        <p class="summary">Introduces KATch, a tool for fast symbolic verification of NetKAT programs, enabling efficient checking of program equivalence and other properties using symbolic automata techniques.</p>
+                    </div>
+
+                    <div class="paper">
+                        <h4><a href="https://doi.org/10.1007/978-3-030-99336-8_21" target="_blank">Concurrent NetKAT: Modeling and Analyzing Stateful, Concurrent Networks</a></h4>
+                        <p class="authors">Jana Wagemaker, Nate Foster, Tobias Kappé, Dexter Kozen, Jurriaan Rot, Alexandra Silva</p>
+                        <p class="venue">ESOP 2022 • <a href="https://doi.org/10.1007/978-3-030-99336-8_21" target="_blank">DOI</a></p>
+                        <p class="summary">Extends NetKAT with constructs for concurrency and stateful interactions, introducing a model based on partially ordered multisets (pomsets) for reasoning about concurrent network behaviors.</p>
+                    </div>
+
+                    <div class="paper">
+                        <h4><a href="https://doi.org/10.1007/978-3-030-99253-8_10" target="_blank">DyNetKAT: An Algebra of Dynamic Networks</a></h4>
+                        <p class="authors">Georgiana Caltais, Hossein Hojjat, Mohammad Reza Mousavi, Hünkar Can Tunç</p>
+                        <p class="venue">FoSSaCS 2022 • <a href="https://doi.org/10.1007/978-3-030-99253-8_10" target="_blank">DOI</a></p>
+                        <p class="summary">Proposes an extension of NetKAT to handle dynamic network updates and multi-packet interactions, adding constructs for synchronization between control-plane updates and data-plane forwarding.</p>
+                    </div>
+
+                    <div class="paper">
+                        <h4><a href="https://doi.org/10.48550/arXiv.2102.12448" target="_blank">Explaining Safety Failures in NetKAT</a></h4>
+                        <p class="authors">Georgiana Caltais, Hunkar Can Tunc</p>
+                        <p class="venue">arXiv preprint, 2021 • <a href="https://doi.org/10.48550/arXiv.2102.12448" target="_blank">arXiv</a></p>
+                        <p class="summary">Proposes methods for explaining safety violations in NetKAT programs by identifying undesired behaviors and providing equational proofs of their occurrence.</p>
+                    </div>
+
+                    <div class="paper">
+                        <h4><a href="https://doi.org/10.1145/3371107" target="_blank">PλoNK: Functional Probabilistic NetKAT</a></h4>
+                        <p class="authors">Alexander Vandenbroucke, Tom Schrijvers</p>
+                        <p class="venue">POPL 2020 • <a href="https://doi.org/10.1145/3371107" target="_blank">DOI</a></p>
+                        <p class="summary">Integrates Probabilistic NetKAT into a functional programming setting, treating network policies as first-class, higher-order functions and extending the language with λ-calculus features.</p>
+                    </div>
+
+                    <div class="paper">
+                        <h4><a href="https://doi.org/10.1145/3314221.3314639" target="_blank">McNetKAT: Scalable Verification of Probabilistic Networks</a></h4>
+                        <p class="authors">Steffen Smolka, Praveen Kumar, David M. Kahn, Nate Foster, Justin Hsu, Dexter Kozen, Alexandra Silva</p>
+                        <p class="venue">PLDI 2019 • <a href="https://doi.org/10.1145/3314221.3314639" target="_blank">DOI</a></p>
+                        <p class="summary">Introduces McNetKAT, a model checker for probabilistic NetKAT programs that focuses on the history-free fragment and provides exact analysis using finite-state absorbing Markov chains.</p>
+                    </div>
+
+                    <div class="paper">
+                        <h4><a href="https://doi.org/10.1007/978-3-030-02149-8_17" target="_blank">Towards an Analysis of Dynamic Gossip in NetKAT</a></h4>
+                        <p class="authors">Malvin Gattinger, Jana Wagemaker</p>
+                        <p class="venue">RAMiCS 2018 • <a href="https://doi.org/10.1007/978-3-030-02149-8_17" target="_blank">DOI</a></p>
+                        <p class="summary">Uses NetKAT to model and analyze the dynamic gossip protocol, where network links appear or disappear as agents share information.</p>
+                    </div>
+
+                    <div class="paper">
+                        <h4><a href="https://doi.org/10.1007/978-3-319-68690-5_28" target="_blank">An Algebraic Approach to Automatic Reasoning for NetKAT Based on Its Operational Semantics</a></h4>
+                        <p class="authors">Yuxin Deng, Min Zhang, Guoqing Lei</p>
+                        <p class="venue">ICFEM 2017 • <a href="https://doi.org/10.1007/978-3-319-68690-5_28" target="_blank">DOI</a></p>
+                        <p class="summary">Develops an operational semantics for NetKAT and leverages it for verification using the Maude system, enabling automatic analyses such as reachability and temporal property model checking.</p>
+                    </div>
+
+                    <div class="paper">
+                        <h4><a href="https://arxiv.org/abs/1707.02772" target="_blank">Deciding Probabilistic Program Equivalence in NetKAT</a></h4>
+                        <p class="authors">Steffen Smolka, David M. Kahn, Praveen Kumar, Nate Foster, Dexter Kozen, Alexandra Silva</p>
+                        <p class="venue">arXiv preprint, 2017 • <a href="https://arxiv.org/abs/1707.02772" target="_blank">arXiv</a></p>
+                        <p class="summary">Tackles the problem of checking equivalence of Probabilistic NetKAT programs, restricting to the history-free fragment and developing a decision procedure based on constructing and comparing stochastic matrices.</p>
+                    </div>
+
+                    <div class="paper">
+                        <h4><a href="https://doi.org/10.48550/arXiv.1608.08483" target="_blank">WNetKAT: A Weighted SDN Programming and Verification Language</a></h4>
+                        <p class="authors">Kim G. Larsen, Stefan Schmid, Bingtian Xue</p>
+                        <p class="venue">arXiv preprint, 2016 • <a href="https://doi.org/10.48550/arXiv.1608.08483" target="_blank">arXiv</a></p>
+                        <p class="summary">Extends NetKAT to WNetKAT by incorporating weights, enabling the modeling and verification of networks with quantitative attributes like bandwidth and latency.</p>
+                    </div>
+
+                    <div class="paper">
+                        <h4><a href="https://doi.org/10.1007/978-3-662-49498-1_12" target="_blank">Probabilistic NetKAT</a></h4>
+                        <p class="authors">Nate Foster, Dexter Kozen, Konstantinos Mamouras, Mark Reitblatt, Alexandra Silva</p>
+                        <p class="venue">ESOP 2016 • <a href="https://doi.org/10.1007/978-3-662-49498-1_12" target="_blank">DOI</a></p>
+                        <p class="summary">Extends NetKAT with probabilistic choice, allowing programs to specify randomized network behaviors. Provides a denotational semantics in terms of distributions on packet histories and a sound and ground-complete equational axiomatization.</p>
+                    </div>
+
+                    <div class="paper">
+                        <h4><a href="https://doi.org/10.48550/arXiv.1507.07049" target="_blank">Event-Driven Network Programming</a></h4>
+                        <p class="authors">Jedidiah McClurg, Hossein Hojjat, Nate Foster, Pavol Cerny</p>
+                        <p class="venue">arXiv preprint, 2015 • <a href="https://doi.org/10.48550/arXiv.1507.07049" target="_blank">arXiv</a></p>
+                        <p class="summary">Introduces an extension of NetKAT with mutable state to support event-driven network updates, ensuring consistent behavior during dynamic changes.</p>
+                    </div>
+
+                    <div class="paper">
+                        <h4><a href="https://doi.org/10.1145/2784731.2784761" target="_blank">A Fast Compiler for NetKAT</a></h4>
+                        <p class="authors">Steffen Smolka, Spiridon Eliopoulos, Nate Foster, Arjun Guha</p>
+                        <p class="venue">ICFP 2015 • <a href="https://doi.org/10.1145/2784731.2784761" target="_blank">DOI</a></p>
+                        <p class="summary">Presents a high-performance compiler for NetKAT that handles complex features like regular paths and virtual networks, significantly improving compilation times with optimizations like symbolic automata representations.</p>
+                    </div>
+
+                    <div class="paper">
+                        <h4><a href="https://doi.org/10.1145/2676726.2677011" target="_blank">A Coalgebraic Decision Procedure for NetKAT</a></h4>
+                        <p class="authors">Nate Foster, Dexter Kozen, Mae Milano, Alexandra Silva, Laure Thompson</p>
+                        <p class="venue">POPL 2015 • <a href="https://doi.org/10.1145/2676726.2677011" target="_blank">DOI</a></p>
+                        <p class="summary">Presents a new algorithm for deciding equivalence of NetKAT programs by constructing finite automata (policy automata) for NetKAT terms. Despite NetKAT's equational theory being PSPACE-complete, shows the procedure is efficient in practice.</p>
+                    </div>
+
+                    <div class="paper">
+                        <h4><a href="https://doi.org/10.1145/2535838.2535862" target="_blank">NetKAT: Semantic Foundations for Networks</a></h4>
+                        <p class="authors">Carolyn Jane Anderson, Nate Foster, Arjun Guha, Jean-Baptiste Jeannin, Dexter Kozen, Cole Schlesinger, David Walker</p>
+                        <p class="venue">POPL 2014 • <a href="https://doi.org/10.1145/2535838.2535862" target="_blank">DOI</a></p>
+                        <p class="summary">Introduces NetKAT, a network programming language grounded in Kleene Algebra with Tests (KAT), providing a sound and complete equational theory for reasoning about network behavior.</p>
+                    </div>
+
+                    <div class="paper">
+                        <h4><a href="https://doi.org/10.1007/978-3-319-12736-1_1" target="_blank">NetKAT – A Formal System for the Verification of Networks</a></h4>
+                        <p class="authors">Dexter Kozen</p>
+                        <p class="venue">APLAS 2014 • <a href="https://doi.org/10.1007/978-3-319-12736-1_1" target="_blank">DOI</a></p>
+                        <p class="summary">An accessible survey and tutorial of NetKAT's design and theory, providing a self-contained introduction to NetKAT's syntax, semantics, and equational reasoning principles.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="subsection">
+                <h3>People</h3>
+                <p class="intro-text">
+                    NetKAT has been developed by researchers from multiple institutions, with significant contributions 
+                    from Cornell University, Princeton University, Radboud University, and other academic institutions.
+                </p>
+                
+                <div class="people-grid" id="people-grid">
+                    <div class="person">
+                        <h4><a href="https://www.cs.cornell.edu/~jnfoster/" target="_blank">Nate Foster</a></h4>
+                    </div>
+                    <div class="person">
+                        <h4><a href="https://www.cs.cornell.edu/~kozen/" target="_blank">Dexter Kozen</a></h4>
+                    </div>
+                    <div class="person">
+                        <h4><a href="https://alexandrasilva.org/" target="_blank">Alexandra Silva</a></h4>
+                    </div>
+                    <div class="person">
+                        <h4><a href="https://julesjacobs.com/" target="_blank">Jules Jacobs</a></h4>
+                    </div>
+                    <div class="person">
+                        <h4><a href="http://khoury.northeastern.edu/~arjunguha/" target="_blank">Arjun Guha</a></h4>
+                    </div>
+                    <div class="person">
+                        <h4><a href="https://smolka.st/" target="_blank">Steffen Smolka</a></h4>
+                    </div>
+                    <div class="person">
+                        <h4><a href="https://janawagemaker.github.io/" target="_blank">Jana Wagemaker</a></h4>
+                    </div>
+                    <div class="person">
+                        <h4><a href="https://tobias.kap.pe/" target="_blank">Tobias Kappé</a></h4>
+                    </div>
+                    <div class="person">
+                        <h4><a href="https://people.utwente.nl/g.g.c.caltais" target="_blank">Georgiana Caltais</a></h4>
+                    </div>
+                    <div class="person">
+                        <h4><a href="https://kmamouras.github.io/" target="_blank">Konstantinos Mamouras</a></h4>
+                    </div>
+                    <div class="person">
+                        <h4><a href="http://jurriaan.me/" target="_blank">Jurriaan Rot</a></h4>
+                    </div>
+                    <div class="person">
+                        <h4>Carolyn Anderson</h4>
+                    </div>
+                    <div class="person">
+                        <h4>David Walker</h4>
+                    </div>
+                    <div class="person">
+                        <h4>Lily Saada</h4>
+                    </div>
+                    <div class="person">
+                        <h4>Mark Moeller</h4>
+                    </div>
+                    <div class="person">
+                        <h4>Tiago Ferreira</h4>
+                    </div>
+                    <div class="person">
+                        <h4>Thomas Lu</h4>
+                    </div>
+                    <div class="person">
+                        <h4>Olivier Savary Belanger</h4>
+                    </div>
+                    <div class="person">
+                        <h4>David Darais</h4>
+                    </div>
+                    <div class="person">
+                        <h4>Cole Schlesinger</h4>
+                    </div>
+                    <div class="person">
+                        <h4>Hossein Hojjat</h4>
+                    </div>
+                    <div class="person">
+                        <h4>Mohammad Reza Mousavi</h4>
+                    </div>
+                    <div class="person">
+                        <h4>Hünkar Can Tunç</h4>
+                    </div>
+                    <div class="person">
+                        <h4>Alexander Vandenbroucke</h4>
+                    </div>
+                    <div class="person">
+                        <h4>Tom Schrijvers</h4>
+                    </div>
+                    <div class="person">
+                        <h4>Praveen Kumar</h4>
+                    </div>
+                    <div class="person">
+                        <h4>David M. Kahn</h4>
+                    </div>
+                    <div class="person">
+                        <h4>Justin Hsu</h4>
+                    </div>
+                    <div class="person">
+                        <h4>Malvin Gattinger</h4>
+                    </div>
+                    <div class="person">
+                        <h4>Yuxin Deng</h4>
+                    </div>
+                    <div class="person">
+                        <h4>Min Zhang</h4>
+                    </div>
+                    <div class="person">
+                        <h4>Guoqing Lei</h4>
+                    </div>
+                    <div class="person">
+                        <h4>Kim G. Larsen</h4>
+                    </div>
+                    <div class="person">
+                        <h4>Stefan Schmid</h4>
+                    </div>
+                    <div class="person">
+                        <h4>Bingtian Xue</h4>
+                    </div>
+                    <div class="person">
+                        <h4>Mark Reitblatt</h4>
+                    </div>
+                    <div class="person">
+                        <h4>Jedidiah McClurg</h4>
+                    </div>
+                    <div class="person">
+                        <h4>Pavol Cerny</h4>
+                    </div>
+                    <div class="person">
+                        <h4>Spiridon Eliopoulos</h4>
+                    </div>
+                    <div class="person">
+                        <h4>Mae Milano</h4>
+                    </div>
+                    <div class="person">
+                        <h4>Laure Thompson</h4>
+                    </div>
+                    <div class="person">
+                        <h4>Jean-Baptiste Jeannin</h4>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Randomize the order of people on page load for fairness
+        document.addEventListener('DOMContentLoaded', function() {
+            const peopleGrid = document.getElementById('people-grid');
+            const people = Array.from(peopleGrid.children);
+            
+            // Fisher-Yates shuffle algorithm
+            for (let i = people.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [people[i], people[j]] = [people[j], people[i]];
+            }
+            
+            // Clear the grid and append in new order
+            peopleGrid.innerHTML = '';
+            people.forEach(person => peopleGrid.appendChild(person));
+        });
+    </script>
 </body>
 </html> 

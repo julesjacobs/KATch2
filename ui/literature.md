@@ -121,3 +121,24 @@ If you need further details, such as BibTeX entries or access to specific papers
 * **An Algebraic Approach to Automatic Reasoning for NetKAT Based on Its Operational Semantics (ICFEM 2017).** *Yuxin Deng, Min Zhang, Guoqing Lei.* **DOI:** 10.1007/978-3-319-68690-5\_28. Develops an **operational semantics** for NetKAT and leverages it for verification using the Maude system. The paper shows that NetKAT’s packet-processing model can be encoded in an algebraic specification (in Maude), enabling automatic analyses such as reachability and temporal property model checking. It proves that the operational semantics is equivalent to the standard denotational semantics, and uses the fact that NetKAT programs can be normalized to a canonical form. The approach allows checking network properties by normalizing two NetKAT policies and comparing their normal forms in an automated way, providing practical verification outside of the automata-based decision procedures.
 
 * **Deciding Probabilistic Program Equivalence in NetKAT (ArXiv preprint 2017).** *Steffen Smolka, David M. Kahn, Praveen Kumar, Nate Foster, Dexter Kozen, Alexandra Silva.* **ArXiv ID:** 1707.02772. This technical report tackles the problem of **checking equivalence of Probabilistic NetKAT programs**. It restricts to the history-free fragment of ProbNetKAT and develops a decision procedure based on constructing and comparing stochastic matrices for programs. The main result is that equivalence in this probabilistic setting is decidable, despite the added complexity of quantitative semantics. The report (an extended version with full proofs) laid the groundwork for later tools like McNetKAT by outlining how to algorithmically reason about probabilistic network behaviors in an algebraic way.
+
+
+Got it. I’ll compile a list of the best homepage links for each major author associated with NetKAT-related papers, prioritizing institutional or personal academic websites that are appropriate to link from the upcoming netkat.org site. I’ll include one link per author that is most representative of their academic work on NetKAT or related research.
+
+
+# Key NetKAT Researchers and Their Homepages
+
+Below is a list of notable researchers who have contributed to the development, extension, or application of **NetKAT** (Network Kleene Algebra with Tests). Each name is paired with their academic or professional homepage, prioritizing official faculty pages or personal academic sites:
+
+* **Nate Foster** – [Cornell University CS homepage](https://www.cs.cornell.edu/~jnfoster/)
+* **Dexter Kozen** – [Cornell University CS homepage](https://www.cs.cornell.edu/~kozen/)
+* **Alexandra Silva** – [Personal faculty site (Cornell University)](https://alexandrasilva.org/)
+* **Arjun Guha** – [Northeastern University faculty homepage](http://khoury.northeastern.edu/~arjunguha/)
+* **Steffen Smolka** – [Personal professional site (smolka.st)](https://smolka.st/)
+* **Jules Jacobs** – [Personal academic site (julesjacobs.com)](https://julesjacobs.com/)
+* **Jana Wagemaker** – [Personal academic site (GitHub Pages)](https://janawagemaker.github.io/)
+* **Tobias Kappé** – [Personal academic site (kap.pe)](https://tobias.kap.pe/)
+* **Lily Saada** – [LinkedIn profile (Cornell University)](https://www.linkedin.com/in/lily-saada-1520331b7) *(no personal homepage available)*
+* **Georgiana Caltais** – [University of Twente faculty page](https://people.utwente.nl/g.g.c.caltais)
+* **Konstantinos Mamouras** – [Rice University personal research page](https://kmamouras.github.io/)
+* **Jurriaan Rot** – [Radboud University personal site](http://jurriaan.me/)
