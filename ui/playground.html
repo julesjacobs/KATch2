@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KATch2 NetKAT Playground</title>
+    <link rel="icon" type="image/png" href="assets/favicon.png">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+            margin: 0;
+            padding: 0;
+            background-color: #fff;
+            color: #333;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            background-color: #f8f9fa;
+            border-bottom: 1px solid #e9ecef;
+            padding: 15px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-shrink: 0;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 1.5em;
+            font-weight: 700;
+            color: #1a1a1a;
+            display: flex;
+            align-items: center;
+        }
+
+        .header img {
+            width: 32px;
+            height: 32px;
+            margin-right: 10px;
+        }
+
+        .header nav a {
+            text-decoration: none;
+            color: #666;
+            margin-left: 20px;
+            font-size: 0.9em;
+        }
+
+        .header nav a:hover {
+            color: #333;
+        }
+
+        .main-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .sidebar {
+            width: 350px;
+            background-color: #f8f9fa;
+            border-right: 1px solid #e9ecef;
+            overflow-y: auto;
+            flex-shrink: 0;
+        }
+
+        .sidebar-section {
+            padding: 20px;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .sidebar-section h3 {
+            margin: 0 0 15px 0;
+            font-size: 1.1em;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .sidebar-section h4 {
+            margin: 15px 0 8px 0;
+            font-size: 0.9em;
+            font-weight: 600;
+            color: #7f8c8d;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .editor-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .editor-header {
+            background-color: #f8f9fa;
+            border-bottom: 1px solid #e9ecef;
+            padding: 15px 20px;
+            flex-shrink: 0;
+        }
+
+        .editor-header h2 {
+            margin: 0;
+            font-size: 1.2em;
+            font-weight: 600;
+            color: #343a40;
+        }
+
+        .editor-header p {
+            margin: 5px 0 0 0;
+            font-size: 0.9em;
+            color: #666;
+        }
+
+        .editor-main {
+            flex: 1;
+            padding: 20px;
+            overflow: auto;
+        }
+
+        /* Mobile responsive */
+        @media (max-width: 768px) {
+            .main-container {
+                flex-direction: column;
+            }
+            
+            .sidebar {
+                width: 100%;
+                max-height: 200px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>
+            <img src="assets/katch2-logo-black.webp" alt="KATch2 Logo">
+            KATch<sup style="font-size: 0.6em">2</sup> Playground
+        </h1>
+        <nav>
+            <a href="tutorial.html">Tutorial</a>
+            <a href="https://github.com/julesjacobs/KATch2" target="_blank">GitHub</a>
+        </nav>
+    </div>
+
+    <div class="main-container">
+        <div class="sidebar">
+            <div class="sidebar-section">
+                <h3>Basic Operations</h3>
+                
+                <h4>Tests</h4>
+                <netkat target="playground-editor" example="A test that checks if the third bit (x2) is 1">x2 == 1</netkat>
+                <netkat target="playground-editor" exercise="Write a test that only allows packets where x1 is 0">x1 == 0</netkat>
+                
+                <h4>Assignments</h4>
+                <netkat target="playground-editor" example="Sets x2 to 1, regardless of its original value">x2 := 1</netkat>
+                <netkat target="playground-editor" exercise="Set x2 to 0">x2 := 0</netkat>
+                
+                <h4>Sequential Composition</h4>
+                <netkat target="playground-editor" example="First tests if x2 is 1, then assigns x1 to 0">x2 == 1; x1 := 0</netkat>
+                <netkat target="playground-editor" example="Demonstrates chaining multiple assignments">x0 := 1; x2 := 0</netkat>
+                <netkat target="playground-editor" exercise="Write a policy that tests x0 == 1, then sets x2 to 0">x0 == 1; x2 := 0</netkat>
+            </div>
+
+            <div class="sidebar-section">
+                <h3>Choice Operations</h3>
+                
+                <netkat target="playground-editor" example="Union: the result contains all traces from both expressions">x0 := 1 + x1 := 1</netkat>
+                <netkat target="playground-editor" example="Mixed choice: either test and assign, or just assign">(x0 == 1; x1 := 1) + x1 := 0</netkat>
+                <netkat target="playground-editor" exercise="Write a policy that either tests x0 == 1 or assigns x1 := 0">x0 == 1 + x1 := 0</netkat>
+                
+                <h4>If-Then-Else</h4>
+                <netkat target="playground-editor" example="If-then-else: copy x0 to x1">(x0 == 1; x1 := 1) + (x0 == 0; x1 := 0)</netkat>
+                <netkat target="playground-editor" exercise="If x1 == 0 then set x0 := 1, else set x0 := 0">(x1 == 0; x0 := 1) + (x1 == 1; x0 := 0)</netkat>
+            </div>
+
+            <div class="sidebar-section">
+                <h3>Advanced Operations</h3>
+                
+                <h4>Dup (Logging)</h4>
+                <netkat target="playground-editor" example="Sets x1 to 1, logs the intermediate state with dup, then sets x2 to 1">x1 := 1; dup; x2 := 1</netkat>
+                <netkat target="playground-editor" exercise="Set x0 to 1, log with dup, then set x1 to 1, log again with dup">x0 := 1; dup; x1 := 1; dup</netkat>
+                
+                <h4>Iteration (Kleene Star)</h4>
+                <netkat target="playground-editor" example="Iteratively set bits from left to right">((x0:=1 + (x0==1;x1:=1) + (x1==1; x2:=1)); dup)*</netkat>
+                <netkat target="playground-editor" example="Simple iteration: keep setting x0 to 1 until it sticks">(x0 == 0; x0 := 1)*</netkat>
+                <netkat target="playground-editor" example="Iteration with logging to see each step">((x0 == 0; x0 := 1); dup)*</netkat>
+                <netkat target="playground-editor" exercise="Write an iteration that nondeterministically modifies x0 in a loop">((x0 := 0 + x0 := 1); dup)*</netkat>
+            </div>
+
+            <div class="sidebar-section">
+                <h3>Logical Operators</h3>
+                
+                <h4>Intersection</h4>
+                <netkat target="playground-editor" example="Intersection: only traces that are in both sets appear in the result">(x0 == 1) & (x1 == 0)</netkat>
+                
+                <h4>XOR / Symmetric Difference</h4>
+                <netkat target="playground-editor" example="XOR: traces that are in one set but not both">(x0 == 1; x1 == 1) ^ (x0 == 1 ; x1 := 1)</netkat>
+                
+                <h4>Difference</h4>
+                <netkat target="playground-editor" example="Difference: traces in the first set but not the second">(x0 == 1) - (x1 == 1)</netkat>
+            </div>
+
+            <div class="sidebar-section">
+                <h3>Verification</h3>
+                
+                <h4>Subset Check</h4>
+                <netkat target="playground-editor" example="Subset verification: is the trace set of (x0 == 1) ⊆ trace set of (x0 == 1 + x1 == 1)?">(x0 == 1) - (x0 == 1 + x1 == 1)</netkat>
+                
+                <h4>Equality Check</h4>
+                <netkat target="playground-editor" example="Equality verification: do these expressions generate the same trace set?">(x0 == 1; x1 == 0) ^ (x1 == 0 & x0 == 1)</netkat>
+            </div>
+
+            <div class="sidebar-section">
+                <h3>Complex Exercises</h3>
+                
+                <netkat target="playground-editor" exercise="Create a bit flipper: if x0 is 0 set it to 1, if x0 is 1 set it to 0">(x0 == 0; x0 := 1) + (x0 == 1; x0 := 0)</netkat>
+                
+                <netkat target="playground-editor" exercise="Write a policy that copies x0 to x1">(x0 == 1; x1 := 1) + (x0 == 0; x1 := 0)</netkat>
+                
+                <netkat target="playground-editor" exercise="Create a policy that accepts packets only if x0 and x1 are equal">(x0 == 0; x1 == 0) + (x0 == 1; x1 == 1)</netkat>
+                
+                <netkat target="playground-editor" exercise="Write a policy that swaps x0 and x1">(x0 == 0; x1 == 1; x0 := 1; x1 := 0) + 
+(x0 == 1; x1 == 0; x0 := 0; x1 := 1) +
+(x0 == 0; x1 == 0) +
+(x0 == 1; x1 == 1)</netkat>
+                
+                <netkat target="playground-editor" exercise="Complex Policy" lines="3">// Bit flipper with logging
+(x0 == 0; x0 := 1 + x0 == 1; x0 := 0);
+dup; x1 := 1</netkat>
+                
+                <netkat target="playground-editor" exercise="Assignment Chain" lines="4">// Conditional assignment chain
+x0 == 1;
+(x1 == 0; x2 := 1 + x1 == 1; x2 := 0);
+dup</netkat>
+                
+                <netkat target="playground-editor" exercise="Check Equivalence">(x0 := 1; x1 := 1) ^ (x1 := 1; x0 := 1)</netkat>
+            </div>
+        </div>
+
+        <div class="editor-container">
+            <div class="editor-header">
+                <h2>NetKAT Editor</h2>
+                <p>Click an example or exercise from the sidebar to load it, or write your own NetKAT expression</p>
+            </div>
+            <div class="editor-main">
+                <netkat id="playground-editor" lines="15" show-line-numbers>// Welcome to the KATch2 NetKAT Playground!
+// Click any example or exercise from the sidebar to load it
+// Or write your own NetKAT expressions here
+
+// Try some basic examples:
+x0 := 1
+x0 == 1; x1 := 0
+x0 := 1 + x1 := 1
+
+// Use the sidebar to explore more complex examples
+</netkat>
+            </div>
+        </div>
+    </div>
+
+    <!-- Include the new KATch2 UI library -->
+    <script type="module" src="katch2ui/katch2-editor.js"></script>
+</body>
+</html> 

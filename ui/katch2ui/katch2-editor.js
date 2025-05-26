@@ -521,7 +521,44 @@ class KATch2Editor {
                 });
                 
                 if (targetEditors.length > 0) {
-                    const targetEditor = targetEditors[0].editor;
+                    const targetInstance = targetEditors[0];
+                    const targetEditor = targetInstance.editor;
+                    
+                    // Clear exercise mode state
+                    targetInstance.isExercise = false;
+                    targetInstance.targetSolution = null;
+                    targetInstance.exerciseDescriptionText = null;
+                    
+                    // Update katch2ExerciseInfo on the DOM element
+                    if (targetInstance.customElementDOM && targetInstance.customElementDOM.katch2ExerciseInfo) {
+                        targetInstance.customElementDOM.katch2ExerciseInfo.isExercise = false;
+                        targetInstance.customElementDOM.katch2ExerciseInfo.targetSolution = null;
+                        targetInstance.customElementDOM.katch2ExerciseInfo.exerciseDescriptionText = null;
+                    }
+                    
+                    // Hide exercise-specific UI elements
+                    if (targetInstance.exerciseDescriptionElement) {
+                        targetInstance.exerciseDescriptionElement.style.display = 'none';
+                    }
+                    if (targetInstance.exerciseFeedbackArea) {
+                        targetInstance.exerciseFeedbackArea.style.display = 'none';
+                    }
+                    if (targetInstance.showSolutionButton) {
+                        targetInstance.showSolutionButton.style.display = 'none';
+                    }
+                    
+                    // Show standard analysis area
+                    if (targetInstance.resultArea) {
+                        targetInstance.resultArea.style.display = 'block';
+                    }
+                    
+                    // Reset container styling to normal mode
+                    const container = targetInstance.customElementDOM.querySelector('div[style*="border: 1px solid"]');
+                    if (container) {
+                        container.style.borderRadius = '4px';
+                    }
+                    
+                    // Set the code content
                     targetEditor.setValue(initialCode);
                     targetEditor.focus();
                     // Position cursor at the end of the content
