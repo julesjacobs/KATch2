@@ -40,124 +40,15 @@ pub fn init_panic_hook() {
     console_error_panic_hook::set_once();
 }
 
-/// Helper function that performs the core analysis logic on parsed expressions.
-/// For single expression analysis, pass None for expr2.
-/// For difference analysis, pass both expressions.
+/// Helper function that performs the core analysis logic on expression strings.
+/// For single expression analysis, pass "0" for expr2_str.
+/// For difference analysis, pass both expression strings.
 fn analyze_expressions_internal(
-    expr1: &expr::Expr,
-    expr2: Option<&expr::Expr>,
+    expr1_str: &str,
+    expr2_str: &str,
     num_traces_opt: Option<usize>,
     max_trace_length_opt: Option<usize>
-) -> (bool, Option<Vec<(Vec<Vec<bool>>, Option<Vec<bool>>)>>) {
-    // Determine the unified field count
-    let expr1_fields = expr1.num_fields();
-    let unified_field_count = if let Some(expr2) = expr2 {
-        let expr2_fields = expr2.num_fields();
-        std::cmp::max(expr1_fields, expr2_fields)
-    } else {
-        expr1_fields
-    };
-
-    // Create the target expression (either single expression or difference)
-    let target_expr = if let Some(expr2) = expr2 {
-        expr::Expr::Difference(
-            Box::new(expr1.clone()),
-            Box::new(expr2.clone())
-        )
-    } else {
-        expr1.clone()
-    };
-
-    // Create automaton handler with the unified field count
-    let mut aut_handler = aut::Aut::new(unified_field_count);
-
-    // Convert the target expression to an automaton state
-    let state_id = aut_handler.expr_to_state(&target_expr);
-    let is_empty = aut_handler.is_empty(state_id);
-
-    let traces = if is_empty {
-        None
-    } else {
-        let mut traces_vec = Vec::new();
-        let num_traces = num_traces_opt.unwrap_or(if expr2.is_some() { 3 } else { 5 });
-        let max_len = max_trace_length_opt.unwrap_or(5);
-        
-        for _ in 0..num_traces {
-            if let Some(trace) = aut_handler.random_trace(state_id, max_len) {
-                traces_vec.push(trace);
-            }
-        }
-        if traces_vec.is_empty() { None } else { Some(traces_vec) }
-    };
-
-    (is_empty, traces)
-}
-
-#[wasm_bindgen]
-pub fn analyze_expression(
-    expr_str: &str, 
-    num_traces_opt: Option<usize>, 
-    max_trace_length_opt: Option<usize>
-) -> JsValue {
-    if expr_str.trim().is_empty() {
-        return serde_wasm_bindgen::to_value(&AnalysisResult {
-            status: "Empty (no input)".to_string(),
-            error: None,
-            traces: None,
-        })
-        .unwrap();
-    }
-
-    match parser::parse_expressions(expr_str) {
-        Ok(expressions) => {
-            if expressions.is_empty() {
-                return serde_wasm_bindgen::to_value(&AnalysisResult {
-                    status: "Empty (parsed as no expressions)".to_string(),
-                    error: None,
-                    traces: None,
-                })
-                .unwrap();
-            }
-
-            let first_expr = &expressions[0];
-            let (is_empty, traces) = analyze_expressions_internal(
-                first_expr.as_ref(), 
-                None, 
-                num_traces_opt, 
-                max_trace_length_opt
-            );
-
-            let status = if is_empty {
-                "Analysis result: Drops all packets".to_string()
-            } else {
-                "Analysis result: Allows traffic".to_string()
-            };
-
-            serde_wasm_bindgen::to_value(&AnalysisResult {
-                status,
-                error: None,
-                traces,
-            })
-            .unwrap()
-        }
-        Err(err_details) => {
-            serde_wasm_bindgen::to_value(&AnalysisResult {
-                status: "Syntax Error".to_string(),
-                error: Some(err_details),
-                traces: None,
-            })
-            .unwrap()
-        }
-    }
-}
-
-#[wasm_bindgen]
-pub fn analyze_difference(
-    expr1_str: &str, 
-    expr2_str: &str, 
-    num_traces_opt: Option<usize>, 
-    max_trace_length_opt: Option<usize>
-) -> JsValue {
+) -> Result<(bool, Option<Vec<(Vec<Vec<bool>>, Option<Vec<bool>>)>>), (Option<parser::ParseErrorDetails>, Option<parser::ParseErrorDetails>)> {
     let mut expr1_parse_result = None;
     let mut expr2_parse_result = None;
 
@@ -199,28 +90,113 @@ pub fn analyze_difference(
 
     // If either expression failed to parse, return early with error info
     if expr1_parse_result.is_some() || expr2_parse_result.is_some() || parsed_expr1.is_none() || parsed_expr2.is_none() {
-        return serde_wasm_bindgen::to_value(&DifferenceResult {
-            expr1_errors: expr1_parse_result,
-            expr2_errors: expr2_parse_result,
-            example_traces: None,
-        }).unwrap();
+        return Err((expr1_parse_result, expr2_parse_result));
     }
 
     let expr1 = parsed_expr1.unwrap();
     let expr2 = parsed_expr2.unwrap();
 
-    let (_is_empty, traces) = analyze_expressions_internal(
-        expr1.as_ref(),
-        Some(expr2.as_ref()),
-        num_traces_opt,
-        max_trace_length_opt
+    // Determine the unified field count
+    let expr1_fields = expr1.num_fields();
+    let expr2_fields = expr2.num_fields();
+    let unified_field_count = std::cmp::max(expr1_fields, expr2_fields);
+
+    // Create the target expression (difference: expr1 - expr2)
+    let target_expr = expr::Expr::Difference(
+        Box::new(expr1.as_ref().clone()),
+        Box::new(expr2.as_ref().clone())
     );
 
-    serde_wasm_bindgen::to_value(&DifferenceResult {
-        expr1_errors: None,
-        expr2_errors: None,
-        example_traces: traces,
-    }).unwrap()
+    // Create automaton handler with the unified field count
+    let mut aut_handler = aut::Aut::new(unified_field_count);
+
+    // Convert the target expression to an automaton state
+    let state_id = aut_handler.expr_to_state(&target_expr);
+    let is_empty = aut_handler.is_empty(state_id);
+
+    let traces = if is_empty {
+        None
+    } else {
+        let mut traces_vec = Vec::new();
+        let num_traces = num_traces_opt.unwrap_or(if expr2_str == "0" { 5 } else { 3 });
+        let max_len = max_trace_length_opt.unwrap_or(5);
+        
+        for _ in 0..num_traces {
+            if let Some(trace) = aut_handler.random_trace(state_id, max_len) {
+                traces_vec.push(trace);
+            }
+        }
+        if traces_vec.is_empty() { None } else { Some(traces_vec) }
+    };
+
+    Ok((is_empty, traces))
+}
+
+#[wasm_bindgen]
+pub fn analyze_expression(
+    expr_str: &str, 
+    num_traces_opt: Option<usize>, 
+    max_trace_length_opt: Option<usize>
+) -> JsValue {
+    if expr_str.trim().is_empty() {
+        return serde_wasm_bindgen::to_value(&AnalysisResult {
+            status: "Empty (no input)".to_string(),
+            error: None,
+            traces: None,
+        })
+        .unwrap();
+    }
+
+    match analyze_expressions_internal(expr_str, "0", num_traces_opt, max_trace_length_opt) {
+        Ok((is_empty, traces)) => {
+            let status = if is_empty {
+                "Analysis result: Drops all packets".to_string()
+            } else {
+                "Analysis result: Allows traffic".to_string()
+            };
+
+            serde_wasm_bindgen::to_value(&AnalysisResult {
+                status,
+                error: None,
+                traces,
+            })
+            .unwrap()
+        }
+        Err((expr1_error, _expr2_error)) => {
+            // For single expression analysis, we only care about expr1 errors
+            serde_wasm_bindgen::to_value(&AnalysisResult {
+                status: "Syntax Error".to_string(),
+                error: expr1_error,
+                traces: None,
+            })
+            .unwrap()
+        }
+    }
+}
+
+#[wasm_bindgen]
+pub fn analyze_difference(
+    expr1_str: &str, 
+    expr2_str: &str, 
+    num_traces_opt: Option<usize>, 
+    max_trace_length_opt: Option<usize>
+) -> JsValue {
+    match analyze_expressions_internal(expr1_str, expr2_str, num_traces_opt, max_trace_length_opt) {
+        Ok((_is_empty, traces)) => {
+            serde_wasm_bindgen::to_value(&DifferenceResult {
+                expr1_errors: None,
+                expr2_errors: None,
+                example_traces: traces,
+            }).unwrap()
+        }
+        Err((expr1_errors, expr2_errors)) => {
+            serde_wasm_bindgen::to_value(&DifferenceResult {
+                expr1_errors,
+                expr2_errors,
+                example_traces: None,
+            }).unwrap()
+        }
+    }
 }
 
 #[cfg(test)]
@@ -372,9 +348,12 @@ mod perf_tests {
         
         // Test the full analyze_expression function
         let start = Instant::now();
-        let (_is_empty, _traces) = analyze_expressions_internal(first_expr.as_ref(), None, Some(5), Some(5));
+        let result = analyze_expressions_internal(expr_str, "0", Some(5), Some(5));
         let full_analysis_time = start.elapsed();
-        println!("Full analyze_expression time: {:?}", full_analysis_time);
+        match result {
+            Ok((_is_empty, _traces)) => println!("Full analyze_expression time: {:?}", full_analysis_time),
+            Err(_) => println!("Full analyze_expression failed: {:?}", full_analysis_time),
+        }
     }
 
     #[test]
