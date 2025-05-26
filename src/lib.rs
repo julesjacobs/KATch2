@@ -40,6 +40,59 @@ pub fn init_panic_hook() {
     console_error_panic_hook::set_once();
 }
 
+/// Helper function that performs the core analysis logic on parsed expressions.
+/// For single expression analysis, pass None for expr2.
+/// For difference analysis, pass both expressions.
+fn analyze_expressions_internal(
+    expr1: &expr::Expr,
+    expr2: Option<&expr::Expr>,
+    num_traces_opt: Option<usize>,
+    max_trace_length_opt: Option<usize>
+) -> (bool, Option<Vec<(Vec<Vec<bool>>, Option<Vec<bool>>)>>) {
+    // Determine the unified field count
+    let expr1_fields = expr1.num_fields();
+    let unified_field_count = if let Some(expr2) = expr2 {
+        let expr2_fields = expr2.num_fields();
+        std::cmp::max(expr1_fields, expr2_fields)
+    } else {
+        expr1_fields
+    };
+
+    // Create the target expression (either single expression or difference)
+    let target_expr = if let Some(expr2) = expr2 {
+        expr::Expr::Difference(
+            Box::new(expr1.clone()),
+            Box::new(expr2.clone())
+        )
+    } else {
+        expr1.clone()
+    };
+
+    // Create automaton handler with the unified field count
+    let mut aut_handler = aut::Aut::new(unified_field_count);
+
+    // Convert the target expression to an automaton state
+    let state_id = aut_handler.expr_to_state(&target_expr);
+    let is_empty = aut_handler.is_empty(state_id);
+
+    let traces = if is_empty {
+        None
+    } else {
+        let mut traces_vec = Vec::new();
+        let num_traces = num_traces_opt.unwrap_or(if expr2.is_some() { 3 } else { 5 });
+        let max_len = max_trace_length_opt.unwrap_or(5);
+        
+        for _ in 0..num_traces {
+            if let Some(trace) = aut_handler.random_trace(state_id, max_len) {
+                traces_vec.push(trace);
+            }
+        }
+        if traces_vec.is_empty() { None } else { Some(traces_vec) }
+    };
+
+    (is_empty, traces)
+}
+
 #[wasm_bindgen]
 pub fn analyze_expression(
     expr_str: &str, 
@@ -58,8 +111,6 @@ pub fn analyze_expression(
     match parser::parse_expressions(expr_str) {
         Ok(expressions) => {
             if expressions.is_empty() {
-                // This case should ideally be handled by the parser returning an error
-                // or by the initial trim().is_empty() check.
                 return serde_wasm_bindgen::to_value(&AnalysisResult {
                     status: "Empty (parsed as no expressions)".to_string(),
                     error: None,
@@ -68,31 +119,18 @@ pub fn analyze_expression(
                 .unwrap();
             }
 
-            // For now, we analyze the first expression if multiple are parsed (e.g. separated by comments)
-            // Later, the UI might only allow/send single expressions or handle multiple.
             let first_expr = &expressions[0];
-            let num_fields = first_expr.num_fields();
-            let mut aut_handler = aut::Aut::new(num_fields);
-            let state_id = aut_handler.expr_to_state(first_expr.as_ref());
-            let is_empty = aut_handler.is_empty(state_id);
+            let (is_empty, traces) = analyze_expressions_internal(
+                first_expr.as_ref(), 
+                None, 
+                num_traces_opt, 
+                max_trace_length_opt
+            );
 
-            let (status, traces) = if is_empty {
-                ("Analysis result: Drops all packets".to_string(), None)
+            let status = if is_empty {
+                "Analysis result: Drops all packets".to_string()
             } else {
-                let mut traces_vec = Vec::new();
-                let num_traces_to_generate = num_traces_opt.unwrap_or(5); // Default to 5 traces
-                let max_len = max_trace_length_opt.unwrap_or(5); // Default to max length 5
-                
-                for _ in 0..num_traces_to_generate {
-                    if let Some(trace) = aut_handler.random_trace(state_id, max_len) {
-                        traces_vec.push(trace);
-                    }
-                }
-                if traces_vec.is_empty() {
-                    ("Analysis result: Drops all packets".to_string(), None) // Could still be empty if random_trace fails or policy is very restrictive
-                } else {
-                    ("Analysis result: Allows traffic".to_string(), Some(traces_vec))
-                }
+                "Analysis result: Allows traffic".to_string()
             };
 
             serde_wasm_bindgen::to_value(&AnalysisResult {
@@ -132,7 +170,7 @@ pub fn analyze_difference(
                 });
                 None
             } else {
-                Some(exprs.remove(0)) // Take the first expression
+                Some(exprs.remove(0))
             }
         }
         Err(e) => {
@@ -150,7 +188,7 @@ pub fn analyze_difference(
                 });
                 None
             } else {
-                Some(exprs.remove(0)) 
+                Some(exprs.remove(0))
             }
         }
         Err(e) => {
@@ -171,37 +209,12 @@ pub fn analyze_difference(
     let expr1 = parsed_expr1.unwrap();
     let expr2 = parsed_expr2.unwrap();
 
-    // Determine the unified field count (take the maximum of both expressions)
-    let expr1_fields = expr1.num_fields();
-    let expr2_fields = expr2.num_fields();
-    let unified_field_count = std::cmp::max(expr1_fields, expr2_fields);
-
-    // Create the difference expression at the AST level: expr1 - expr2
-    let difference_expr = expr::Expr::Difference(
-        Box::new(expr1.as_ref().clone()),
-        Box::new(expr2.as_ref().clone())
+    let (_is_empty, traces) = analyze_expressions_internal(
+        expr1.as_ref(),
+        Some(expr2.as_ref()),
+        num_traces_opt,
+        max_trace_length_opt
     );
-
-    // Create automaton handler with the unified field count
-    let mut aut_handler = aut::Aut::new(unified_field_count);
-
-    // Convert the difference expression to an automaton state
-    let diff_state_id = aut_handler.expr_to_state(&difference_expr);
-    let is_diff_empty = aut_handler.is_empty(diff_state_id);
-
-    let traces = if is_diff_empty {
-        None // Difference is empty
-    } else {
-        let mut traces_vec = Vec::new();
-        let num_traces = num_traces_opt.unwrap_or(3); // Default to 3 for difference traces
-        let max_len = max_trace_length_opt.unwrap_or(5); // Default to 5
-        for _ in 0..num_traces {
-            if let Some(trace) = aut_handler.random_trace(diff_state_id, max_len) {
-                traces_vec.push(trace);
-            }
-        }
-        if traces_vec.is_empty() { None } else { Some(traces_vec) }
-    };
 
     serde_wasm_bindgen::to_value(&DifferenceResult {
         expr1_errors: None,
@@ -359,7 +372,7 @@ mod perf_tests {
         
         // Test the full analyze_expression function
         let start = Instant::now();
-        let _result = analyze_expression(expr_str, Some(5), Some(5));
+        let (_is_empty, _traces) = analyze_expressions_internal(first_expr.as_ref(), None, Some(5), Some(5));
         let full_analysis_time = start.elapsed();
         println!("Full analyze_expression time: {:?}", full_analysis_time);
     }
@@ -531,7 +544,7 @@ mod perf_tests {
         // Test what happens when we do multiple push operations
         let start = Instant::now();
         let mut current_sp = sp_one;
-        for (target_state, spp) in delta_st.get_transitions() {
+        for (_target_state, spp) in delta_st.get_transitions() {
             current_sp = aut.spp_store_mut().push(current_sp, *spp);
             println!("  Push with SPP {:?} -> SP {:?}", spp, current_sp);
         }
