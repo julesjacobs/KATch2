@@ -41,9 +41,11 @@ katch2ui/
 <netkat 
   lines="10" 
   show-line-numbers
+  num-traces="8"
+  max-trace-length="10"
   example="Description of this example" -- or --
   exercise="Exercise instructions"
-  target="other-editor-id"
+  target="other-editor-id" -- or --
   id="my-editor">
 // Your NetKAT code here
 x0 == 1; x1 := 0
