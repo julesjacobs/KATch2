@@ -92,7 +92,6 @@ if [ $? -eq 0 ]; then
                     
                     if [ $? -eq 0 ]; then
                         echo "✅ Successfully pushed changes to GitHub Pages!"
-                        echo "🌐 Changes are now live at: https://julesjacobs.com/misc/katch2/tutorial.html"
                     else
                         echo "❌ Failed to push changes to remote repository"
                         exit 1
