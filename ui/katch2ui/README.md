@@ -41,7 +41,7 @@ katch2ui/
 <netkat 
   lines="10" 
   show-line-numbers
-  example="Description of this example"
+  example="Description of this example" -- or --
   exercise="Exercise instructions"
   target="other-editor-id"
   id="my-editor">
