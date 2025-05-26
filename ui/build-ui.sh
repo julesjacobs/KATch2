@@ -4,7 +4,7 @@
 # Builds WASM files and copies them to the katch2ui directory
 
 # Where your GitHub Pages repo is
-DEPLOY_DIR="/Users/jules/git/julesjacobs.github.io/misc/katch2"
+DEPLOY_DIR="/Users/jules/git/netkat-www/"
 
 # Parse command line arguments
 DEPLOY=false
