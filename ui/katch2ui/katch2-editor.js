@@ -433,6 +433,9 @@ class KATch2Editor {
     }
 
     replaceWithExampleEditor(element, initialCode, lines = 1, showLineNumbers = false, targetId) {
+        // Add syntax highlighting styles to the page
+        this.addNetKATSyntaxStyles();
+        
         // Calculate height based on lines (approximately 22px per line + padding)
         const height = Math.max(50, lines * 22 + 30);
         
@@ -452,7 +455,52 @@ class KATch2Editor {
             border-radius: 4px; 
             box-shadow: 0 3px 7px rgba(0,0,0,0.15);
             transition: border-color 0.3s ease, box-shadow 0.3s ease;
+            background-color: white;
+            position: relative;
+            overflow: hidden;
         `;
+        
+        // Create code display (not an editor)
+        const codeDisplay = document.createElement('pre');
+        codeDisplay.style.cssText = `
+            margin: 0;
+            padding: 10px;
+            font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            color: #333;
+            background: transparent;
+            border: none;
+            overflow: auto;
+            height: 100%;
+            box-sizing: border-box;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        `;
+        
+        // Apply syntax highlighting
+        if (showLineNumbers) {
+            const lines = initialCode.split('\n');
+            const numberedLines = lines.map((line, index) => {
+                const lineNumber = (index + 1).toString().padStart(2, ' ');
+                const highlightedLine = this.highlightNetKATCode(line);
+                return `<span class="line-number">${lineNumber} | </span>${highlightedLine}`;
+            }).join('\n');
+            codeDisplay.innerHTML = numberedLines;
+            codeDisplay.style.paddingLeft = '15px';
+            
+            // Add line number styling
+            const lineNumberStyle = document.createElement('style');
+            lineNumberStyle.textContent = '.line-number { color: #999; user-select: none; }';
+            if (!document.getElementById('line-number-style')) {
+                lineNumberStyle.id = 'line-number-style';
+                document.head.appendChild(lineNumberStyle);
+            }
+        } else {
+            codeDisplay.innerHTML = this.highlightNetKATCode(initialCode);
+        }
+        
+        container.appendChild(codeDisplay);
         
         // Create analyze button in top right corner
         const analyzeButton = document.createElement('button');
@@ -507,9 +555,6 @@ class KATch2Editor {
         wrapper.appendChild(container);
         wrapper.appendChild(analyzeButton);
         element.parentNode.replaceChild(wrapper, element);
-        
-        // Create the read-only editor
-        const editor = this.createEditor(wrapper, container, null, null, null, initialCode, showLineNumbers, true, null, false, null, null, null);
         
         // Add click handler to load content into target
         const loadIntoTarget = () => {
@@ -1087,6 +1132,123 @@ class KATch2Editor {
     // Helper function to generate consistent trace styling
     getTraceStyle(backgroundColor = 'white', borderColor = '#e9ecef') {
         return `font-family: monospace; font-size: 14px; background-color: ${backgroundColor}; padding: 2px 4px; border-radius: 3px; border: 1px solid ${borderColor}; display: inline-block; margin: 2px 4px 2px 0;`;
+    }
+
+    // Simple syntax highlighter for NetKAT code
+    highlightNetKATCode(code) {
+        // Tokenize the code to avoid HTML conflicts
+        const tokens = [];
+        let i = 0;
+        
+        while (i < code.length) {
+            let matched = false;
+            
+            // Check for comments first (highest priority)
+            if (code.substr(i, 2) === '//') {
+                let end = code.indexOf('\n', i);
+                if (end === -1) end = code.length;
+                tokens.push({ type: 'comment', text: code.substring(i, end) });
+                i = end;
+                matched = true;
+            }
+            // Check for keywords
+            else if (/[a-zA-Z_]/.test(code[i])) {
+                let start = i;
+                while (i < code.length && /[a-zA-Z_0-9]/.test(code[i])) {
+                    i++;
+                }
+                const word = code.substring(start, i);
+                if (['dup', 'T', 'X', 'U', 'F', 'G', 'R'].includes(word)) {
+                    tokens.push({ type: 'keyword', text: word });
+                } else {
+                    tokens.push({ type: 'identifier', text: word });
+                }
+                matched = true;
+            }
+            // Check for variables (x followed by digits)
+            else if (code[i] === 'x' && i + 1 < code.length && /\d/.test(code[i + 1])) {
+                let start = i;
+                i++; // skip 'x'
+                while (i < code.length && /\d/.test(code[i])) {
+                    i++;
+                }
+                tokens.push({ type: 'variable', text: code.substring(start, i) });
+                matched = true;
+            }
+            // Check for numbers (0 or 1)
+            else if (/[01]/.test(code[i])) {
+                tokens.push({ type: 'number', text: code[i] });
+                i++;
+                matched = true;
+            }
+            // Check for operators
+            else if (code.substr(i, 2) === ':=' || code.substr(i, 2) === '==') {
+                tokens.push({ type: 'operator', text: code.substr(i, 2) });
+                i += 2;
+                matched = true;
+            }
+            else if (['+', '&', '^', '-', '!', ';', '*'].includes(code[i])) {
+                tokens.push({ type: 'operator', text: code[i] });
+                i++;
+                matched = true;
+            }
+            // Check for brackets
+            else if (['(', ')'].includes(code[i])) {
+                tokens.push({ type: 'brackets', text: code[i] });
+                i++;
+                matched = true;
+            }
+            
+            if (!matched) {
+                // Default case for whitespace and other characters
+                tokens.push({ type: 'default', text: code[i] });
+                i++;
+            }
+        }
+        
+        // Convert tokens to HTML
+        return tokens.map(token => {
+            const escapedText = this.htmlEscape(token.text);
+            switch (token.type) {
+                case 'comment':
+                    return `<span class="netkat-comment">${escapedText}</span>`;
+                case 'keyword':
+                    return `<span class="netkat-keyword">${escapedText}</span>`;
+                case 'variable':
+                    return `<span class="netkat-variable">${escapedText}</span>`;
+                case 'number':
+                    return `<span class="netkat-number">${escapedText}</span>`;
+                case 'operator':
+                    return `<span class="netkat-operator">${escapedText}</span>`;
+                case 'brackets':
+                    return `<span class="netkat-brackets">${escapedText}</span>`;
+                case 'identifier':
+                    return `<span class="netkat-identifier">${escapedText}</span>`;
+                default:
+                    return escapedText;
+            }
+        }).join('');
+    }
+
+    // Add CSS styles for syntax highlighting
+    addNetKATSyntaxStyles() {
+        // Check if styles are already added
+        if (document.getElementById('netkat-syntax-styles')) {
+            return;
+        }
+
+        const style = document.createElement('style');
+        style.id = 'netkat-syntax-styles';
+        style.textContent = `
+            .netkat-comment { color: #008800; font-style: italic; }
+            .netkat-keyword { color: #0000FF; }
+            .netkat-variable { color: #0066CC; }
+            .netkat-number { color: #008000; }
+            .netkat-operator { color: #800080; }
+            .netkat-brackets { color: #B8860B; }
+            .netkat-identifier { color: #996600; }
+        `;
+        document.head.appendChild(style);
     }
 }
 
