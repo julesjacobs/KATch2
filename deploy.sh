@@ -19,6 +19,7 @@ cd "$SCRIPT_DIR"
 
 # Build the WASM package
 echo "Building WASM package..."
+export RUSTFLAGS="--cfg getrandom_backend=\"wasm_js\" -C link-arg=-z -C link-arg=stack-size=1048576"
 wasm-pack build --target web
 # If your wasm crate is not at the root, you might need to add a path to wasm-pack build
 # e.g., wasm-pack build path/to/wasm-crate --target web
