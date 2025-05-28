@@ -533,7 +533,7 @@ x2 == 1
         
         <p>This shows multiple paths in the trace, corresponding to 0, 1, 2, etc., iterations, up to a limit defined by the analyzer to prevent infinite loops in the visualization.</p>
 
-        <netkat exercise="Write an iteration that nondeterministically modifies x0 in a loop.">((x0 := 0 + x0 := 1); dup)*</netkat>
+        <netkat exercise="Write an iteration that nondeterministically modifies x0 in a loop and logs the intermediate states.">((x0 := 0 + x0 := 1); dup)*</netkat>
 
         <h2>Logical Operators</h2>
         <p>NetKAT expressions represent <strong>sets of traces</strong> (sequences of packet transformations). NetKAT's logical operators correspond to set operations on these trace sets, making them powerful tools for both constructing complex policies and verifying network properties.</p>
