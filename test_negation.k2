@@ -1,0 +1,5 @@
+// Test new negation syntax
+~(x0 == 1)
+~0
+~~1
+~(x0 == 1 + x1 == 0)

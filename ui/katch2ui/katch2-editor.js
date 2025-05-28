@@ -181,7 +181,7 @@ class KATch2Editor {
         // Define syntax highlighting
         monaco.languages.setMonarchTokensProvider('netkat', {
             keywords: ['dup', 'T', 'X', 'U', 'F', 'G', 'R'],
-            operators: [':=', '==', '+', '&', '^', '-', '!', ';', '*'],
+            operators: [':=', '==', '+', '&', '^', '-', '~', ';', '*'],
             symbols: /[=><!~?:&|+\-*\/\^%;()]+/,
 
             tokenizer: {
@@ -1193,7 +1193,7 @@ class KATch2Editor {
                 i += 2;
                 matched = true;
             }
-            else if (['+', '&', '^', '-', '!', ';', '*'].includes(code[i])) {
+            else if (['+', '&', '^', '-', '~', ';', '*'].includes(code[i])) {
                 tokens.push({ type: 'operator', text: code[i] });
                 i++;
                 matched = true;

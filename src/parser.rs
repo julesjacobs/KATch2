@@ -227,7 +227,7 @@ impl<'a> Lexer<'a> {
                     '&' => TokenKind::And,
                     '^' => TokenKind::Xor,
                     '-' => TokenKind::Minus,
-                    '!' => TokenKind::Not,
+                    '~' => TokenKind::Not,
                     ';' => TokenKind::Semicolon,
                     '*' => TokenKind::Star,
                     '(' => TokenKind::LParen,
@@ -390,12 +390,12 @@ The parser implements the following precedence hierarchy (highest to lowest prec
    - Example: a** = (a*)*
 
 3. PREFIX OPERATORS  
-   - Complement: !
+   - Complement: ~
    - LTL Next: X
    - LTL Future: F  
    - LTL Globally: G
    - All prefix operators are right-associative
-   - Example: !!a = !(!(a)), !X a = !(X(a))
+   - Example: ~~a = ~(~(a)), ~X a = ~(X(a))
 
 4. INTERSECTION (left-associative)
    - And: &
@@ -684,7 +684,7 @@ impl<'a> Parser<'a> {
     fn parse_prefix(&mut self) -> Result<Exp, ParseError> {
         match self.peek_kind()? {
             TokenKind::Not => {
-                let op_token = self.consume_token()?; // Consume '!'
+                let op_token = self.consume_token()?; // Consume '~'
                 // Check for EOF before parsing operand
                 if self.peek_kind()? == &TokenKind::Eof {
                     return Err(ParseError::new(
@@ -958,7 +958,7 @@ fn token_kind_to_user_string(kind: &TokenKind) -> String {
         TokenKind::And => "operator '&'".to_string(),
         TokenKind::Xor => "operator '^'".to_string(),
         TokenKind::Minus => "operator '-'".to_string(),
-        TokenKind::Not => "operator '!'".to_string(),
+        TokenKind::Not => "operator '~'".to_string(),
         TokenKind::Semicolon => "operator ';'".to_string(),
         TokenKind::Star => "operator '*'".to_string(),
         TokenKind::Dup => "keyword 'dup'".to_string(),
@@ -1033,7 +1033,7 @@ mod tests {
     #[test]
     fn test_parentheses() {
         assert_eq!(parse_single_unwrap("(0+1)"), Expr::union(Expr::zero(), Expr::one()));
-        assert_eq!(parse_single_unwrap("!(0)"), Expr::complement(Expr::zero()));
+        assert_eq!(parse_single_unwrap("~(0)"), Expr::complement(Expr::zero()));
     }
 
     #[test]
@@ -1097,7 +1097,7 @@ mod tests {
 
     #[test]
     fn test_complex_expression() {
-        let expr_str = "(x1:=0 ; (T* & !(x2==1))) + F (x3==0 U x4==1)";
+        let expr_str = "(x1:=0 ; (T* & ~(x2==1))) + F (x3==0 U x4==1)";
         assert!(parse_all(expr_str).is_ok());
         // More detailed check if needed by comparing the resulting Exp structure.
     }
@@ -1113,7 +1113,7 @@ mod tests {
             "0 +",
             "(0 + 1",
             "0 + 1)",
-            "! ",
+            "~ ",
             "F ",
             "X ",
             "0 U ",
@@ -1163,8 +1163,8 @@ mod tests {
     fn test_precedence_postfix_vs_prefix() {
         // Postfix should bind tighter than prefix
         // !a* should be !(a*), not (!a)*
-        assert_eq!(parse_single_unwrap("!0*"), 
-                   parse_single_unwrap("!(0*)"));
+        assert_eq!(parse_single_unwrap("~0*"), 
+                   parse_single_unwrap("~(0*)"));
         assert_eq!(parse_single_unwrap("X 1*"), 
                    parse_single_unwrap("X (1*)"));
         assert_eq!(parse_single_unwrap("F T*"), 
@@ -1177,8 +1177,8 @@ mod tests {
     fn test_precedence_prefix_vs_infix() {
         // Prefix should bind tighter than infix
         // !a + b should be (!a) + b, not !(a + b)
-        assert_eq!(parse_single_unwrap("!0 + 1"), 
-                   parse_single_unwrap("(!0) + 1"));
+        assert_eq!(parse_single_unwrap("~0 + 1"), 
+                   parse_single_unwrap("(~0) + 1"));
         assert_eq!(parse_single_unwrap("X 0 & 1"), 
                    parse_single_unwrap("(X 0) & 1"));
         assert_eq!(parse_single_unwrap("F 0 ; 1"), 
@@ -1282,10 +1282,10 @@ mod tests {
                    parse_single_unwrap("0 R (1 R T)"));
         
         // Prefix operators
-        assert_eq!(parse_single_unwrap("!!0"), 
-                   parse_single_unwrap("!(!0)"));
-        assert_eq!(parse_single_unwrap("!X 0"), 
-                   parse_single_unwrap("!(X 0)"));
+        assert_eq!(parse_single_unwrap("~~0"), 
+                   parse_single_unwrap("~(~0)"));
+        assert_eq!(parse_single_unwrap("~X 0"), 
+                   parse_single_unwrap("~(X 0)"));
         assert_eq!(parse_single_unwrap("X F 0"), 
                    parse_single_unwrap("X (F 0)"));
     }
@@ -1304,13 +1304,13 @@ mod tests {
         // Complex mixed precedence tests
         
         // !a* + b ; c & d U e should be ((!((a)*)) + (b ; (c & d))) U e
-        assert_eq!(parse_single_unwrap("!0* + 1 ; T & dup U x1==0"), 
-                   parse_single_unwrap("(!(0*) + (1 ; (T & dup))) U x1==0"));
+        assert_eq!(parse_single_unwrap("~0* + 1 ; T & dup U x1==0"), 
+                   parse_single_unwrap("(~(0*) + (1 ; (T & dup))) U x1==0"));
         
         // a & !b* ; c + d should be ((a & (!(b*))) ; c) + d 
         // Precedence: postfix (*), prefix (!), intersection (&), sequence (;), additive (+)
-        assert_eq!(parse_single_unwrap("0 & !1* ; T + dup"), 
-                   parse_single_unwrap("((0 & !(1*)) ; T) + dup"));
+        assert_eq!(parse_single_unwrap("0 & ~1* ; T + dup"), 
+                   parse_single_unwrap("((0 & ~(1*)) ; T) + dup"));
     }
 
     #[test]
@@ -1324,8 +1324,8 @@ mod tests {
         assert_ne!(parse_single_unwrap("0 + (1 ; T)"), 
                    parse_single_unwrap("0 ; 1 + T")); // Default: (0 ; 1) + T
         
-        assert_ne!(parse_single_unwrap("(!0)*"), 
-                   parse_single_unwrap("!0*")); // Default: !(0*)
+        assert_ne!(parse_single_unwrap("(~0)*"), 
+                   parse_single_unwrap("~0*")); // Default: ~(0*)
         
         assert_ne!(parse_single_unwrap("(0 U 1) + T"), 
                    parse_single_unwrap("0 U 1 + T")); // Default: 0 U (1 + T)
@@ -1336,8 +1336,8 @@ mod tests {
         // Field operations should be atomic (highest precedence)
         assert_eq!(parse_single_unwrap("x1 := 0 + x2 == 1"), 
                    parse_single_unwrap("(x1 := 0) + (x2 == 1)"));
-        assert_eq!(parse_single_unwrap("!x1 := 0"), 
-                   parse_single_unwrap("!(x1 := 0)"));
+        assert_eq!(parse_single_unwrap("~x1 := 0"), 
+                   parse_single_unwrap("~(x1 := 0)"));
         assert_eq!(parse_single_unwrap("x1 == 1*"), 
                    parse_single_unwrap("(x1 == 1)*"));
     }
@@ -1347,16 +1347,16 @@ mod tests {
         // Edge cases that might be tricky
         
         // Prefix followed by postfix should work
-        assert_eq!(parse_single_unwrap("!T*"), 
-                   parse_single_unwrap("!(T*)"));
+        assert_eq!(parse_single_unwrap("~T*"), 
+                   parse_single_unwrap("~(T*)"));
         
         // Multiple prefix operators
-        assert_eq!(parse_single_unwrap("!!X F 0"), 
-                   parse_single_unwrap("!(!(X (F 0)))"));
+        assert_eq!(parse_single_unwrap("~~X F 0"), 
+                   parse_single_unwrap("~(~(X (F 0)))"));
         
         // Mixing all operator types
-        assert_eq!(parse_single_unwrap("!(x1:=0)* + T ; dup & 1 U 0"), 
-                   parse_single_unwrap("(!(x1:=0)* + (T ; (dup & 1))) U 0"));
+        assert_eq!(parse_single_unwrap("~(x1:=0)* + T ; dup & 1 U 0"), 
+                   parse_single_unwrap("(~(x1:=0)* + (T ; (dup & 1))) U 0"));
     }
 
     #[test]

@@ -63,7 +63,7 @@ e ::=
     | e1 & e2     -- intersection
     | e1 ^ e2     -- xor
     | e1 - e2     -- difference
-    | !e1         -- complement, negation
+    | ~e1         -- complement, negation
     | e1; e2      -- sequence
     | e*          -- star, iteration
     | dup         -- log current packet to trace

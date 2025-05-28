@@ -12,7 +12,7 @@
   // comment
 
 // Complex nesting and parentheses
-(((x0==1))) ; (!(x1:=0 + x2==1)*)
+(((x0==1))) ; (~(x1:=0 + x2==1)*)
 
 // All operators mixed (check precedence and associativity)
 x0==1 ; x1:=0 + x2==1 & x3:=0 ^ T - dup *
