@@ -180,7 +180,7 @@ class KATch2Editor {
 
         // Define syntax highlighting
         monaco.languages.setMonarchTokensProvider('netkat', {
-            keywords: ['dup', 'T', 'X', 'U', 'F', 'G', 'R', 'if', 'then', 'else'],
+            keywords: ['dup', 'T', 'X', 'U', 'F', 'G', 'R', 'if', 'then', 'else', 'let', 'in'],
             operators: [':=', '==', '+', '&', '^', '-', '~', '!', ';', '*'],
             symbols: /[=><!~?:&|+\-*\/\^%;()]+/,
 

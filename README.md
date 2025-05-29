@@ -66,6 +66,7 @@ e ::=
     | ~e1         -- complement, negation
     | !e1         -- test negation (only for test fragment)
     | if e1 then e2 else e3  -- conditional (e1 must be test fragment)
+    | let x = e1 in e2       -- let binding
     | e1; e2      -- sequence
     | e*          -- star, iteration
     | dup         -- log current packet to trace
@@ -86,6 +87,8 @@ Notes:
   - Expressions built from the above
 - The `!` operator is eliminated during desugaring using De Morgan's laws.
 - The `if-then-else` expression is desugared to `(cond ; then) + (!cond ; else)`.
+- The `let x = e1 in e2` expression is desugared by substituting all occurrences of `x` in `e2` with `e1`.
+- Variables can be any identifier except reserved keywords. Let bindings can be nested and support shadowing.
 
 ## Web UI
 

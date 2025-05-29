@@ -108,6 +108,25 @@ pub fn desugar(expr: &Expr) -> Result<Exp, DesugarError> {
                 Expr::sequence(neg_cond, d_else)
             ))
         }
+        
+        // Let binding - desugar by substitution
+        Expr::Let(var, def, body) => {
+            // First desugar the definition
+            let d_def = desugar(def)?;
+            
+            // Substitute all occurrences of var with d_def in body
+            let substituted_body = body.substitute(var, &d_def);
+            
+            // Then desugar the substituted body
+            desugar(&substituted_body)
+        }
+        
+        // Variable - should have been eliminated by let substitution
+        Expr::Var(name) => {
+            Err(DesugarError {
+                message: format!("Unbound variable '{}' encountered during desugaring", name)
+            })
+        }
     }
 }
 
@@ -283,5 +302,66 @@ mod tests {
         let if_expr = Expr::if_then_else(cond, Expr::one(), Expr::zero());
         
         assert!(desugar(&if_expr).is_err());
+    }
+    
+    #[test]
+    fn test_desugar_let_simple() {
+        // let a = (x0 == 1) in a + (x1 == 0)
+        // Should become: (x0 == 1) + (x1 == 0)
+        let def = Expr::test(0, true);
+        let body = Expr::union(Expr::var("a".to_string()), Expr::test(1, false));
+        let let_expr = Expr::let_in("a".to_string(), def.clone(), body);
+        
+        let expected = Expr::union(Expr::test(0, true), Expr::test(1, false));
+        assert_eq!(desugar(&let_expr).unwrap(), expected);
+    }
+    
+    #[test]
+    fn test_desugar_let_nested() {
+        // let a = (x0 == 1) in let b = (x1 == 0) in a + b
+        // Should become: (x0 == 1) + (x1 == 0)
+        let a_def = Expr::test(0, true);
+        let b_def = Expr::test(1, false);
+        let inner_body = Expr::union(Expr::var("a".to_string()), Expr::var("b".to_string()));
+        let inner_let = Expr::let_in("b".to_string(), b_def, inner_body);
+        let outer_let = Expr::let_in("a".to_string(), a_def, inner_let);
+        
+        let expected = Expr::union(Expr::test(0, true), Expr::test(1, false));
+        assert_eq!(desugar(&outer_let).unwrap(), expected);
+    }
+    
+    #[test]
+    fn test_desugar_let_shadowing() {
+        // let a = (x0 == 1) in let a = (x1 == 0) in a
+        // Should become: (x1 == 0) (inner a shadows outer a)
+        let outer_def = Expr::test(0, true);
+        let inner_def = Expr::test(1, false);
+        let body = Expr::var("a".to_string());
+        let inner_let = Expr::let_in("a".to_string(), inner_def.clone(), body);
+        let outer_let = Expr::let_in("a".to_string(), outer_def, inner_let);
+        
+        let expected = Expr::test(1, false);
+        assert_eq!(desugar(&outer_let).unwrap(), expected);
+    }
+    
+    #[test]
+    fn test_desugar_unbound_variable() {
+        // Just a variable with no binding
+        let var_expr = Expr::var("unbound".to_string());
+        assert!(desugar(&var_expr).is_err());
+    }
+    
+    #[test]
+    fn test_desugar_let_with_complex_expr() {
+        // let p = (x0 == 1 ; x1 := 0) in p + p*
+        let def = Expr::sequence(Expr::test(0, true), Expr::assign(1, false));
+        let body = Expr::union(Expr::var("p".to_string()), Expr::star(Expr::var("p".to_string())));
+        let let_expr = Expr::let_in("p".to_string(), def.clone(), body);
+        
+        let expected = Expr::union(
+            Expr::sequence(Expr::test(0, true), Expr::assign(1, false)),
+            Expr::star(Expr::sequence(Expr::test(0, true), Expr::assign(1, false)))
+        );
+        assert_eq!(desugar(&let_expr).unwrap(), expected);
     }
 }

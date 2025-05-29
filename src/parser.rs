@@ -115,9 +115,12 @@ pub enum TokenKind {
     LParen,     // (
     RParen,     // )
     Field(u32), // x followed by digits
+    Ident(String), // Variable identifier
     If,         // if keyword
     Then,       // then keyword
     Else,       // else keyword
+    Let,        // let keyword
+    In,         // in keyword
     End,        // end keyword (for multiple expressions parsing)
     Eof,        // End of input
 }
@@ -237,50 +240,6 @@ impl<'a> Lexer<'a> {
                     '*' => TokenKind::Star,
                     '(' => TokenKind::LParen,
                     ')' => TokenKind::RParen,
-                    'T' => TokenKind::Top,
-                    'U' => TokenKind::LtlU,
-                    // 'X' needs to be LtlX, be careful if 'x' for fields comes first
-                    'F' => TokenKind::LtlF,
-                    'G' => TokenKind::LtlG,
-                    'R' => TokenKind::LtlR,
-                    'e' => {
-                        if self.peek_char() == Some(&'n') {
-                            self.next_char_with_pos(); // Consume 'n'
-                            if self.peek_char() == Some(&'d') {
-                                self.next_char_with_pos(); // Consume 'd'
-                                TokenKind::End
-                            } else {
-                                return Err(ParseError::new(
-                                    "Expected 'end'".to_string(),
-                                    Span::new(start_pos, self.current_pos),
-                                ));
-                            }
-                        } else if self.peek_char() == Some(&'l') {
-                            self.next_char_with_pos(); // Consume 'l'
-                            if self.peek_char() == Some(&'s') {
-                                self.next_char_with_pos(); // Consume 's'
-                                if self.peek_char() == Some(&'e') {
-                                    self.next_char_with_pos(); // Consume 'e'
-                                    TokenKind::Else
-                                } else {
-                                    return Err(ParseError::new(
-                                        "Expected 'else'".to_string(),
-                                        Span::new(start_pos, self.current_pos),
-                                    ));
-                                }
-                            } else {
-                                return Err(ParseError::new(
-                                    "Expected 'else' or 'end'".to_string(),
-                                    Span::new(start_pos, self.current_pos),
-                                ));
-                            }
-                        } else {
-                             return Err(ParseError::new(
-                                "Expected 'end' or 'else'".to_string(),
-                                Span::new(start_pos, self.current_pos),
-                            ));
-                        }
-                    }
                     ':' => {
                         if self.peek_char() == Some(&'=') {
                             self.next_char_with_pos(); // Consume '='
@@ -297,15 +256,10 @@ impl<'a> Lexer<'a> {
                             self.next_char_with_pos(); // Consume '='
                             TokenKind::Eq
                         } else {
-                            // A single '=' is not a valid token start on its own if '==' is expected
-                            return Err(ParseError::new(
-                                "Expected '==' for equality test or ':=' for assignment".to_string(),
-                                Span::new(start_pos, self.current_pos),
-                            ));
+                            // Single '=' is used in let bindings
+                            TokenKind::Eq
                         }
                     }
-                    // Handle 'X' for LtlX before 'x' for fields to avoid ambiguity if 'x' itself is not a field.
-                    'X' => TokenKind::LtlX,
                     'x' => {
                         let mut num_str = String::new();
                         while let Some(&next_c) = self.peek_char() {
@@ -336,68 +290,43 @@ impl<'a> Lexer<'a> {
                             }
                         }
                     }
-                    'd' => {
-                        if self.peek_char() == Some(&'u') {
-                            self.next_char_with_pos(); // Consume 'u'
-                            if self.peek_char() == Some(&'p') {
-                                self.next_char_with_pos(); // Consume 'p'
-                                TokenKind::Dup
-                            } else {
-                                return Err(ParseError::new(
-                                    "Expected 'dup'".to_string(),
-                                    Span::new(start_pos, self.current_pos),
-                                ));
-                            }
-                        } else {
-                            return Err(ParseError::new(
-                                "Expected 'dup'".to_string(),
-                                Span::new(start_pos, self.current_pos),
-                            ));
-                        }
-                    }
-                    'i' => {
-                        if self.peek_char() == Some(&'f') {
-                            self.next_char_with_pos(); // Consume 'f'
-                            TokenKind::If
-                        } else {
-                            return Err(ParseError::new(
-                                "Expected 'if'".to_string(),
-                                Span::new(start_pos, self.current_pos),
-                            ));
-                        }
-                    }
-                    't' => {
-                        if self.peek_char() == Some(&'h') {
-                            self.next_char_with_pos(); // Consume 'h'
-                            if self.peek_char() == Some(&'e') {
-                                self.next_char_with_pos(); // Consume 'e'
-                                if self.peek_char() == Some(&'n') {
-                                    self.next_char_with_pos(); // Consume 'n'
-                                    TokenKind::Then
-                                } else {
-                                    return Err(ParseError::new(
-                                        "Expected 'then'".to_string(),
-                                        Span::new(start_pos, self.current_pos),
-                                    ));
-                                }
-                            } else {
-                                return Err(ParseError::new(
-                                    "Expected 'then'".to_string(),
-                                    Span::new(start_pos, self.current_pos),
-                                ));
-                            }
-                        } else {
-                            return Err(ParseError::new(
-                                "Expected 'then'".to_string(),
-                                Span::new(start_pos, self.current_pos),
-                            ));
-                        }
-                    }
                     _ => {
-                        return Err(ParseError::new(
-                            format!("Unexpected character: {}", c),
-                            Span::new(start_pos, self.current_pos), // Span of the single unexpected char
-                        ));
+                        // Check if it's a letter that could start an identifier
+                        if c.is_alphabetic() {
+                            let mut ident = String::new();
+                            ident.push(c);
+                            while let Some(&next_c) = self.peek_char() {
+                                if next_c.is_alphanumeric() || next_c == '_' {
+                                    ident.push(self.next_char_with_pos().unwrap().0);
+                                } else {
+                                    break;
+                                }
+                            }
+                            
+                            // Check for reserved words
+                            match ident.as_str() {
+                                "in" => TokenKind::In,
+                                "if" => TokenKind::If,
+                                "then" => TokenKind::Then,
+                                "else" => TokenKind::Else,
+                                "let" => TokenKind::Let,
+                                "dup" => TokenKind::Dup,
+                                "end" => TokenKind::End,
+                                // Single letter tokens
+                                "T" => TokenKind::Top,
+                                "X" => TokenKind::LtlX,
+                                "U" => TokenKind::LtlU,
+                                "F" => TokenKind::LtlF,
+                                "G" => TokenKind::LtlG,
+                                "R" => TokenKind::LtlR,
+                                _ => TokenKind::Ident(ident)
+                            }
+                        } else {
+                            return Err(ParseError::new(
+                                format!("Unexpected character: {}", c),
+                                Span::new(start_pos, self.current_pos), // Span of the single unexpected char
+                            ));
+                        }
                     }
                 };
                 Ok(Token::new(kind, Span::new(start_pos, self.current_pos)))
@@ -923,6 +852,48 @@ impl<'a> Parser<'a> {
                 
                 Ok(Expr::if_then_else(cond, then_expr, else_expr))
             }
+            // Let expression
+            TokenKind::Let => {
+                self.consume_token()?; // Consume 'let'
+                
+                // Expect identifier
+                let var_name = match self.consume_token()? {
+                    Token { kind: TokenKind::Ident(name), .. } => name,
+                    tok => return Err(ParseError::new(
+                        format!("Expected variable name after 'let', but found {}", token_kind_to_user_string(&tok.kind)),
+                        tok.span,
+                    )),
+                };
+                
+                // Expect '='
+                match self.consume_token()? {
+                    Token { kind: TokenKind::Eq, .. } => {},
+                    tok => return Err(ParseError::new(
+                        format!("Expected '=' after variable name, but found {}", token_kind_to_user_string(&tok.kind)),
+                        tok.span,
+                    )),
+                }
+                
+                let def = self.parse_until()?; // Parse definition
+                
+                // Expect 'in'
+                match self.consume_token()? {
+                    Token { kind: TokenKind::In, .. } => {},
+                    tok => return Err(ParseError::new(
+                        format!("Expected 'in' after definition, but found {}", token_kind_to_user_string(&tok.kind)),
+                        tok.span,
+                    )),
+                }
+                
+                let body = self.parse_until()?; // Parse body
+                
+                Ok(Expr::let_in(var_name, def, body))
+            }
+            // Variable reference
+            TokenKind::Ident(name) => {
+                self.consume_token()?; // Consume the identifier
+                Ok(Expr::var(name))
+            }
             // These are simple primaries, handled by the simplified parse_primary
             TokenKind::Zero | TokenKind::One | TokenKind::Top | TokenKind::Dup | TokenKind::LParen | TokenKind::End => {
                 self.parse_primary()
@@ -956,11 +927,11 @@ impl<'a> Parser<'a> {
             }
             // Field is handled by parse_atom_or_field_expression.
             // Other tokens are invalid starts for a primary expression.
-            TokenKind::Field(_) |
+            TokenKind::Field(_) | TokenKind::Ident(_) |
             TokenKind::LtlX | TokenKind::LtlF | TokenKind::LtlG | TokenKind::LtlU | TokenKind::LtlR |
             TokenKind::Not | TokenKind::TestNot | TokenKind::Star | TokenKind::Semicolon | TokenKind::Plus |
             TokenKind::And | TokenKind::Xor | TokenKind::Minus | TokenKind::Assign | TokenKind::Eq |
-            TokenKind::RParen | TokenKind::If | TokenKind::Then | TokenKind::Else | TokenKind::Eof => { // Removed End from here due to unreachable pattern, it's handled below.
+            TokenKind::RParen | TokenKind::If | TokenKind::Then | TokenKind::Else | TokenKind::Let | TokenKind::In | TokenKind::Eof => { // Removed End from here due to unreachable pattern, it's handled below.
                  Err(ParseError::new(
                     format!("Unexpected {} when expecting a primary expression (like '0', '1', 'T', 'dup', or '(')", token_kind_to_user_string(&token.kind)),
                     token.span,
@@ -1076,9 +1047,12 @@ fn token_kind_to_user_string(kind: &TokenKind) -> String {
         TokenKind::LParen => "character '('".to_string(),
         TokenKind::RParen => "character ')'".to_string(),
         TokenKind::Field(u) => format!("field 'x{}'", u),
+        TokenKind::Ident(s) => format!("identifier '{}'", s),
         TokenKind::If => "keyword 'if'".to_string(),
         TokenKind::Then => "keyword 'then'".to_string(),
         TokenKind::Else => "keyword 'else'".to_string(),
+        TokenKind::Let => "keyword 'let'".to_string(),
+        TokenKind::In => "keyword 'in'".to_string(),
         TokenKind::End => "keyword 'end'".to_string(),
         TokenKind::Eof => "end of input".to_string(),
     }

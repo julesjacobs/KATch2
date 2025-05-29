@@ -449,6 +449,8 @@ impl Aut {
             Expr::End => self.mk_spp(self.spp.top),
             Expr::TestNegation(_) => panic!("TestNegation should have been eliminated during desugaring"),
             Expr::IfThenElse(_, _, _) => panic!("IfThenElse should have been eliminated during desugaring"),
+            Expr::Var(_) => panic!("Variables should have been eliminated during desugaring"),
+            Expr::Let(_, _, _) => panic!("Let expressions should have been eliminated during desugaring"),
         }
     }
 

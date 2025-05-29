@@ -15,6 +15,8 @@ pub enum Expr {
     Complement(Exp),      // ~e1
     TestNegation(Exp),    // !e (test fragment only)
     IfThenElse(Exp, Exp, Exp), // if e1 then e2 else e3 (e1 must be test fragment)
+    Var(String),          // Variable reference
+    Let(String, Exp, Exp), // let x = e1 in e2
     Sequence(Exp, Exp),   // e1; e2
     Star(Exp),            // e*
     Dup,                  // dup
@@ -63,6 +65,12 @@ impl Expr {
     pub fn if_then_else(cond: Exp, then_expr: Exp, else_expr: Exp) -> Exp {
         Box::new(Expr::IfThenElse(cond, then_expr, else_expr))
     }
+    pub fn var(name: String) -> Exp {
+        Box::new(Expr::Var(name))
+    }
+    pub fn let_in(var_name: String, def: Exp, body: Exp) -> Exp {
+        Box::new(Expr::Let(var_name, def, body))
+    }
     pub fn sequence(e1: Exp, e2: Exp) -> Exp {
         Box::new(Expr::Sequence(e1, e2))
     }
@@ -107,7 +115,8 @@ impl Expr {
             // Everything else is not in test fragment
             Expr::Top | Expr::Assign(_, _) | Expr::Complement(_) | 
             Expr::Star(_) | Expr::Dup | Expr::LtlNext(_) | 
-            Expr::LtlUntil(_, _) | Expr::End | Expr::IfThenElse(_, _, _) => false,
+            Expr::LtlUntil(_, _) | Expr::End | Expr::IfThenElse(_, _, _) |
+            Expr::Var(_) | Expr::Let(_, _, _) => false,
         }
     }
 
@@ -124,7 +133,9 @@ impl Expr {
             Expr::IfThenElse(cond, then_expr, else_expr) => {
                 cond.num_fields().max(then_expr.num_fields()).max(else_expr.num_fields())
             }
+            Expr::Let(_, def, body) => def.num_fields().max(body.num_fields()),
             Expr::Complement(e) | Expr::TestNegation(e) | Expr::Star(e) | Expr::LtlNext(e) => e.num_fields(),
+            Expr::Var(_) => 0, // Variables don't directly reference fields
         }
     }
 
@@ -154,6 +165,57 @@ impl Expr {
             Expr::ltl_finally(e1),
         ))
     }
+    
+    /// Substitute all occurrences of variable `var` with expression `replacement` in `self`
+    pub fn substitute(&self, var: &str, replacement: &Expr) -> Exp {
+        match self {
+            // Base cases
+            Expr::Zero => Expr::zero(),
+            Expr::One => Expr::one(),
+            Expr::Top => Expr::top(),
+            Expr::Dup => Expr::dup(),
+            Expr::End => Expr::end(),
+            Expr::Assign(f, v) => Expr::assign(*f, *v),
+            Expr::Test(f, v) => Expr::test(*f, *v),
+            
+            // Variable case - this is where substitution happens
+            Expr::Var(name) => {
+                if name == var {
+                    Box::new(replacement.clone())
+                } else {
+                    Expr::var(name.clone())
+                }
+            }
+            
+            // Recursive cases
+            Expr::Union(e1, e2) => Expr::union(e1.substitute(var, replacement), e2.substitute(var, replacement)),
+            Expr::Intersect(e1, e2) => Expr::intersect(e1.substitute(var, replacement), e2.substitute(var, replacement)),
+            Expr::Xor(e1, e2) => Expr::xor(e1.substitute(var, replacement), e2.substitute(var, replacement)),
+            Expr::Difference(e1, e2) => Expr::difference(e1.substitute(var, replacement), e2.substitute(var, replacement)),
+            Expr::Sequence(e1, e2) => Expr::sequence(e1.substitute(var, replacement), e2.substitute(var, replacement)),
+            Expr::Complement(e) => Expr::complement(e.substitute(var, replacement)),
+            Expr::TestNegation(e) => Expr::test_negation(e.substitute(var, replacement)),
+            Expr::Star(e) => Expr::star(e.substitute(var, replacement)),
+            Expr::LtlNext(e) => Expr::ltl_next(e.substitute(var, replacement)),
+            Expr::LtlUntil(e1, e2) => Expr::ltl_until(e1.substitute(var, replacement), e2.substitute(var, replacement)),
+            Expr::IfThenElse(c, t, e) => Expr::if_then_else(
+                c.substitute(var, replacement),
+                t.substitute(var, replacement),
+                e.substitute(var, replacement)
+            ),
+            
+            // Let binding case - careful with variable shadowing
+            Expr::Let(bound_var, def, body) => {
+                if bound_var == var {
+                    // Variable is shadowed, don't substitute in body
+                    Expr::let_in(bound_var.clone(), def.substitute(var, replacement), body.clone())
+                } else {
+                    // Substitute in both definition and body
+                    Expr::let_in(bound_var.clone(), def.substitute(var, replacement), body.substitute(var, replacement))
+                }
+            }
+        }
+    }
 }
 
 impl std::fmt::Display for Expr {
@@ -177,6 +239,8 @@ impl std::fmt::Display for Expr {
             Expr::IfThenElse(cond, then_expr, else_expr) => {
                 write!(f, "(if {} then {} else {})", cond, then_expr, else_expr)
             }
+            Expr::Var(name) => write!(f, "{}", name),
+            Expr::Let(var, def, body) => write!(f, "(let {} = {} in {})", var, def, body),
             Expr::Sequence(e1, e2) => write!(f, "({} ; {})", e1, e2),
             Expr::Star(e) => write!(f, "({})*", e),
             Expr::Dup => write!(f, "dup"),
