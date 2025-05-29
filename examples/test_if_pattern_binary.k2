@@ -1,0 +1,2 @@
+// Test with binary pattern match
+(if x[0..8] ~ 0b11000000 then 1 else 0)

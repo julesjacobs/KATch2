@@ -1,0 +1,2 @@
+// Test negated pattern match in if condition
+if !(x[0..32] ~ 192.168.1.0/24) then x[32..64] := 0.0.0.0 else 1

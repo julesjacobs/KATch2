@@ -1,0 +1,2 @@
+// Test single pattern match in if-then-else
+if x[0..32] ~ 192.168.1.0/24 then x[32..64] := 10.0.0.1 else x[32..64] := 172.16.0.1

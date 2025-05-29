@@ -1,0 +1,22 @@
+// Test pattern match in if-then-else conditions
+
+// Basic pattern match in if condition
+if x[0..32] ~ 192.168.1.0/24 then x[32..64] := 10.0.0.1 else x[32..64] := 172.16.0.1
+
+// IP range pattern match
+if x[0..32] ~ 192.168.1.10-192.168.1.20 then 1 else 0
+
+// Pattern match with variable alias
+let src = &x[0..32] in
+  if src ~ 10.0.0.0/8 then src := 192.168.1.1 else 0
+
+// Nested if with pattern matches
+if x[0..32] ~ 192.168.0.0/16 then
+  if x[32..64] ~ 10.0.0.0/8 then 1 else 0
+else 0
+
+// Pattern match combined with other test conditions
+if x[0..32] ~ 192.168.1.0/24 & x[64..80] == 80 then 1 else 0
+
+// Negated pattern match in if condition
+if !(x[0..32] ~ 192.168.1.0/24) then x[32..64] := 0.0.0.0 else 1

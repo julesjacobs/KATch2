@@ -1,0 +1,2 @@
+// Test with parentheses to ensure proper parsing
+(if x[0..32] ~ 192.168.1.0/24 then 1 else 0)

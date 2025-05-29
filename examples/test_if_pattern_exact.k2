@@ -1,0 +1,2 @@
+// Test with exact match instead of CIDR
+(if x[0..8] == 192 then 1 else 0)

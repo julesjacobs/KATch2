@@ -257,8 +257,10 @@ fn desugar_with_env(expr: &Expr, env: &DesugarEnv) -> Result<Exp, DesugarError> 
             let d_then = desugar_with_env(then_expr, env)?;
             let d_else = desugar_with_env(else_expr, env)?;
             
-            // Create negated condition using test negation then desugar it
-            let neg_cond = desugar_test_negation(cond)?;
+            // Create negated condition by first creating TestNegation then desugaring it
+            // This ensures pattern matches are desugared before negation
+            let neg_cond_expr = Expr::test_negation(cond.clone());
+            let neg_cond = desugar_with_env(&neg_cond_expr, env)?;
             
             // if c then t else e = (c ; t) + (!c ; e)
             Ok(Expr::union(
@@ -380,6 +382,28 @@ fn desugar_test_negation(expr: &Expr) -> Result<Exp, DesugarError> {
         // BitRangeTest in test fragment
         Expr::BitRangeTest(start, end, bits) => {
             desugar_bit_range_test(*start, *end, bits).and_then(|e| desugar_test_negation(&e))
+        }
+        
+        // BitRangeMatch - first desugar to basic tests, then negate
+        Expr::BitRangeMatch(start, end, pattern) => {
+            let desugared = desugar_pattern_match(*start, *end, pattern)?;
+            desugar_test_negation(&desugared)
+        }
+        
+        // VarMatch - resolve alias first, then desugar pattern match, then negate
+        Expr::VarMatch(var, _pattern) => {
+            // Note: We need to resolve the alias here since desugar_test_negation doesn't have env
+            // This is a limitation - we should propagate the error up
+            Err(DesugarError {
+                message: format!("Cannot negate pattern match with variable '{}' - variables must be resolved before negation", var)
+            })
+        }
+        
+        // VarTest - similar issue with variables
+        Expr::VarTest(var, _bits) => {
+            Err(DesugarError {
+                message: format!("Cannot negate test with variable '{}' - variables must be resolved before negation", var)
+            })
         }
         
         _ => Err(DesugarError {
