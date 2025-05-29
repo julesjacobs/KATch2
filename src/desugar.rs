@@ -527,16 +527,36 @@ fn desugar_pattern_match(start: u32, end: u32, pattern: &Pattern) -> Result<Exp,
         
         Pattern::IpRange { start: range_start, end: range_end } => {
             // IP range: use efficient bound tests
-            if range_start.len() != width || range_end.len() != width {
+            // Pad patterns if needed
+            let padded_start;
+            let padded_end;
+            let (start_bits, end_bits) = if range_start.len() < width && range_end.len() < width {
+                // Both need padding
+                padded_start = {
+                    let mut v = vec![false; width - range_start.len()];
+                    v.extend_from_slice(range_start);
+                    v
+                };
+                padded_end = {
+                    let mut v = vec![false; width - range_end.len()];
+                    v.extend_from_slice(range_end);
+                    v
+                };
+                (&padded_start[..], &padded_end[..])
+            } else if range_start.len() == width && range_end.len() == width {
+                // No padding needed
+                (range_start.as_slice(), range_end.as_slice())
+            } else {
+                // Mismatched or too large
                 return Err(DesugarError {
                     message: format!("IP range pattern expects {} bits but got start={} bits, end={} bits",
                                    width, range_start.len(), range_end.len())
                 });
-            }
+            };
             
             // Check if range is valid
-            let start_val = bits_to_u128(range_start)?;
-            let end_val = bits_to_u128(range_end)?;
+            let start_val = bits_to_u128(start_bits)?;
+            let end_val = bits_to_u128(end_bits)?;
             
             if start_val > end_val {
                 return Err(DesugarError {
@@ -558,14 +578,14 @@ fn desugar_pattern_match(start: u32, end: u32, pattern: &Pattern) -> Result<Exp,
             // Use efficient bound tests
             if start_val == 0 {
                 // Only upper bound test needed
-                Ok(desugar_upper_bound_test(start, range_end))
+                Ok(desugar_upper_bound_test(start, end_bits))
             } else if end_val == max_val {
                 // Only lower bound test needed
-                Ok(desugar_lower_bound_test(start, range_start))
+                Ok(desugar_lower_bound_test(start, start_bits))
             } else {
                 // Need both bounds: x >= start AND x <= end
-                let lower_test = desugar_lower_bound_test(start, range_start);
-                let upper_test = desugar_upper_bound_test(start, range_end);
+                let lower_test = desugar_lower_bound_test(start, start_bits);
+                let upper_test = desugar_upper_bound_test(start, end_bits);
                 Ok(Expr::intersect(lower_test, upper_test))
             }
         }

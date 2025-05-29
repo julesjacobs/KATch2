@@ -1042,6 +1042,322 @@ let port = &x[64..80] in
     }
     
     #[test]
+    fn test_pattern_range_equivalence() {
+        // Test that efficient range patterns are equivalent to their expansions
+        // by checking that (efficient XOR expansion) is empty
+        
+        // Helper to expand a range manually
+        fn expand_range(start: u32, end: u32, start_val: u128, end_val: u128) -> expr::Exp {
+            let mut terms = Vec::new();
+            let width = (end - start) as usize;
+            
+            for val in start_val..=end_val {
+                let mut bits = Vec::new();
+                // Generate bits in MSB-first order
+                for i in (0..width).rev() {
+                    bits.push((val >> i) & 1 == 1);
+                }
+                terms.push(expr::Expr::bit_range_test(start, end, bits));
+            }
+            
+            // Build disjunction
+            if terms.is_empty() {
+                expr::Expr::zero()
+            } else {
+                let mut result = terms.pop().unwrap();
+                while let Some(term) = terms.pop() {
+                    result = expr::Expr::union(term, result);
+                }
+                result
+            }
+        }
+        
+        // Test case 1: Small IP range
+        {
+            let expr_str = "x[0..32] ~ 192.168.1.10-192.168.1.15";
+            let expressions = parser::parse_expressions(expr_str).unwrap();
+            let efficient = desugar::desugar(&expressions[0]).unwrap();
+            
+            // Manually expand the same range
+            let start_ip = (192u128 << 24) | (168u128 << 16) | (1u128 << 8) | 10u128;
+            let end_ip = (192u128 << 24) | (168u128 << 16) | (1u128 << 8) | 15u128;
+            let expansion = expand_range(0, 32, start_ip, end_ip);
+            
+            // Check equivalence: (efficient XOR expansion) should be empty
+            let xor = expr::Expr::xor(efficient.clone(), expansion);
+            let xor_desugared = desugar::desugar(&xor).unwrap();
+            
+            let mut aut = aut::Aut::new(32);
+            let state = aut.expr_to_state(&xor_desugared);
+            assert!(aut.is_empty(state), "Efficient range should be equivalent to expansion");
+        }
+        
+        // Test case 2: Port range
+        {
+            let expr_str = "let port = &x[0..16] in port ~ 8080-8090";
+            let expressions = parser::parse_expressions(expr_str).unwrap();
+            let efficient = desugar::desugar(&expressions[0]).unwrap();
+            
+            // Manually expand
+            let expansion = expand_range(0, 16, 8080, 8090);
+            
+            // Check equivalence
+            let xor = expr::Expr::xor(efficient.clone(), expansion);
+            let xor_desugared = desugar::desugar(&xor).unwrap();
+            
+            let mut aut = aut::Aut::new(16);
+            let state = aut.expr_to_state(&xor_desugared);
+            assert!(aut.is_empty(state), "Efficient port range should be equivalent to expansion");
+        }
+        
+        // Test case 3: Power of 2 aligned range
+        {
+            let expr_str = "x[0..8] ~ 128-255";  // Upper half of byte
+            let expressions = parser::parse_expressions(expr_str).unwrap();
+            let efficient = desugar::desugar(&expressions[0]).unwrap();
+            
+            // This should be equivalent to just testing the MSB
+            let msb_test = expr::Expr::test(0, true);
+            
+            // Check equivalence
+            let xor = expr::Expr::xor(efficient.clone(), msb_test);
+            let xor_desugared = desugar::desugar(&xor).unwrap();
+            
+            let mut aut = aut::Aut::new(8);
+            let state = aut.expr_to_state(&xor_desugared);
+            assert!(aut.is_empty(state), "Range 128-255 should be equivalent to MSB=1");
+        }
+        
+        // Test case 4: CIDR equivalence
+        {
+            // 192.168.1.0/24 should be equivalent to 192.168.1.0-192.168.1.255
+            let cidr_expr = parser::parse_expressions("x[0..32] ~ 192.168.1.0/24").unwrap();
+            let range_expr = parser::parse_expressions("x[0..32] ~ 192.168.1.0-192.168.1.255").unwrap();
+            
+            let cidr = desugar::desugar(&cidr_expr[0]).unwrap();
+            let range = desugar::desugar(&range_expr[0]).unwrap();
+            
+            // Check equivalence
+            let xor = expr::Expr::xor(cidr, range);
+            let xor_desugared = desugar::desugar(&xor).unwrap();
+            
+            let mut aut = aut::Aut::new(32);
+            let state = aut.expr_to_state(&xor_desugared);
+            assert!(aut.is_empty(state), "CIDR /24 should be equivalent to corresponding range");
+        }
+        
+        // Test case 5: Complex range that would be inefficient to enumerate
+        {
+            // This range has 100 addresses - good for testing efficiency
+            let expr_str = "x[0..32] ~ 10.0.0.156-10.0.1.0";  // 156..255 + 0
+            let expressions = parser::parse_expressions(expr_str).unwrap();
+            let efficient = desugar::desugar(&expressions[0]).unwrap();
+            
+            // For this test, just verify it doesn't create too many unions
+            fn count_unions(expr: &expr::Expr) -> usize {
+                match expr {
+                    expr::Expr::Union(e1, e2) => 1 + count_unions(e1) + count_unions(e2),
+                    expr::Expr::Intersect(e1, e2) => count_unions(e1) + count_unions(e2),
+                    _ => 0,
+                }
+            }
+            
+            let union_count = count_unions(&efficient);
+            assert!(union_count < 100, "Should use efficient bounds, not enumerate all 101 addresses");
+            
+            // Also verify it's not empty and accepts the right values
+            let mut aut = aut::Aut::new(32);
+            let state = aut.expr_to_state(&efficient);
+            assert!(!aut.is_empty(state), "Range should not be empty");
+        }
+    }
+    
+    #[test]
+    fn test_cidr_pattern_equivalence() {
+        // Test that CIDR patterns are equivalent to their expanded ranges
+        // by checking that (CIDR XOR expansion) is empty
+        
+        // Helper to manually expand a CIDR to all matching IPs
+        fn expand_cidr(start: u32, end: u32, base_ip: u32, prefix_len: usize) -> expr::Exp {
+            let width = (end - start) as usize;
+            let mut terms = Vec::new();
+            
+            // Calculate the number of host bits
+            let host_bits = 32 - prefix_len;
+            let num_addresses = 1u32 << host_bits;
+            
+            // Generate all IPs in the CIDR range
+            for i in 0..num_addresses {
+                let ip = base_ip | i;
+                let mut bits = Vec::new();
+                // Generate bits in MSB-first order
+                for bit_idx in (0..width).rev() {
+                    bits.push((ip >> bit_idx) & 1 == 1);
+                }
+                terms.push(expr::Expr::bit_range_test(start, end, bits));
+            }
+            
+            // Build disjunction
+            if terms.is_empty() {
+                expr::Expr::zero()
+            } else {
+                let mut result = terms.pop().unwrap();
+                while let Some(term) = terms.pop() {
+                    result = expr::Expr::union(term, result);
+                }
+                result
+            }
+        }
+        
+        // Test case 1: /24 network (256 addresses)
+        {
+            let cidr_expr = parser::parse_expressions("x[0..32] ~ 192.168.1.0/24").unwrap();
+            let cidr = desugar::desugar(&cidr_expr[0]).unwrap();
+            
+            // Manually expand the CIDR
+            let base_ip = (192u32 << 24) | (168u32 << 16) | (1u32 << 8) | 0u32;
+            let expansion = expand_cidr(0, 32, base_ip, 24);
+            
+            // Check equivalence
+            let xor = expr::Expr::xor(cidr.clone(), expansion);
+            let xor_desugared = desugar::desugar(&xor).unwrap();
+            
+            let mut aut = aut::Aut::new(32);
+            let state = aut.expr_to_state(&xor_desugared);
+            assert!(aut.is_empty(state), "/24 CIDR should be equivalent to 256 address expansion");
+        }
+        
+        // Test case 2: /28 network (16 addresses)
+        {
+            let cidr_expr = parser::parse_expressions("x[0..32] ~ 10.0.0.16/28").unwrap();
+            let cidr = desugar::desugar(&cidr_expr[0]).unwrap();
+            
+            // The /28 network 10.0.0.16/28 includes IPs 10.0.0.16 - 10.0.0.31
+            let base_ip = (10u32 << 24) | (0u32 << 16) | (0u32 << 8) | 16u32;
+            let expansion = expand_cidr(0, 32, base_ip, 28);
+            
+            // Check equivalence
+            let xor = expr::Expr::xor(cidr.clone(), expansion);
+            let xor_desugared = desugar::desugar(&xor).unwrap();
+            
+            let mut aut = aut::Aut::new(32);
+            let state = aut.expr_to_state(&xor_desugared);
+            assert!(aut.is_empty(state), "/28 CIDR should be equivalent to 16 address expansion");
+        }
+        
+        // Test case 3: /32 network (single host)
+        {
+            let cidr_expr = parser::parse_expressions("x[0..32] ~ 192.168.1.100/32").unwrap();
+            let single_ip = parser::parse_expressions("x[0..32] ~ 192.168.1.100").unwrap();
+            
+            let cidr = desugar::desugar(&cidr_expr[0]).unwrap();
+            let exact = desugar::desugar(&single_ip[0]).unwrap();
+            
+            // /32 should be equivalent to exact IP match
+            let xor = expr::Expr::xor(cidr, exact);
+            let xor_desugared = desugar::desugar(&xor).unwrap();
+            
+            let mut aut = aut::Aut::new(32);
+            let state = aut.expr_to_state(&xor_desugared);
+            assert!(aut.is_empty(state), "/32 CIDR should be equivalent to exact IP match");
+        }
+        
+        // Test case 4: /16 network (larger test)
+        {
+            let cidr_expr = parser::parse_expressions("x[0..32] ~ 172.16.0.0/16").unwrap();
+            let cidr = desugar::desugar(&cidr_expr[0]).unwrap();
+            
+            // For /16, we can't enumerate all 65536 addresses, but we can test samples
+            // Test that some addresses inside the range match
+            let inside_tests = vec![
+                "x[0..32] ~ 172.16.0.0",
+                "x[0..32] ~ 172.16.0.1",
+                "x[0..32] ~ 172.16.255.254",
+                "x[0..32] ~ 172.16.255.255",
+                "x[0..32] ~ 172.16.128.128",
+            ];
+            
+            for test_expr in inside_tests {
+                let ip_expr = parser::parse_expressions(test_expr).unwrap();
+                let ip = desugar::desugar(&ip_expr[0]).unwrap();
+                
+                // IP AND CIDR should equal IP (meaning IP is in CIDR range)
+                let intersection = expr::Expr::intersect(cidr.clone(), ip.clone());
+                let inter_desugared = desugar::desugar(&intersection).unwrap();
+                
+                let xor = expr::Expr::xor(inter_desugared, ip);
+                let xor_desugared = desugar::desugar(&xor).unwrap();
+                
+                let mut aut = aut::Aut::new(32);
+                let state = aut.expr_to_state(&xor_desugared);
+                assert!(aut.is_empty(state), "{} should be in 172.16.0.0/16", test_expr);
+            }
+            
+            // Test that addresses outside the range don't match
+            let outside_tests = vec![
+                "x[0..32] ~ 172.15.255.255",
+                "x[0..32] ~ 172.17.0.0",
+                "x[0..32] ~ 173.16.0.0",
+            ];
+            
+            for test_expr in outside_tests {
+                let ip_expr = parser::parse_expressions(test_expr).unwrap();
+                let ip = desugar::desugar(&ip_expr[0]).unwrap();
+                
+                // IP AND CIDR should be empty (meaning IP is not in CIDR range)
+                let intersection = expr::Expr::intersect(cidr.clone(), ip);
+                let inter_desugared = desugar::desugar(&intersection).unwrap();
+                
+                let mut aut = aut::Aut::new(32);
+                let state = aut.expr_to_state(&inter_desugared);
+                assert!(aut.is_empty(state), "{} should NOT be in 172.16.0.0/16", test_expr);
+            }
+        }
+        
+        // Test case 5: Special cases
+        {
+            // /0 should match everything
+            let cidr_all = parser::parse_expressions("x[0..32] ~ 0.0.0.0/0").unwrap();
+            let all = desugar::desugar(&cidr_all[0]).unwrap();
+            
+            // Should be equivalent to T (true/one)
+            let xor = expr::Expr::xor(all, expr::Expr::one());
+            let xor_desugared = desugar::desugar(&xor).unwrap();
+            
+            let mut aut = aut::Aut::new(32);
+            let state = aut.expr_to_state(&xor_desugared);
+            assert!(aut.is_empty(state), "/0 CIDR should match everything");
+        }
+        
+        // Test case 6: CIDR with port field
+        {
+            let expr_str = "let ip = &x[0..32] in ip ~ 10.10.0.0/16";
+            let cidr_expr = parser::parse_expressions(expr_str).unwrap();
+            let cidr = desugar::desugar(&cidr_expr[0]).unwrap();
+            
+            // Test boundary addresses
+            let start_ip = parser::parse_expressions("let ip = &x[0..32] in ip ~ 10.10.0.0").unwrap();
+            let end_ip = parser::parse_expressions("let ip = &x[0..32] in ip ~ 10.10.255.255").unwrap();
+            
+            let start = desugar::desugar(&start_ip[0]).unwrap();
+            let end = desugar::desugar(&end_ip[0]).unwrap();
+            
+            // Both should be in the CIDR range
+            for (ip, name) in [(start, "start"), (end, "end")] {
+                let intersection = expr::Expr::intersect(cidr.clone(), ip.clone());
+                let inter_desugared = desugar::desugar(&intersection).unwrap();
+                
+                let xor = expr::Expr::xor(inter_desugared, ip);
+                let xor_desugared = desugar::desugar(&xor).unwrap();
+                
+                let mut aut = aut::Aut::new(32);
+                let state = aut.expr_to_state(&xor_desugared);
+                assert!(aut.is_empty(state), "{} address should be in CIDR range", name);
+            }
+        }
+    }
+    
+    #[test]
     fn test_pattern_matching_literals() {
         // Test pattern matching with different literal formats
         

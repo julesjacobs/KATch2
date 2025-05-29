@@ -971,7 +971,8 @@ src ~ 192.168.1.100</netkat>
         <h4>CIDR Notation (Prefix Matching)</h4>
         <p>Use CIDR notation to match IP prefixes/subnets:</p>
         <netkat example="Match all IPs in a /24 subnet">let src = &x[0..32] in
-src ~ 192.168.1.0/24  // Matches 192.168.1.0 - 192.168.1.255</netkat>
+src ~ 192.168.1.0/24 +   // Matches 192.168.1.0 - 192.168.1.255
+src ~ 192.168.2.0</netkat>
 
         <netkat example="Match multiple subnets">let dst = &x[32..64] in
 // Match private networks
