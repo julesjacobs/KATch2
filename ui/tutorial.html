@@ -396,9 +396,43 @@ x2 == 1
 
         <h2>Encoding If-Then-Else</h2>
         <p>NetKAT can express conditional logic (if-then-else) by combining tests, assignments, and choice. The general pattern for "if C then P1 else P2" is: <code>(C; P1) + (not C; P2)</code>.</p>
+
+        <h3>Test Negation (!)</h3>
+        <p>KATch<sup>2</sup> provides the <code>!</code> operator for negating test conditions. This operator can only be applied to test expressions (not arbitrary NetKAT programs):</p>
+        
+        <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 15px; margin: 15px 0;">
+            <h4 style="margin-top: 0;">Test Negation Examples</h4>
+            <ul style="margin-bottom: 8px;">
+                <li><code>!(x0 == 1)</code> - True when x0 is NOT 1 (equivalent to <code>x0 == 0</code>)</li>
+                <li><code>!(x0 == 1 & x1 == 1)</code> - True when NOT both are 1</li>
+                <li><code>!!(x0 == 1)</code> - Double negation, same as <code>x0 == 1</code></li>
+            </ul>
+            <p style="margin-bottom: 0; font-style: italic; color: #666;">The negation is implemented using De Morgan's laws during desugaring.</p>
+        </div>
+
+        <netkat example="Test negation: accept packets where x0 is NOT 1">!(x0 == 1)</netkat>
+        
+        <netkat example="Complex negation with De Morgan's law: !(A & B) = !A + !B">!(x0 == 1 & x1 == 1)</netkat>
+
+        <h3>If-Then-Else Syntactic Sugar</h3>
+        <p>Instead of manually encoding conditionals with choice operators, KATch<sup>2</sup> provides convenient <code>if-then-else</code> syntax:</p>
+        
+        <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 15px; margin: 15px 0;">
+            <h4 style="margin-top: 0;">If-Then-Else Syntax</h4>
+            <code>if condition then expr1 else expr2</code>
+            <p style="margin-top: 8px;">This is automatically desugared to: <code>(condition; expr1) + (!condition; expr2)</code></p>
+            <p style="margin-bottom: 0; font-style: italic; color: #666;">The condition must be a test expression (something that filters packets).</p>
+        </div>
+
+        <netkat example="If-then-else syntax: set x1 based on x0's value">if x0 == 1 then x1 := 1 else x1 := 0</netkat>
+        
+        <netkat example="Nested if-then-else with complex conditions">if x0 == 1 & x1 == 0 then 
+    x2 := 1 
+else 
+    if x0 == 0 then x2 := 0 else x2 := 1</netkat>
         
         <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 20px; margin: 15px 0; font-family: monospace;">
-            <div style="margin-bottom: 12px; font-weight: bold; color: #495057; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">If-Then-Else Decision: (x0 == 1; x1 := 1) + (x0 == 0; x1 := 0)</div>
+            <div style="margin-bottom: 12px; font-weight: bold; color: #495057; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">If-Then-Else Decision: if x0 == 1 then x1 := 1 else x1 := 0</div>
             <div style="display: flex; flex-direction: column; align-items: center; gap: 12px;">
                 <div style="background: #e3f2fd; padding: 8px 12px; border-radius: 4px; text-align: center;">
                     <strong>Input Packet</strong>
@@ -420,7 +454,7 @@ x2 == 1
                     <div style="display: flex; flex-direction: column; align-items: center; gap: 8px;">
                         <span style="font-size: 18px; color: #666;">↘</span>
                         <div style="background: #ffebee; padding: 6px 12px; border-radius: 3px; color: #c62828;">
-                            <strong>NO (x0 == 0)</strong>
+                            <strong>NO (!(x0 == 1))</strong>
                         </div>
                         <div style="font-size: 18px; color: #666;">↓</div>
                         <div style="background: #f3e5f5; padding: 6px 10px; border-radius: 3px;">x1 := 0</div>
@@ -434,11 +468,13 @@ x2 == 1
             </div>
         </div>
         
-        <p style="font-style: italic; color: #666; margin: 10px 0;">Test this conditional logic in the editor below:</p>
+        <p style="font-style: italic; color: #666; margin: 10px 0;">Compare the manual encoding with the syntactic sugar:</p>
         
-        <netkat example="If-then-else: if x0 is 1, set x1 to 1; otherwise set x1 to 0. Try packets with different x0 values.">(x0 == 1; x1 := 1) + (x0 == 0; x1 := 0)</netkat>
+        <netkat example="Manual encoding using choice and negation">(x0 == 1; x1 := 1) + (!(x0 == 1); x1 := 0)</netkat>
+        
+        <netkat example="Same behavior using if-then-else syntax">if x0 == 1 then x1 := 1 else x1 := 0</netkat>
 
-        <netkat exercise="If x1 == 0 then set x0 := 1, else set x0 := 0">(x1 == 0; x0 := 1) + (x1 == 1; x0 := 0)</netkat>
+        <netkat exercise="Use if-then-else to set x0 := 1 when x1 == 0, otherwise set x0 := 0">if x1 == 0 then x0 := 1 else x0 := 0</netkat>
 
         <h2>Dup (Logging)</h2>
         <p>The <code>dup</code> keyword is a special NetKAT operator that records the current packet state to the trace output without modifying it. This is extremely useful for observing the packet state at various points in your NetKAT expression.</p>
