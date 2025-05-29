@@ -1697,7 +1697,7 @@ impl<'a> Parser<'a> {
                     let parts: Vec<&str> = ip_str.split('-').collect();
                     if parts.len() != 2 {
                         return Err(ParseError::new(
-                            format!("Invalid IP range format: {}", ip_str),
+                            format!("Invalid range format: {}", ip_str),
                             token.span,
                         ));
                     }

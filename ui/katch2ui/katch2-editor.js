@@ -247,6 +247,7 @@ class KATch2Editor {
         elements.forEach(element => {
             const isExerciseAttr = element.getAttribute('exercise');
             const isExampleAttr = element.getAttribute('example');
+            const isKleeneMode = element.hasAttribute('kleene');
             const targetId = element.getAttribute('target');
             const initialCode = element.textContent.trim(); // Solution if exercise loader, or code if editor
             const id = element.getAttribute('id') || this.generateUniqueId('keditor-');
@@ -269,9 +270,9 @@ class KATch2Editor {
                 const showLineNumbers = element.hasAttribute('show-line-numbers');
 
                 if (targetId) { // No isExerciseAttr, so it's an EXAMPLE editor
-                    this.replaceWithExampleEditor(element, initialCode, lines, showLineNumbers, targetId);
+                    this.replaceWithExampleEditor(element, initialCode, lines, showLineNumbers, targetId, isKleeneMode);
                 } else { // Regular editor or a self-contained EXERCISE editor or EXAMPLE with description
-                    this.replaceWithEditor(element, initialCode, lines, showLineNumbers, id, isExerciseAttr, isExampleAttr);
+                    this.replaceWithEditor(element, initialCode, lines, showLineNumbers, id, isExerciseAttr, isExampleAttr, isKleeneMode);
                 }
             }
         });
@@ -283,7 +284,7 @@ class KATch2Editor {
         });
     }
 
-    replaceWithEditor(element, initialCode, lines = 1, showLineNumbers = false, id = null, exerciseDescriptionText = null, exampleDescriptionText = null) {
+    replaceWithEditor(element, initialCode, lines = 1, showLineNumbers = false, id = null, exerciseDescriptionText = null, exampleDescriptionText = null, isKleeneMode = false) {
         const height = Math.max(50, lines * 22 + 30);
         const isExercise = exerciseDescriptionText !== null;
         const isExample = exampleDescriptionText !== null;
@@ -347,7 +348,7 @@ class KATch2Editor {
             background: white;
         `;
 
-        // Result area (bottom section for regular editors)
+        // Result area (bottom section for regular editors, hidden in Kleene mode)
         const resultArea = document.createElement('div');
         resultArea.className = 'katch2-result';
         resultArea.style.cssText = `
@@ -360,7 +361,7 @@ class KATch2Editor {
             color: #555;
             transition: border-color 0.3s ease-in-out, color 0.3s ease-in-out;
             border-top: 1px solid #e9ecef;
-            display: ${isExercise ? 'none' : 'block'};
+            display: ${isExercise || isKleeneMode ? 'none' : 'block'};
         `;
         resultArea.innerHTML = '<strong>Analysis:</strong> Waiting for input...';
         
@@ -417,10 +418,12 @@ class KATch2Editor {
             unifiedContainer.style.boxShadow = '0 3px 7px rgba(0,0,0,0.15)';
         });
 
-        // KATch logo (positioned in upper right corner of the editor area)
+        // KATch/Kleene logo (positioned in upper right corner of the editor area)
         const katchLogo = document.createElement('img');
-        katchLogo.src = 'assets/katch2-head.webp';
-        katchLogo.alt = 'KATch2';
+        // Use base URL to properly resolve asset paths
+        const basePath = this.baseUrl.includes('katch2ui/') ? '../' : '';
+        katchLogo.src = isKleeneMode ? `${basePath}assets/kleene-head.png` : `${basePath}assets/katch2-head.webp`;
+        katchLogo.alt = isKleeneMode ? 'Kleene' : 'KATch2';
         katchLogo.className = 'katch2-editor-logo';
         katchLogo.style.cssText = `
             position: absolute;
@@ -448,10 +451,10 @@ class KATch2Editor {
         wrapper.appendChild(showSolutionButton);
         element.parentNode.replaceChild(wrapper, element);
         
-        this.createEditor(wrapper, container, resultArea, exerciseDescriptionElement, exerciseFeedbackArea, editorInitialCode, showLineNumbers, false, id, isExercise, targetSolution, exerciseDescriptionText, exampleDescriptionText, exampleDescriptionElement, showSolutionButton);
+        this.createEditor(wrapper, container, resultArea, exerciseDescriptionElement, exerciseFeedbackArea, editorInitialCode, showLineNumbers, false, id, isExercise, targetSolution, exerciseDescriptionText, exampleDescriptionText, exampleDescriptionElement, showSolutionButton, isKleeneMode);
     }
 
-    replaceWithExampleEditor(element, initialCode, lines = 1, showLineNumbers = false, targetId) {
+    replaceWithExampleEditor(element, initialCode, lines = 1, showLineNumbers = false, targetId, isKleeneMode = false) {
         // Add syntax highlighting styles to the page
         this.addNetKATSyntaxStyles();
         
@@ -631,11 +634,13 @@ class KATch2Editor {
                     const lineLength = model.getLineMaxColumn(lineCount);
                     targetEditor.setPosition({ lineNumber: lineCount, column: lineLength });
                     
-                    // Force re-analysis in normal mode by triggering content change
+                    // Force re-analysis in normal mode by triggering content change (only if not Kleene mode)
                     // This ensures the analysis switches from exercise mode to normal mode
-                    setTimeout(() => {
-                        targetEditor.trigger('katch2', 'type', { text: '' });
-                    }, 10);
+                    if (!targetInstance.isKleeneMode) {
+                        setTimeout(() => {
+                            targetEditor.trigger('katch2', 'type', { text: '' });
+                        }, 10);
+                    }
                     
                     // Visual feedback
                     showSuccess();
@@ -650,7 +655,7 @@ class KATch2Editor {
         analyzeButton.addEventListener('mousedown', loadIntoTarget);
     }
 
-    createEditor(customElementDOM, container, resultArea, exerciseDescriptionElement, exerciseFeedbackArea, initialCode, showLineNumbers = false, readOnly = false, id = null, isExercise = false, targetSolution = null, exerciseDescriptionText = null, exampleDescriptionText = null, exampleDescriptionElement = null, showSolutionButton = null) {
+    createEditor(customElementDOM, container, resultArea, exerciseDescriptionElement, exerciseFeedbackArea, initialCode, showLineNumbers = false, readOnly = false, id = null, isExercise = false, targetSolution = null, exerciseDescriptionText = null, exampleDescriptionText = null, exampleDescriptionElement = null, showSolutionButton = null, isKleeneMode = false) {
         const monaco = this.monacoInstance;
         if (!id && customElementDOM && customElementDOM.id) id = customElementDOM.id; // Ensure ID if customElementDOM has one
         else if (!id) id = this.generateUniqueId('keditor-'); // Generate if still no ID
@@ -706,8 +711,8 @@ class KATch2Editor {
             });
         }
 
-        // Setup analysis logic only for non-readonly editors with result areas
-        if (!readOnly && resultArea) {
+        // Setup analysis logic only for non-readonly editors with result areas (skip for Kleene mode)
+        if (!readOnly && resultArea && !isKleeneMode) {
             // Pass exercise info to setupAnalysis
             this.setupAnalysis(editor, resultArea, isExercise, targetSolution, exerciseFeedbackArea, exerciseDescriptionElement, exampleDescriptionText);
         }
@@ -716,7 +721,8 @@ class KATch2Editor {
             editor, resultArea, id, 
             isExercise, targetSolution, exerciseDescriptionText, exampleDescriptionText,
             exerciseDescriptionElement, exerciseFeedbackArea, exampleDescriptionElement, showSolutionButton,
-            customElementDOM // This is the key: the wrapper div or <netkat-editor> tag
+            customElementDOM, // This is the key: the wrapper div or <netkat-editor> tag
+            isKleeneMode
         });
         return editor;
     }

@@ -560,7 +560,7 @@ fn desugar_pattern_match(start: u32, end: u32, pattern: &Pattern) -> Result<Exp,
             
             if start_val > end_val {
                 return Err(DesugarError {
-                    message: format!("Invalid IP range: start address is greater than end address")
+                    message: format!("Invalid range: start is greater than end")
                 });
             }
             

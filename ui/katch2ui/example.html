@@ -73,6 +73,20 @@ let dst = &x[32..64] in
     <p>While the <code>&lt;netkat&gt;</code> tag creates a full interactive editor:</p>
     <netkat lines="1">x0 == 1 & x1 := 0</netkat>
 
+    <h2>Example 7: Kleene Mode</h2>
+    <p>The <code>kleene</code> attribute creates a Kleene algebra editor that disables trace analysis and shows the Kleene logo:</p>
+    <netkat kleene lines="3">// This is a Kleene editor
+// No trace analysis will be shown
+a* b* <= (a + b)*</netkat>
+
+    <h3>Kleene Mode with Exercise</h3>
+    <p>Exercise functionality still works in Kleene mode:</p>
+    <netkat kleene exercise="An exercise description">a* b* <= (a + b)*</netkat>
+
+    <h3>Kleene mode with example</h3>
+    <netkat kleene example="An example description">a* b* <= (a + b)*</netkat>
+
+
     <!-- Include the KATch2 NetKAT editor library -->
     <script type="module" src="katch2-editor.js"></script>
 </body>
