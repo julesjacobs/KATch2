@@ -194,12 +194,12 @@
         <p style="text-align: center">This tutorial will guide you through the basics of NetKAT.</p>
 
         <h2>Packets and Variables</h2>
-        <p>In NetKAT, a <strong>packet</strong> is represented as a sequence (or vector) of bits. We use variables like <code>x0</code>, <code>x1</code>, <code>x2</code>, and so on, to refer to these bits.
-        For example, if a packet is <code>101</code>, then:</p>
+        <p>In NetKAT, a <strong>packet</strong> is represented as a sequence (or vector) of bits. We use variables like <nk>x0</nk>, <nk>x1</nk>, <nk>x2</nk>, and so on, to refer to these bits.
+        For example, if a packet is <nk>101</nk>, then:</p>
         <ul>
-            <li><code>x0</code> would be <code>1</code> (the first bit)</li>
-            <li><code>x1</code> would be <code>0</code> (the second bit)</li>
-            <li><code>x2</code> would be <code>1</code> (the third bit)</li>
+            <li><nk>x0</nk> would be <nk>1</nk> (the first bit)</li>
+            <li><nk>x1</nk> would be <nk>0</nk> (the second bit)</li>
+            <li><nk>x2</nk> would be <nk>1</nk> (the third bit)</li>
         </ul>
 
         <h3>Real-World Example: Ethernet Frame</h3>
@@ -232,10 +232,10 @@
         
         <p>In this example:</p>
         <ul>
-            <li><code>x0-x47</code> would represent the 48-bit destination MAC address</li>
-            <li><code>x48-x95</code> would represent the 48-bit source MAC address</li>
-            <li><code>x96-x111</code> would represent the 16-bit EtherType field</li>
-            <li><code>x112</code> and beyond would be the start of the payload data, but the payload is typically not modeled in NetKAT</li>
+            <li><nk>x0-x47</nk> would represent the 48-bit destination MAC address</li>
+            <li><nk>x48-x95</nk> would represent the 48-bit source MAC address</li>
+            <li><nk>x96-x111</nk> would represent the 16-bit EtherType field</li>
+            <li><nk>x112</nk> and beyond would be the start of the payload data, but the payload is typically not modeled in NetKAT</li>
         </ul>
         
         <p>NetKAT policies can test or modify any of these bits to implement network behavior like filtering, forwarding, or packet transformation.</p>
@@ -274,14 +274,14 @@
 x2 == 1
 // The analysis results will be displayed here:</netkat>
 
-        <p>You can also test for equality to 0, like <code>x3 == 0</code>.</p>
+        <p>You can also test for equality to 0, like <nk>x3 == 0</nk>.</p>
 
         <netkat exercise="Write a test that only allows packets where x1 is 0">x1 == 0</netkat>
 
         <p>Note that the examples displayed are as wide as the largest bit mentioned in the program.</p>
 
         <h2>Assignments</h2>
-        <p>Assignments modify the packet's bits. The expression <code>x2 := 1</code> sets the third bit of the packet to 1, regardless of its previous value.</p>
+        <p>Assignments modify the packet's bits. The expression <nk>x2 := 1</nk> sets the third bit of the packet to 1, regardless of its previous value.</p>
         
         <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 20px; margin: 15px 0; font-family: monospace;">
             <div style="margin-bottom: 12px; font-weight: bold; color: #495057; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">Assignment Effect: x2 := 1</div>
@@ -319,7 +319,7 @@ x2 == 1
         <netkat exercise="Set x2 to 0">x2 := 0</netkat>
 
         <h2>Sequential Composition</h2>
-        <p>Sequential composition, denoted by a semicolon <code>;</code>, combines two NetKAT expressions by executing them one after the other. The packet output by the first expression becomes the input to the second.</p>
+        <p>Sequential composition, denoted by a semicolon <nk>;</nk>, combines two NetKAT expressions by executing them one after the other. The packet output by the first expression becomes the input to the second.</p>
         
         <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 20px; margin: 15px 0; font-family: monospace;">
             <div style="margin-bottom: 12px; font-weight: bold; color: #495057; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">Sequential Flow: x2 == 1; x1 := 0</div>
@@ -357,7 +357,7 @@ x2 == 1
         <netkat example="Demonstrates chaining multiple assignments: first sets x0 to 1, then sets x2 to 0. Watch how the packet transforms through both steps.">x0 := 1; x2 := 0</netkat>
 
         <h2>Choice (Union)</h2>
-        <p>Choice, denoted by a plus sign <code>+</code>, combines two NetKAT expressions and can be interpreted in two ways:</p>
+        <p>Choice, denoted by a plus sign <nk>+</nk>, combines two NetKAT expressions and can be interpreted in two ways:</p>
         
         <p><strong>Nondeterministic Interpretation:</strong> The network can choose to follow either path - it's an "either/or" decision where one path is selected.</p>
         
@@ -395,17 +395,17 @@ x2 == 1
         <netkat exercise="Write a policy that either tests x0 == 1 or assigns x1 := 0">x0 == 1 + x1 := 0</netkat>
 
         <h2>Encoding If-Then-Else</h2>
-        <p>NetKAT can express conditional logic (if-then-else) by combining tests, assignments, and choice. The general pattern for "if C then P1 else P2" is: <code>(C; P1) + (not C; P2)</code>.</p>
+        <p>NetKAT can express conditional logic (if-then-else) by combining tests, assignments, and choice. The general pattern for "if C then P1 else P2" is: <nk>(C; P1) + (not C; P2)</nk>.</p>
 
         <h3>Test Negation (!)</h3>
-        <p>KATch<sup>2</sup> provides the <code>!</code> operator for negating test conditions. This operator can only be applied to test expressions (not arbitrary NetKAT programs):</p>
+        <p>KATch<sup>2</sup> provides the <nk>!</nk> operator for negating test conditions. This operator can only be applied to test expressions (not arbitrary NetKAT programs):</p>
         
         <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 15px; margin: 15px 0;">
             <h4 style="margin-top: 0;">Test Negation Examples</h4>
             <ul style="margin-bottom: 8px;">
-                <li><code>!(x0 == 1)</code> - True when x0 is NOT 1 (equivalent to <code>x0 == 0</code>)</li>
-                <li><code>!(x0 == 1 & x1 == 1)</code> - True when NOT both are 1</li>
-                <li><code>!!(x0 == 1)</code> - Double negation, same as <code>x0 == 1</code></li>
+                <li><nk>!(x0 == 1)</nk> - True when x0 is NOT 1 (equivalent to <nk>x0 == 0</nk>)</li>
+                <li><nk>!(x0 == 1 & x1 == 1)</nk> - True when NOT both are 1</li>
+                <li><nk>!!(x0 == 1)</nk> - Double negation, same as <nk>x0 == 1</nk></li>
             </ul>
             <p style="margin-bottom: 0; font-style: italic; color: #666;">The negation is implemented using De Morgan's laws during desugaring.</p>
         </div>
@@ -415,12 +415,12 @@ x2 == 1
         <netkat example="Complex negation with De Morgan's law: !(A & B) = !A + !B">!(x0 == 1 & x1 == 1)</netkat>
 
         <h3>If-Then-Else Syntactic Sugar</h3>
-        <p>Instead of manually encoding conditionals with choice operators, KATch<sup>2</sup> provides convenient <code>if-then-else</code> syntax:</p>
+        <p>Instead of manually encoding conditionals with choice operators, KATch<sup>2</sup> provides convenient <nk>if-then-else</nk> syntax:</p>
         
         <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 15px; margin: 15px 0;">
             <h4 style="margin-top: 0;">If-Then-Else Syntax</h4>
-            <code>if condition then expr1 else expr2</code>
-            <p style="margin-top: 8px;">This is automatically desugared to: <code>(condition; expr1) + (!condition; expr2)</code></p>
+            <nk>if condition then expr1 else expr2</nk>
+            <p style="margin-top: 8px;">This is automatically desugared to: <nk>(condition; expr1) + (!condition; expr2)</nk></p>
             <p style="margin-bottom: 0; font-style: italic; color: #666;">The condition must be a test expression (something that filters packets).</p>
         </div>
 
@@ -477,7 +477,7 @@ else
         <netkat exercise="Use if-then-else to set x0 := 1 when x1 == 0, otherwise set x0 := 0">if x1 == 0 then x0 := 1 else x0 := 0</netkat>
 
         <h2>Dup (Logging)</h2>
-        <p>The <code>dup</code> keyword is a special NetKAT operator that records the current packet state to the trace output without modifying it. This is extremely useful for observing the packet state at various points in your NetKAT expression.</p>
+        <p>The <nk>dup</nk> keyword is a special NetKAT operator that records the current packet state to the trace output without modifying it. This is extremely useful for observing the packet state at various points in your NetKAT expression.</p>
         
         <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 20px; margin: 15px 0; font-family: monospace;">
             <div style="margin-bottom: 12px; font-weight: bold; color: #495057; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">Dup Logging: x1 := 1; dup; x2 := 1</div>
@@ -521,7 +521,7 @@ else
         <netkat exercise="Set x0 to 1, log with dup, then set x1 to 1, log again with dup">x0 := 1; dup; x1 := 1; dup</netkat>
 
         <h2>Iteration (Kleene Star)</h2>
-        <p>Iteration, denoted by an asterisk <code>*</code> (Kleene star) after an expression <code>e</code> (i.e., <code>e*</code>), allows an expression to be executed zero or more times.</p>
+        <p>Iteration, denoted by an asterisk <nk>*</nk> (Kleene star) after an expression <nk>e</nk> (i.e., <nk>e*</nk>), allows an expression to be executed zero or more times.</p>
         
         <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 20px; margin: 15px 0; font-family: monospace;">
             <div style="margin-bottom: 12px; font-weight: bold; color: #495057; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">Iteration Paths: (x0:=1 + (x0==1;x1:=1) + (x1==1; x2:=1))*</div>
@@ -575,7 +575,7 @@ else
         <p>NetKAT expressions represent <strong>sets of traces</strong> (sequences of packet transformations). NetKAT's logical operators correspond to set operations on these trace sets, making them powerful tools for both constructing complex policies and verifying network properties.</p>
 
         <h3>Union (+)</h3>
-        <p>We've already seen the union operator <code>+</code>. From a formal perspective, this represents the <strong>set union</strong> of traces from both expressions - the result contains all traces that are generated by either the left or right expression. This gives us a third interpretation alongside the nondeterministic and multicast views:</p>
+        <p>We've already seen the union operator <nk>+</nk>. From a formal perspective, this represents the <strong>set union</strong> of traces from both expressions - the result contains all traces that are generated by either the left or right expression. This gives us a third interpretation alongside the nondeterministic and multicast views:</p>
         <ul>
             <li><strong>Nondeterministic:</strong> Choose one path</li>
             <li><strong>Multicast:</strong> Send packets down both paths</li>
@@ -608,7 +608,7 @@ else
         </div>
         
         <h3>Intersection (&)</h3>
-        <p>The intersection operator <code>&</code> represents the <strong>set intersection</strong> of traces. A trace appears in the result only if it's generated by both expressions.</p>
+        <p>The intersection operator <nk>&</nk> represents the <strong>set intersection</strong> of traces. A trace appears in the result only if it's generated by both expressions.</p>
         
         <div class="diagram-editor-container">
             <div class="diagram-container">
@@ -643,7 +643,7 @@ else
         </div>
         
         <h3>Symmetric Difference / XOR (^)</h3>
-        <p>The XOR operator <code>^</code> represents the <strong>symmetric difference</strong> of trace sets - traces that are in one set but not both.</p>
+        <p>The XOR operator <nk>^</nk> represents the <strong>symmetric difference</strong> of trace sets - traces that are in one set but not both.</p>
         
         <div class="diagram-editor-container">
             <div class="diagram-container">
@@ -683,7 +683,7 @@ else
         </div>
         
         <h3>Difference (-)</h3>
-        <p>The difference operator <code>-</code> represents the <strong>set difference</strong> - traces that are in the first set but not in the second set.</p>
+        <p>The difference operator <nk>-</nk> represents the <strong>set difference</strong> - traces that are in the first set but not in the second set.</p>
         
         <div class="diagram-editor-container">
             <div class="diagram-container">
@@ -722,7 +722,7 @@ else
         <p>These set operations are particularly powerful for network verification:</p>
         
         <h4>Subset Check (A ⊆ B)</h4>
-        <p>To verify that the trace set of A is a subset of the trace set of B, check if <code>A - B</code> is empty. If it's not empty, the analyzer will show you traces that are in A's set but not in B's set.</p>
+        <p>To verify that the trace set of A is a subset of the trace set of B, check if <nk>A - B</nk> is empty. If it's not empty, the analyzer will show you traces that are in A's set but not in B's set.</p>
         
         <div class="diagram-editor-container">
             <div class="diagram-container">
@@ -757,7 +757,7 @@ else
         </div>
         
         <h4>Equality Check (A = B)</h4>
-        <p>To verify that two expressions generate the same trace set, check if <code>A ^ B</code> is empty. If it's not empty, the traces show you which traces appear in one set but not the other.</p>
+        <p>To verify that two expressions generate the same trace set, check if <nk>A ^ B</nk> is empty. If it's not empty, the traces show you which traces appear in one set but not the other.</p>
         
         <div class="diagram-editor-container">
             <div class="diagram-container">
@@ -879,9 +879,9 @@ x1 == 0
         <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 20px; margin: 15px 0;">
             <h4 style="margin-top: 0;">Bit Range Syntax</h4>
             <ul style="margin-bottom: 12px;">
-                <li><code>x[start..end]</code> - References bits from position <code>start</code> (inclusive) to <code>end</code> (exclusive)</li>
-                <li><code>x[0..8] == 255</code> - Tests if the first byte equals 255</li>
-                <li><code>x[0..8] := 10</code> - Sets the first byte to 10</li>
+                <li><nk>x[start..end]</nk> - References bits from position <nk>start</nk> (inclusive) to <nk>end</nk> (exclusive)</li>
+                <li><nk>x[0..8] == 255</nk> - Tests if the first byte equals 255</li>
+                <li><nk>x[0..8] := 10</nk> - Sets the first byte to 10</li>
             </ul>
             <p style="margin-bottom: 0; font-style: italic; color: #666;">The bit range notation follows Rust-style syntax where the end index is exclusive.</p>
         </div>
@@ -900,11 +900,11 @@ x1 == 0
         <netkat example="IP address literal: Test if bits represent an IP address">x[0..32] == 192.168.1.1</netkat>
 
         <h3>Let Aliases for Bit Ranges</h3>
-        <p>To make policies more readable, you can create named aliases for bit ranges using the <code>let</code> syntax:</p>
+        <p>To make policies more readable, you can create named aliases for bit ranges using the <nk>let</nk> syntax:</p>
         
         <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 20px; margin: 15px 0;">
             <h4 style="margin-top: 0;">Alias Syntax</h4>
-            <code>let alias = &x[start..end] in expression</code>
+            <nk>let alias = &x[start..end] in expression</nk>
             <p style="margin-top: 8px; margin-bottom: 0;">Creates an alias that can be used in tests and assignments within the expression.</p>
         </div>
 
@@ -925,12 +925,12 @@ let dst_port = &x[48..64] in
 (src_ip == 192.168.1.1 + src_ip == 192.168.1.2 + src_ip == 192.168.1.3) & dst_port == 80</netkat>
 
         <h3>Let Bindings for Expressions</h3>
-        <p>Beyond bit range aliases, <code>let</code> can bind any NetKAT expression to a variable for reuse:</p>
+        <p>Beyond bit range aliases, <nk>let</nk> can bind any NetKAT expression to a variable for reuse:</p>
         
         <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 20px; margin: 15px 0;">
             <h4 style="margin-top: 0;">Expression Binding Syntax</h4>
-            <code>let var = expression1 in expression2</code>
-            <p style="margin-top: 8px; margin-bottom: 0;">Binds <code>expression1</code> to <code>var</code>, which can be used in <code>expression2</code>.</p>
+            <nk>let var = expression1 in expression2</nk>
+            <p style="margin-top: 8px; margin-bottom: 0;">Binds <nk>expression1</nk> to <nk>var</nk>, which can be used in <nk>expression2</nk>.</p>
         </div>
 
         <netkat example="Bind a complex test to a variable">let is_local = x[0..8] == 192 & x[8..16] == 168 in
@@ -949,19 +949,8 @@ let is_external = dst_ip == 8.8.8.8 + dst_ip == 1.1.1.1 in
 // If source is private and destination is external, rewrite source to public IP
 is_private & is_external; src_ip := 203.0.113.1</netkat>
 
-        <h3>Practical Applications</h3>
-        <p>These features make it much easier to:</p>
-        <ul>
-            <li>Model real packet headers with meaningful field names</li>
-            <li>Write readable policies that match how network engineers think</li>
-            <li>Test complex network configurations with actual IP addresses and ports</li>
-            <li>Build reusable components with let bindings</li>
-        </ul>
-
-        <p>With these syntactic extensions, KATch<sup>2</sup> bridges the gap between the theoretical NetKAT language and practical network programming!</p>
-
         <h3>Pattern Matching with the ~ Operator</h3>
-        <p>KATch<sup>2</sup> supports flexible pattern matching for IP addresses and bit ranges using the <code>~</code> operator. This makes it easy to express common network matching patterns without writing complex bit-level tests.</p>
+        <p>KATch<sup>2</sup> supports flexible pattern matching for IP addresses and bit ranges using the <nk>~</nk> operator. This makes it easy to express common network matching patterns without writing complex bit-level tests.</p>
 
         <h4>Exact IP Matching</h4>
         <p>The simplest form matches an exact IP address:</p>
@@ -1027,8 +1016,19 @@ let port = &x[64..80] in
 (port ~ 1024-65535)            // High ports (established)</netkat>
 
         <h4>Performance Note</h4>
-        <p>All pattern matching is optimized to use efficient algorithms. Even patterns matching millions or billions of IP addresses (like <code>0.0.0.0-255.255.255.255</code>) are handled efficiently without expanding into huge expressions. The implementation uses binary decision techniques that keep the expression size proportional to the number of bits, not the number of addresses matched.</p>
+        <p>All pattern matching is optimized to use efficient algorithms. Even patterns matching millions or billions of IP addresses (like <nk>0.0.0.0-255.255.255.255</nk>) are handled efficiently without expanding into huge expressions. The implementation uses binary decision techniques that keep the expression size proportional to the number of bits, not the number of addresses matched.</p>
         
+
+        <h3>Practical Applications</h3>
+        <p>These features make it much easier to:</p>
+        <ul>
+            <li>Model real packet headers with meaningful field names</li>
+            <li>Write readable policies that match how network engineers think</li>
+            <li>Test complex network configurations with actual IP addresses and ports</li>
+            <li>Build reusable components with let bindings</li>
+        </ul>
+
+        <p>With these syntactic extensions, KATch<sup>2</sup> bridges the gap between the theoretical NetKAT language and practical network programming!</p>
     </div>
 
     <div class="github-link">

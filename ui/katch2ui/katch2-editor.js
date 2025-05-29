@@ -275,6 +275,12 @@ class KATch2Editor {
                 }
             }
         });
+        
+        // Also transform <nk> elements for syntax highlighting only
+        const nkElements = document.querySelectorAll('nk');
+        nkElements.forEach(element => {
+            this.replaceWithHighlightedCode(element);
+        });
     }
 
     replaceWithEditor(element, initialCode, lines = 1, showLineNumbers = false, id = null, exerciseDescriptionText = null, exampleDescriptionText = null) {
@@ -1311,6 +1317,41 @@ class KATch2Editor {
             .netkat-identifier { color: #996600; }
         `;
         document.head.appendChild(style);
+    }
+
+    // Replace <nk> element with syntax-highlighted code (no editor)
+    replaceWithHighlightedCode(element) {
+        // Add syntax highlighting styles to the page
+        this.addNetKATSyntaxStyles();
+        
+        const code = element.textContent.trim();
+        const showLineNumbers = element.hasAttribute('show-line-numbers');
+        
+        // Create a span to replace the nk element
+        const codeSpan = document.createElement('span');
+        codeSpan.className = 'netkat-highlighted';
+        codeSpan.style.cssText = `
+            font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        `;
+        
+        // Apply syntax highlighting
+        if (showLineNumbers) {
+            const lines = code.split('\n');
+            const numberedLines = lines.map((line, index) => {
+                const lineNumber = (index + 1).toString().padStart(2, ' ');
+                const highlightedLine = this.highlightNetKATCode(line);
+                return `<span class="line-number" style="color: #999; user-select: none;">${lineNumber} | </span>${highlightedLine}`;
+            }).join('\n');
+            codeSpan.innerHTML = numberedLines;
+        } else {
+            codeSpan.innerHTML = this.highlightNetKATCode(code);
+        }
+        
+        // Replace the original element
+        element.parentNode.replaceChild(codeSpan, element);
     }
 }
 

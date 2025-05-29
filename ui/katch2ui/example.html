@@ -45,6 +45,34 @@ x0 := 0; x1 := 0;
 x0 == 0; x1 == 1
     </netkat>
 
+    <h2>Example 6: Inline Syntax Highlighting with &lt;nk&gt; Tag</h2>
+    <p>For displaying NetKAT expressions inline with syntax highlighting (without creating an interactive editor), use the <code>&lt;nk&gt;</code> tag. This is useful for documentation, explanations, or showing code snippets that don't need to be interactive.</p>
+    
+    <p>For example, the expression <nk>x0 == 1 & x1 := 0</nk> shows syntax highlighting inline. You can also use it for more complex expressions like <nk>let ip = &x[0..32] in ip ~ 192.168.1.0/24</nk>.</p>
+    
+    <h3>Inline Examples</h3>
+    <ul>
+        <li>Basic operations: <nk>x0 == 1; x1 := 0</nk></li>
+        <li>Bit ranges: <nk>let port = &x[64..80] in port == 80</nk></li>
+        <li>IP addresses: <nk>x[0..32] == 192.168.1.1</nk></li>
+        <li>CIDR notation: <nk>x[0..32] ~ 10.0.0.0/8</nk></li>
+        <li>Hex and binary: <nk>x[0..8] == 0xFF + x[8..16] == 0b11110000</nk></li>
+        <li>Pattern matching: <nk>x[0..32] ~ 10.0.0.1-10.0.0.10</nk></li>
+    </ul>
+    
+    <h3>Block Example with Line Numbers</h3>
+    <p>You can also add line numbers to <code>&lt;nk&gt;</code> blocks with the <code>show-line-numbers</code> attribute:</p>
+    <nk show-line-numbers>let src = &x[0..32] in
+let dst = &x[32..64] in
+  src ~ 192.168.1.0/24 &
+  dst == 10.0.0.1;
+  src := 172.16.0.1</nk>
+    
+    <h3>Comparison: &lt;nk&gt; Tag vs Full Editor</h3>
+    <p>The <code>&lt;nk&gt;</code> tag is lightweight and perfect for inline code: <nk>x0 == 1 & x1 := 0</nk></p>
+    <p>While the <code>&lt;netkat&gt;</code> tag creates a full interactive editor:</p>
+    <netkat lines="1">x0 == 1 & x1 := 0</netkat>
+
     <!-- Include the KATch2 NetKAT editor library -->
     <script type="module" src="katch2-editor.js"></script>
 </body>
