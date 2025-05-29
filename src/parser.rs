@@ -1182,8 +1182,9 @@ impl<'a> Parser<'a> {
                                 // Pattern match operator x[start..end] ~ pattern
                                 self.consume_token()?; // Consume '~'
                                 
-                                // Parse pattern
-                                let pattern = self.parse_pattern()?;
+                                // Parse pattern with field width
+                                let field_width = (end - start) as usize;
+                                let pattern = self.parse_pattern(Some(field_width))?;
                                 Ok(Expr::bit_range_match(start, end, pattern))
                             }
                             _ => return Err(ParseError::new(
@@ -1306,17 +1307,15 @@ impl<'a> Parser<'a> {
                     // This is a bit range alias: let alias = &x[start..end] in expr
                     self.consume_token()?; // Consume '&'
                     
-                    // Expect 'x'
-                    let x_token = self.consume_token()?;
-                    match &x_token.kind {
-                        TokenKind::Ident(name) if name == "x" => {
-                            // Good, continue
-                        }
+                    // Expect identifier (x or alias name)
+                    let base_token = self.consume_token()?;
+                    let base_name = match &base_token.kind {
+                        TokenKind::Ident(name) => name.clone(),
                         _ => return Err(ParseError::new(
-                            format!("Expected 'x' after '&' in bit range alias, but found {}", token_kind_to_user_string(&x_token.kind)),
-                            x_token.span,
+                            format!("Expected identifier after '&' in bit range alias, but found {}", token_kind_to_user_string(&base_token.kind)),
+                            base_token.span,
                         )),
-                    }
+                    };
                     
                     // Expect '['
                     match self.consume_token()? {
@@ -1389,6 +1388,14 @@ impl<'a> Parser<'a> {
                     }
                     
                     let body = self.parse_until()?; // Parse body
+                    
+                    // For now, only support 'x' as the base
+                    if base_name != "x" {
+                        return Err(ParseError::new(
+                            format!("Sub-ranges of aliases not yet supported. Use &x[start..end] instead of &{}[start..end]", base_name),
+                            base_token.span,
+                        ));
+                    }
                     
                     Ok(Expr::let_bit_range(var_name, start, end, body))
                 } else {
@@ -1525,8 +1532,9 @@ impl<'a> Parser<'a> {
                             // Pattern match operator x[start..end] ~ pattern
                             self.consume_token()?; // Consume '~'
                             
-                            // Parse pattern
-                            let pattern = self.parse_pattern()?;
+                            // Parse pattern with field width
+                            let field_width = (end - start) as usize;
+                            let pattern = self.parse_pattern(Some(field_width))?;
                             Ok(Expr::bit_range_match(start, end, pattern))
                         }
                         _ => return Err(ParseError::new(
@@ -1596,8 +1604,8 @@ impl<'a> Parser<'a> {
                             // Pattern match: var ~ pattern
                             self.consume_token()?; // Consume '~'
                             
-                            // Parse pattern
-                            let pattern = self.parse_pattern()?;
+                            // Parse pattern (no field width for variables)
+                            let pattern = self.parse_pattern(None)?;
                             Ok(Expr::var_match(name, pattern))
                         }
                         _ => {
@@ -1657,7 +1665,7 @@ impl<'a> Parser<'a> {
     }
     
     /// Parse a pattern for pattern matching expressions
-    fn parse_pattern(&mut self) -> Result<Pattern, ParseError> {
+    fn parse_pattern(&mut self, field_width: Option<usize>) -> Result<Pattern, ParseError> {
         let token = self.consume_token()?;
         
         match token.kind {
@@ -1744,18 +1752,67 @@ impl<'a> Parser<'a> {
                         ))
                     };
                     
-                    // For now, assume 32-bit values for ranges
-                    let start_bits = literal_to_bits(&num_str, LiteralType::Decimal, 32)?;
+                    // Use field width if provided, otherwise default to minimal width
+                    let start_val = num_str.parse::<u128>().map_err(|_| ParseError::new(
+                        format!("Invalid number: {}", num_str),
+                        token.span,
+                    ))?;
+                    let end_val = if end_str.contains('.') {
+                        // This is an IP address end point, parse it as IP
+                        let end_bits = ip_to_bits(&end_str)?;
+                        bits_to_u128(&end_bits).map_err(|_| ParseError::new(
+                            format!("IP address too large for range"),
+                            end_token.span,
+                        ))?
+                    } else {
+                        end_str.parse::<u128>().map_err(|_| ParseError::new(
+                            format!("Invalid number: {}", end_str),
+                            end_token.span,
+                        ))?
+                    };
+                    
+                    // Determine bit width needed for the range
+                    let max_val = std::cmp::max(start_val, end_val);
+                    let min_width = if max_val == 0 {
+                        1
+                    } else {
+                        (128 - max_val.leading_zeros()) as usize
+                    };
+                    
+                    // Use field width if provided and sufficient, otherwise use minimal width
+                    let width = match field_width {
+                        Some(fw) if fw >= min_width => fw,
+                        _ => min_width,
+                    };
+                    
+                    let start_bits = u128_to_bits(start_val, width);
                     let end_bits = if end_str.contains('.') {
                         ip_to_bits(&end_str)?
                     } else {
-                        literal_to_bits(&end_str, LiteralType::Decimal, 32)?
+                        u128_to_bits(end_val, width)
                     };
                     
                     Ok(Pattern::IpRange { start: start_bits, end: end_bits })
                 } else {
                     // Just an exact match
-                    let bits = literal_to_bits(&num_str, LiteralType::Decimal, 32)?;
+                    let val = num_str.parse::<u128>().map_err(|_| ParseError::new(
+                        format!("Invalid number: {}", num_str),
+                        token.span,
+                    ))?;
+                    
+                    // Determine bit width
+                    let min_width = if val == 0 {
+                        1
+                    } else {
+                        (128 - val.leading_zeros()) as usize
+                    };
+                    
+                    let width = match field_width {
+                        Some(fw) if fw >= min_width => fw,
+                        _ => min_width,
+                    };
+                    
+                    let bits = u128_to_bits(val, width);
                     Ok(Pattern::Exact(bits))
                 }
             }
@@ -1775,6 +1832,33 @@ impl<'a> Parser<'a> {
             ))
         }
     }
+}
+
+/// Convert u128 to bit vector of specified width
+fn u128_to_bits(val: u128, width: usize) -> Vec<bool> {
+    let mut bits = Vec::with_capacity(width);
+    for i in (0..width).rev() {
+        bits.push((val >> i) & 1 == 1);
+    }
+    bits
+}
+
+/// Convert bit vector to u128
+fn bits_to_u128(bits: &[bool]) -> Result<u128, ParseError> {
+    if bits.len() > 128 {
+        return Err(ParseError::new(
+            format!("Bit vector too large (max 128 bits)"),
+            Default::default(),
+        ));
+    }
+    
+    let mut val = 0u128;
+    for (i, &bit) in bits.iter().enumerate() {
+        if bit {
+            val |= 1u128 << (bits.len() - 1 - i);
+        }
+    }
+    Ok(val)
 }
 
 /// Helper function to convert IP address string to 32-bit vector

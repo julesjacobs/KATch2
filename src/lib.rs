@@ -867,6 +867,181 @@ mod perf_tests {
     }
     
     #[test]
+    fn test_tutorial_syntactic_sugar_examples() {
+        // Test syntactic sugar examples from the tutorial
+        
+        // Basic bit range access
+        let expr_str = "x[0..8] := 192";
+        let expressions = parser::parse_expressions(expr_str).unwrap();
+        let desugared = desugar::desugar(&expressions[0]).unwrap();
+        assert!(matches!(desugared.as_ref(), expr::Expr::Sequence(_, _)), "Should desugar to sequence");
+        
+        // Bit range test
+        let expr_str = "x[8..16] == 168";
+        let expressions = parser::parse_expressions(expr_str).unwrap();
+        let desugared = desugar::desugar(&expressions[0]).unwrap();
+        assert!(matches!(desugared.as_ref(), expr::Expr::Intersect(_, _)), "Should desugar to intersection");
+        
+        // IP address assignment
+        let expr_str = "x[0..32] := 192.168.1.1";
+        let expressions = parser::parse_expressions(expr_str).unwrap();
+        let desugared = desugar::desugar(&expressions[0]).unwrap();
+        let mut aut = aut::Aut::new(32);
+        let state = aut.expr_to_state(&desugared);
+        assert!(!aut.is_empty(state), "IP assignment should not be empty");
+        
+        // Port test
+        let expr_str = "x[32..48] == 80";
+        let expressions = parser::parse_expressions(expr_str).unwrap();
+        let desugared = desugar::desugar(&expressions[0]).unwrap();
+        let mut aut = aut::Aut::new(48);
+        let state = aut.expr_to_state(&desugared);
+        assert!(!aut.is_empty(state), "Port test should not be empty");
+        
+        // Bit range alias basic
+        let expr_str = "let ip_src = &x[0..32] in ip_src := 10.0.0.1";
+        let expressions = parser::parse_expressions(expr_str).unwrap();
+        let desugared = desugar::desugar(&expressions[0]).unwrap();
+        let mut aut = aut::Aut::new(32);
+        let state = aut.expr_to_state(&desugared);
+        assert!(!aut.is_empty(state), "Bit range alias should not be empty");
+        
+        // Multiple aliases
+        let expr_str = r#"let src = &x[0..32] in
+let dst = &x[32..64] in
+src == 192.168.1.100 & dst == 8.8.8.8"#;
+        let expressions = parser::parse_expressions(expr_str).unwrap();
+        let desugared = desugar::desugar(&expressions[0]).unwrap();
+        let mut aut = aut::Aut::new(64);
+        let state = aut.expr_to_state(&desugared);
+        assert!(!aut.is_empty(state), "Multiple aliases should not be empty");
+        
+        // Readable firewall rule
+        let expr_str = r#"let src_ip = &x[0..32] in
+let dst_port = &x[32..48] in
+src_ip == 192.168.1.0 + src_ip == 192.168.1.1;
+dst_port := 443"#;
+        let expressions = parser::parse_expressions(expr_str).unwrap();
+        let desugared = desugar::desugar(&expressions[0]).unwrap();
+        let mut aut = aut::Aut::new(48);
+        let state = aut.expr_to_state(&desugared);
+        assert!(!aut.is_empty(state), "Firewall rule should not be empty");
+        
+        // Direct bit range access (sub-ranges of aliases not supported)
+        let expr_str = r#"let src_ip = &x[96..128] in
+src_ip == 10.0.0.1"#;
+        let expressions = parser::parse_expressions(expr_str).unwrap();
+        let desugared = desugar::desugar(&expressions[0]).unwrap();
+        let mut aut = aut::Aut::new(128);
+        let state = aut.expr_to_state(&desugared);
+        assert!(!aut.is_empty(state), "Direct bit range alias should not be empty");
+        
+        // Combined example
+        let expr_str = r#"let setup_defaults = (x[0..32] := 192.168.1.1 ; x[32..64] := 8.8.8.8) in
+x[32..40] == 80; setup_defaults"#;
+        let expressions = parser::parse_expressions(expr_str).unwrap();
+        let desugared = desugar::desugar(&expressions[0]).unwrap();
+        // This is NOT empty - the test checks bits 32-40 for value 80, then assigns the full 32-64 range
+        let mut aut = aut::Aut::new(64);
+        let state = aut.expr_to_state(&desugared);
+        assert!(!aut.is_empty(state), "Combined example should not be empty");
+        
+        // NAT example
+        let expr_str = r#"let src_ip = &x[0..32] in
+let dst_ip = &x[32..64] in
+let is_private = src_ip == 192.168.1.1 + src_ip == 192.168.1.2 in
+let is_external = dst_ip == 8.8.8.8 + dst_ip == 1.1.1.1 in
+is_private & is_external; src_ip := 203.0.113.1"#;
+        let expressions = parser::parse_expressions(expr_str).unwrap();
+        let desugared = desugar::desugar(&expressions[0]).unwrap();
+        let mut aut = aut::Aut::new(64);
+        let state = aut.expr_to_state(&desugared);
+        assert!(!aut.is_empty(state), "NAT rule should not be empty");
+    }
+    
+    #[test]
+    fn test_tutorial_pattern_examples() {
+        // Test all pattern matching examples from the tutorial
+        
+        // Exact IP matching
+        let expr_str = "let src = &x[0..32] in src ~ 192.168.1.100";
+        let expressions = parser::parse_expressions(expr_str).unwrap();
+        let desugared = desugar::desugar(&expressions[0]).unwrap();
+        let mut aut = aut::Aut::new(32);
+        let state = aut.expr_to_state(&desugared);
+        assert!(!aut.is_empty(state), "Exact IP match should not be empty");
+        
+        // CIDR notation
+        let expr_str = "let src = &x[0..32] in src ~ 192.168.1.0/24";
+        let expressions = parser::parse_expressions(expr_str).unwrap();
+        let desugared = desugar::desugar(&expressions[0]).unwrap();
+        let mut aut = aut::Aut::new(32);
+        let state = aut.expr_to_state(&desugared);
+        assert!(!aut.is_empty(state), "CIDR match should not be empty");
+        
+        // Multiple subnets
+        let expr_str = "let dst = &x[32..64] in dst ~ 10.0.0.0/8 + dst ~ 172.16.0.0/12 + dst ~ 192.168.0.0/16";
+        let expressions = parser::parse_expressions(expr_str).unwrap();
+        let desugared = desugar::desugar(&expressions[0]).unwrap();
+        let mut aut = aut::Aut::new(64);
+        let state = aut.expr_to_state(&desugared);
+        assert!(!aut.is_empty(state), "Multiple subnet match should not be empty");
+        
+        // IP range
+        let expr_str = "let src = &x[0..32] in src ~ 10.0.0.1-10.0.0.10";
+        let expressions = parser::parse_expressions(expr_str).unwrap();
+        let desugared = desugar::desugar(&expressions[0]).unwrap();
+        let mut aut = aut::Aut::new(32);
+        let state = aut.expr_to_state(&desugared);
+        assert!(!aut.is_empty(state), "IP range match should not be empty");
+        
+        // Large IP ranges
+        let expr_str = "let ip = &x[0..32] in ip ~ 10.0.0.0-10.255.255.255 + ip ~ 172.16.0.0-172.31.255.255 + ip ~ 192.168.0.0-192.168.255.255";
+        let expressions = parser::parse_expressions(expr_str).unwrap();
+        let desugared = desugar::desugar(&expressions[0]).unwrap();
+        let mut aut = aut::Aut::new(32);
+        let state = aut.expr_to_state(&desugared);
+        assert!(!aut.is_empty(state), "Large IP range match should not be empty");
+        
+        // Wildcard mask
+        let expr_str = "let dst = &x[32..64] in dst ~ 192.168.1.1 mask 0.0.255.0";
+        let expressions = parser::parse_expressions(expr_str).unwrap();
+        let desugared = desugar::desugar(&expressions[0]).unwrap();
+        let mut aut = aut::Aut::new(64);
+        let state = aut.expr_to_state(&desugared);
+        assert!(!aut.is_empty(state), "Wildcard mask match should not be empty");
+        
+        // Pattern with different literal formats
+        let expr_str = r#"let port = &x[0..16] in
+let proto = &x[16..24] in
+port ~ 1024-65535 &
+(proto ~ 0x06 +
+proto ~ 0x11 +
+proto ~ 0x01)"#;
+        let expressions = parser::parse_expressions(expr_str).unwrap();
+        let desugared = desugar::desugar(&expressions[0]).unwrap();
+        let mut aut = aut::Aut::new(24);
+        let state = aut.expr_to_state(&desugared);
+        assert!(!aut.is_empty(state), "Different literal format patterns should not be empty");
+        
+        // Complex firewall rule
+        let expr_str = r#"let src = &x[0..32] in
+let dst = &x[32..64] in
+let port = &x[64..80] in
+(src ~ 192.168.1.0/24) &
+(dst ~ 10.0.1.0/24) &
+(port ~ 80 + port ~ 443) +
+(src ~ 10.0.1.0/24) &
+(dst ~ 192.168.1.0/24) &
+(port ~ 1024-65535)"#;
+        let expressions = parser::parse_expressions(expr_str).unwrap();
+        let desugared = desugar::desugar(&expressions[0]).unwrap();
+        let mut aut = aut::Aut::new(80);
+        let state = aut.expr_to_state(&desugared);
+        assert!(!aut.is_empty(state), "Complex firewall rule should not be empty");
+    }
+    
+    #[test]
     fn test_pattern_matching_literals() {
         // Test pattern matching with different literal formats
         

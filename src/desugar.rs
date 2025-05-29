@@ -455,7 +455,18 @@ fn desugar_pattern_match(start: u32, end: u32, pattern: &Pattern) -> Result<Exp,
     match pattern {
         Pattern::Exact(bits) => {
             // Exact match is just a regular bit range test
-            desugar_bit_range_test(start, end, bits)
+            // Pad with leading zeros if needed
+            if bits.len() < width {
+                let mut padded = vec![false; width - bits.len()];
+                padded.extend_from_slice(bits);
+                desugar_bit_range_test(start, end, &padded)
+            } else if bits.len() > width {
+                return Err(DesugarError {
+                    message: format!("Pattern has {} bits but field has only {} bits", bits.len(), width)
+                });
+            } else {
+                desugar_bit_range_test(start, end, bits)
+            }
         }
         
         Pattern::Cidr { address, prefix_len } => {

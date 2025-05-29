@@ -959,6 +959,74 @@ is_private & is_external; src_ip := 203.0.113.1</netkat>
         </ul>
 
         <p>With these syntactic extensions, KATch<sup>2</sup> bridges the gap between the theoretical NetKAT language and practical network programming!</p>
+
+        <h3>Pattern Matching with the ~ Operator</h3>
+        <p>KATch<sup>2</sup> supports flexible pattern matching for IP addresses and bit ranges using the <code>~</code> operator. This makes it easy to express common network matching patterns without writing complex bit-level tests.</p>
+
+        <h4>Exact IP Matching</h4>
+        <p>The simplest form matches an exact IP address:</p>
+        <netkat example="Match packets from a specific IP address">let src = &x[0..32] in
+src ~ 192.168.1.100</netkat>
+
+        <h4>CIDR Notation (Prefix Matching)</h4>
+        <p>Use CIDR notation to match IP prefixes/subnets:</p>
+        <netkat example="Match all IPs in a /24 subnet">let src = &x[0..32] in
+src ~ 192.168.1.0/24  // Matches 192.168.1.0 - 192.168.1.255</netkat>
+
+        <netkat example="Match multiple subnets">let dst = &x[32..64] in
+// Match private networks
+dst ~ 10.0.0.0/8 + dst ~ 172.16.0.0/12 + dst ~ 192.168.0.0/16</netkat>
+
+        <h4>IP Range Matching</h4>
+        <p>Match arbitrary IP ranges using the hyphen syntax:</p>
+        <netkat example="Match IP range">let src = &x[0..32] in
+// Match IPs from 10.0.0.1 to 10.0.0.10
+src ~ 10.0.0.1-10.0.0.10</netkat>
+
+        <p>This works efficiently even for very large ranges:</p>
+        <netkat example="Match large IP ranges efficiently">let ip = &x[0..32] in
+// These large ranges are handled efficiently without expanding to millions of tests
+ip ~ 10.0.0.0-10.255.255.255 +      // 16 million IPs
+ip ~ 172.16.0.0-172.31.255.255 +    // 1 million IPs
+ip ~ 192.168.0.0-192.168.255.255    // 65 thousand IPs</netkat>
+
+        <h4>Wildcard Masks</h4>
+        <p>For complex patterns, use wildcard masks (similar to Cisco ACLs):</p>
+        <netkat example="Wildcard mask matching">let dst = &x[32..64] in
+// Match 192.168.X.1 where X can be any value
+dst ~ 192.168.1.1 mask 0.0.255.0</netkat>
+
+        <h4>Pattern Matching with Different Literal Formats</h4>
+        <p>Patterns work with all literal formats, not just IP addresses:</p>
+        <netkat example="Pattern matching with hex and binary literals">let port = &x[0..16] in
+let proto = &x[16..24] in
+
+// Match port ranges using decimal
+port ~ 1024-65535 &         // Unprivileged ports
+
+// Match using hex (e.g., protocol numbers)
+proto ~ 0x06 +              // TCP (6)
+proto ~ 0x11 +              // UDP (17)
+proto ~ 0x01                // ICMP (1)</netkat>
+
+        <h4>Combining Patterns</h4>
+        <p>Build complex filters by combining patterns:</p>
+        <netkat example="Complex firewall rule using patterns" lines="8">let src = &x[0..32] in
+let dst = &x[32..64] in
+let port = &x[64..80] in
+
+// Allow internal to DMZ on web ports
+(src ~ 192.168.1.0/24) &        // Internal network
+(dst ~ 10.0.1.0/24) &          // DMZ network  
+(port ~ 80 + port ~ 443) +     // HTTP/HTTPS
+
+// Allow established connections back
+(src ~ 10.0.1.0/24) &          // From DMZ
+(dst ~ 192.168.1.0/24) &       // To internal
+(port ~ 1024-65535)            // High ports (established)</netkat>
+
+        <h4>Performance Note</h4>
+        <p>All pattern matching is optimized to use efficient algorithms. Even patterns matching millions or billions of IP addresses (like <code>0.0.0.0-255.255.255.255</code>) are handled efficiently without expanding into huge expressions. The implementation uses binary decision techniques that keep the expression size proportional to the number of bits, not the number of addresses matched.</p>
         
     </div>
 
