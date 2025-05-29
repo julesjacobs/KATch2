@@ -181,20 +181,33 @@ class KATch2Editor {
         // Define syntax highlighting
         monaco.languages.setMonarchTokensProvider('netkat', {
             keywords: ['dup', 'T', 'X', 'U', 'F', 'G', 'R', 'if', 'then', 'else', 'let', 'in'],
-            operators: [':=', '==', '+', '&', '^', '-', '~', '!', ';', '*'],
+            operators: [':=', '==', '+', '&', '^', '-', '~', '!', ';', '*', '..'],
             symbols: /[=><!~?:&|+\-*\/\^%;()]+/,
 
             tokenizer: {
                 root: [
                     [/\/\/.*/, 'comment'],
+                    // IP addresses (e.g., 192.168.1.1)
+                    [/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/, 'number'],
+                    // Hexadecimal literals (e.g., 0xABCD)
+                    [/0x[0-9a-fA-F]+/, 'number'],
+                    // Binary literals (e.g., 0b1010)
+                    [/0b[01]+/, 'number'],
+                    // Decimal numbers
+                    [/\d+/, 'number'],
+                    // Variables (x followed by digits)
+                    [/x\d+/, 'variable.name'],
+                    // Bit range syntax (e.g., x[0..32])
+                    [/\[\d+\.\.\d+\]/, 'variable.name'],
+                    // Keywords and identifiers
                     [/[a-zA-Z_][\w_]*/, {
                         cases: { 
                             '@keywords': 'keyword',
                             '@default': 'identifier' 
                         }
                     }],
+                    // Simple 0/1 bits
                     [/[01]/, 'number'],
-                    [/x\d+/, 'variable.name'],
                     [/[()]/, '@brackets'],
                     [/@symbols/, {
                         cases: { 
@@ -1181,10 +1194,53 @@ class KATch2Editor {
                 tokens.push({ type: 'variable', text: code.substring(start, i) });
                 matched = true;
             }
-            // Check for numbers (0 or 1)
-            else if (/[01]/.test(code[i])) {
-                tokens.push({ type: 'number', text: code[i] });
-                i++;
+            // Check for IP addresses (e.g., 192.168.1.1)
+            else if (/\d/.test(code[i]) && i < code.length) {
+                let start = i;
+                // Try to match IP address pattern
+                let ipMatch = code.substring(i).match(/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/);
+                if (ipMatch) {
+                    tokens.push({ type: 'number', text: ipMatch[0] });
+                    i += ipMatch[0].length;
+                    matched = true;
+                }
+                // Try to match hex literal (0x...)
+                else if (code.substr(i, 2) === '0x') {
+                    i += 2;
+                    while (i < code.length && /[0-9a-fA-F]/.test(code[i])) {
+                        i++;
+                    }
+                    tokens.push({ type: 'number', text: code.substring(start, i) });
+                    matched = true;
+                }
+                // Try to match binary literal (0b...)
+                else if (code.substr(i, 2) === '0b') {
+                    i += 2;
+                    while (i < code.length && /[01]/.test(code[i])) {
+                        i++;
+                    }
+                    tokens.push({ type: 'number', text: code.substring(start, i) });
+                    matched = true;
+                }
+                // Regular decimal number
+                else {
+                    while (i < code.length && /\d/.test(code[i])) {
+                        i++;
+                    }
+                    tokens.push({ type: 'number', text: code.substring(start, i) });
+                    matched = true;
+                }
+            }
+            // Check for bit range syntax [start..end]
+            else if (code[i] === '[' && i + 1 < code.length) {
+                let start = i;
+                i++; // skip '['
+                // Match digits, dots, and closing bracket
+                while (i < code.length && (code[i] === '.' || /\d/.test(code[i]) || code[i] === ']')) {
+                    i++;
+                    if (code[i-1] === ']') break;
+                }
+                tokens.push({ type: 'variable', text: code.substring(start, i) });
                 matched = true;
             }
             // Check for operators
@@ -1199,7 +1255,7 @@ class KATch2Editor {
                 matched = true;
             }
             // Check for brackets
-            else if (['(', ')'].includes(code[i])) {
+            else if (['(', ')', '[', ']'].includes(code[i])) {
                 tokens.push({ type: 'brackets', text: code[i] });
                 i++;
                 matched = true;

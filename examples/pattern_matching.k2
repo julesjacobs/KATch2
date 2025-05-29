@@ -1,0 +1,33 @@
+// Pattern matching examples with different literal formats
+
+// Using IP address literals
+let src_ip = &x[0..32] in 
+src_ip ~ 192.168.1.0/24
+
+// Using hexadecimal for the same subnet
+let src_ip_hex = &x[0..32] in 
+src_ip_hex ~ 0xC0A80100/24
+
+// Using decimal for specific address
+let dst_ip = &x[32..64] in 
+dst_ip ~ 3232235777  // This is 192.168.1.1 in decimal
+
+// Using binary for port matching (assuming x[64..80] is source port)
+let src_port = &x[64..80] in 
+src_port ~ 0b0000010100000000  // Port 80 in binary (16 bits)
+
+// Combining different formats
+let src = &x[0..32] in 
+let dst = &x[32..64] in 
+let port = &x[64..80] in 
+(src ~ 10.0.0.0/8) &           // Private network (IP format)
+(dst ~ 0xC0A80000/16) &        // 192.168.0.0/16 (hex format)  
+(port ~ 80)                     // Port 80 (decimal)
+
+// Range matching with hex
+let addr = &x[0..32] in 
+addr ~ 0xC0A80101-0xC0A8010A   // 192.168.1.1 to 192.168.1.10 in hex
+
+// Wildcard with binary mask
+let net = &x[0..32] in 
+net ~ 192.168.1.0 mask 0b00000000000000000000000011111111  // /24 mask in binary

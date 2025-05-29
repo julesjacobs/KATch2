@@ -456,6 +456,8 @@ impl Aut {
             Expr::VarTest(_, _) => panic!("VarTest expressions should have been eliminated during desugaring"),
             Expr::BitRangeAssign(_, _, _) => panic!("BitRangeAssign should have been eliminated during desugaring"),
             Expr::BitRangeTest(_, _, _) => panic!("BitRangeTest should have been eliminated during desugaring"),
+            Expr::BitRangeMatch(_, _, _) => panic!("BitRangeMatch should have been eliminated during desugaring"),
+            Expr::VarMatch(_, _) => panic!("VarMatch should have been eliminated during desugaring"),
         }
     }
 

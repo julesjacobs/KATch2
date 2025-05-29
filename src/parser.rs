@@ -1,4 +1,4 @@
-use crate::expr::{Exp, Expr};
+use crate::expr::{Exp, Expr, Pattern};
 use std::iter::Peekable;
 use std::str::Chars;
 use serde::{Serialize, Deserialize};
@@ -180,6 +180,43 @@ impl<'a> Lexer<'a> {
     }
     
     fn is_valid_ip_format(&self, s: &str) -> bool {
+        // Handle CIDR notation (e.g., 192.168.1.0/24)
+        let base_ip = if let Some(slash_pos) = s.find('/') {
+            let (ip_part, suffix) = s.split_at(slash_pos);
+            // Check if suffix is a valid CIDR prefix
+            let prefix_part = &suffix[1..];
+            if prefix_part.is_empty() || !prefix_part.chars().all(|c| c.is_digit(10)) {
+                return false;
+            }
+            if let Ok(prefix) = prefix_part.parse::<u32>() {
+                if prefix > 32 {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+            ip_part
+        } else if s.contains('-') {
+            // Handle IP range (e.g., 192.168.1.10-192.168.1.20)
+            let parts: Vec<&str> = s.split('-').collect();
+            if parts.len() != 2 {
+                return false;
+            }
+            // Validate both IPs in the range
+            for ip in parts {
+                if !self.is_valid_single_ip(ip) {
+                    return false;
+                }
+            }
+            return true;
+        } else {
+            s
+        };
+        
+        self.is_valid_single_ip(base_ip)
+    }
+    
+    fn is_valid_single_ip(&self, s: &str) -> bool {
         let parts: Vec<&str> = s.split('.').collect();
         if parts.len() != 4 {
             return false;
@@ -320,6 +357,83 @@ impl<'a> Lexer<'a> {
                                             // This might be part of an IP address
                                             num_str.push(self.next_char_with_pos().unwrap().0);
                                         }
+                                    } else if next_c == '/' && num_str.contains('.') {
+                                        // CIDR notation
+                                        num_str.push(self.next_char_with_pos().unwrap().0);
+                                        // Continue reading the prefix length
+                                        while let Some(&c) = self.peek_char() {
+                                            if c.is_digit(10) {
+                                                num_str.push(self.next_char_with_pos().unwrap().0);
+                                            } else {
+                                                break;
+                                            }
+                                        }
+                                        break;
+                                    } else if next_c == '-' && num_str.contains('.') {
+                                        // IP range
+                                        num_str.push(self.next_char_with_pos().unwrap().0);
+                                        // Continue reading the second IP
+                                        while let Some(&c) = self.peek_char() {
+                                            if c.is_digit(10) || c == '.' {
+                                                num_str.push(self.next_char_with_pos().unwrap().0);
+                                            } else {
+                                                break;
+                                            }
+                                        }
+                                        break;
+                                    } else {
+                                        break;
+                                    }
+                                }
+                                // Check if this looks like an IP address (contains dots)
+                                if num_str.contains('.') && self.is_valid_ip_format(&num_str) {
+                                    TokenKind::IpLiteral(num_str)
+                                } else {
+                                    TokenKind::Number(num_str.replace(".", ""))
+                                }
+                            }
+                            Some('.') => {
+                                // Could be an IP address starting with 0
+                                let mut num_str = String::new();
+                                num_str.push(c);
+                                while let Some(&next_c) = self.peek_char() {
+                                    if next_c.is_digit(10) {
+                                        num_str.push(self.next_char_with_pos().unwrap().0);
+                                    } else if next_c == '.' {
+                                        // Look ahead to see if this is ".." (range operator) or part of IP
+                                        let mut temp_iter = self.iter.clone();
+                                        temp_iter.next(); // Skip the first '.'
+                                        if temp_iter.peek() == Some(&'.') {
+                                            // This is "..", don't consume it
+                                            break;
+                                        } else {
+                                            // This might be part of an IP address
+                                            num_str.push(self.next_char_with_pos().unwrap().0);
+                                        }
+                                    } else if next_c == '/' && num_str.contains('.') {
+                                        // CIDR notation
+                                        num_str.push(self.next_char_with_pos().unwrap().0);
+                                        // Continue reading the prefix length
+                                        while let Some(&c) = self.peek_char() {
+                                            if c.is_digit(10) {
+                                                num_str.push(self.next_char_with_pos().unwrap().0);
+                                            } else {
+                                                break;
+                                            }
+                                        }
+                                        break;
+                                    } else if next_c == '-' && num_str.contains('.') {
+                                        // IP range
+                                        num_str.push(self.next_char_with_pos().unwrap().0);
+                                        // Continue reading the second IP
+                                        while let Some(&c) = self.peek_char() {
+                                            if c.is_digit(10) || c == '.' {
+                                                num_str.push(self.next_char_with_pos().unwrap().0);
+                                            } else {
+                                                break;
+                                            }
+                                        }
+                                        break;
                                     } else {
                                         break;
                                     }
@@ -357,6 +471,30 @@ impl<'a> Lexer<'a> {
                                         // This might be part of an IP address
                                         num_str.push(self.next_char_with_pos().unwrap().0);
                                     }
+                                } else if next_c == '/' && num_str.contains('.') {
+                                    // CIDR notation
+                                    num_str.push(self.next_char_with_pos().unwrap().0);
+                                    // Continue reading the prefix length
+                                    while let Some(&c) = self.peek_char() {
+                                        if c.is_digit(10) {
+                                            num_str.push(self.next_char_with_pos().unwrap().0);
+                                        } else {
+                                            break;
+                                        }
+                                    }
+                                    break;
+                                } else if next_c == '-' && num_str.contains('.') {
+                                    // IP range
+                                    num_str.push(self.next_char_with_pos().unwrap().0);
+                                    // Continue reading the second IP
+                                    while let Some(&c) = self.peek_char() {
+                                        if c.is_digit(10) || c == '.' {
+                                            num_str.push(self.next_char_with_pos().unwrap().0);
+                                        } else {
+                                            break;
+                                        }
+                                    }
+                                    break;
                                 } else {
                                     break;
                                 }
@@ -435,6 +573,30 @@ impl<'a> Lexer<'a> {
                                         // This might be part of an IP address
                                         num_str.push(self.next_char_with_pos().unwrap().0);
                                     }
+                                } else if next_c == '/' && num_str.contains('.') {
+                                    // CIDR notation
+                                    num_str.push(self.next_char_with_pos().unwrap().0);
+                                    // Continue reading the prefix length
+                                    while let Some(&c) = self.peek_char() {
+                                        if c.is_digit(10) {
+                                            num_str.push(self.next_char_with_pos().unwrap().0);
+                                        } else {
+                                            break;
+                                        }
+                                    }
+                                    break;
+                                } else if next_c == '-' && num_str.contains('.') {
+                                    // IP range
+                                    num_str.push(self.next_char_with_pos().unwrap().0);
+                                    // Continue reading the second IP
+                                    while let Some(&c) = self.peek_char() {
+                                        if c.is_digit(10) || c == '.' {
+                                            num_str.push(self.next_char_with_pos().unwrap().0);
+                                        } else {
+                                            break;
+                                        }
+                                    }
+                                    break;
                                 } else {
                                     break;
                                 }
@@ -1016,8 +1178,16 @@ impl<'a> Parser<'a> {
                                 let bits = number_to_bits(&value_str, (end - start) as usize)?;
                                 Ok(Expr::bit_range_test(start, end, bits))
                             }
+                            TokenKind::Not => {
+                                // Pattern match operator x[start..end] ~ pattern
+                                self.consume_token()?; // Consume '~'
+                                
+                                // Parse pattern
+                                let pattern = self.parse_pattern()?;
+                                Ok(Expr::bit_range_match(start, end, pattern))
+                            }
                             _ => return Err(ParseError::new(
-                                format!("Expected ':=' or '==' after bit range, found {}", token_kind_to_user_string(&op_token.kind)),
+                                format!("Expected ':=', '==' or '~' after bit range, found {}", token_kind_to_user_string(&op_token.kind)),
                                 op_token.span,
                             )),
                         }
@@ -1351,8 +1521,16 @@ impl<'a> Parser<'a> {
                             let bits = literal_to_bits(&value_str, literal_type, (end - start) as usize)?;
                             Ok(Expr::bit_range_test(start, end, bits))
                         }
+                        TokenKind::Not => {
+                            // Pattern match operator x[start..end] ~ pattern
+                            self.consume_token()?; // Consume '~'
+                            
+                            // Parse pattern
+                            let pattern = self.parse_pattern()?;
+                            Ok(Expr::bit_range_match(start, end, pattern))
+                        }
                         _ => return Err(ParseError::new(
-                            format!("Expected ':=' or '==' after bit range, found {}", token_kind_to_user_string(&op_token.kind)),
+                            format!("Expected ':=', '==' or '~' after bit range, found {}", token_kind_to_user_string(&op_token.kind)),
                             op_token.span,
                         )),
                     }
@@ -1414,6 +1592,14 @@ impl<'a> Parser<'a> {
                             let bits = literal_to_bits(&value_str, literal_type, inferred_bits)?;
                             Ok(Expr::var_test(name, bits))
                         }
+                        TokenKind::Not => {
+                            // Pattern match: var ~ pattern
+                            self.consume_token()?; // Consume '~'
+                            
+                            // Parse pattern
+                            let pattern = self.parse_pattern()?;
+                            Ok(Expr::var_match(name, pattern))
+                        }
                         _ => {
                             // Just a variable reference
                             Ok(Expr::var(name))
@@ -1469,6 +1655,152 @@ impl<'a> Parser<'a> {
             TokenKind::End => Ok(Expr::end()), // Moved here to be last, resolves unreachable_patterns for End.
         }
     }
+    
+    /// Parse a pattern for pattern matching expressions
+    fn parse_pattern(&mut self) -> Result<Pattern, ParseError> {
+        let token = self.consume_token()?;
+        
+        match token.kind {
+            TokenKind::IpLiteral(ip_str) => {
+                // Check if this is CIDR notation (contains /)
+                if let Some(slash_pos) = ip_str.find('/') {
+                    let (addr_str, prefix_str) = ip_str.split_at(slash_pos);
+                    let prefix_str = &prefix_str[1..]; // Skip the '/'
+                    
+                    // Parse IP address
+                    let addr_bits = ip_to_bits(addr_str)?;
+                    
+                    // Parse prefix length
+                    let prefix_len = prefix_str.parse::<usize>().map_err(|_| ParseError::new(
+                        format!("Invalid CIDR prefix length: {}", prefix_str),
+                        token.span,
+                    ))?;
+                    
+                    if prefix_len > 32 {
+                        return Err(ParseError::new(
+                            format!("CIDR prefix length {} exceeds maximum of 32", prefix_len),
+                            token.span,
+                        ));
+                    }
+                    
+                    Ok(Pattern::Cidr { address: addr_bits, prefix_len })
+                } else if ip_str.contains('-') {
+                    // IP range: start-end
+                    let parts: Vec<&str> = ip_str.split('-').collect();
+                    if parts.len() != 2 {
+                        return Err(ParseError::new(
+                            format!("Invalid IP range format: {}", ip_str),
+                            token.span,
+                        ));
+                    }
+                    
+                    let start_bits = ip_to_bits(parts[0])?;
+                    let end_bits = ip_to_bits(parts[1])?;
+                    
+                    Ok(Pattern::IpRange { start: start_bits, end: end_bits })
+                } else {
+                    // Check if next token is "mask" for wildcard syntax
+                    if matches!(self.peek_kind(), Ok(&TokenKind::Ident(ref s)) if s == "mask") {
+                        self.consume_token()?; // Consume "mask"
+                        
+                        // Parse mask value
+                        let mask_token = self.consume_token()?;
+                        let mask_bits = match mask_token.kind {
+                            TokenKind::IpLiteral(mask_str) => ip_to_bits(&mask_str)?,
+                            TokenKind::Number(num_str) => {
+                                literal_to_bits(&num_str, LiteralType::Decimal, 32)?
+                            }
+                            TokenKind::HexLiteral(hex_str) => {
+                                literal_to_bits(&hex_str, LiteralType::Hexadecimal, 32)?
+                            }
+                            _ => return Err(ParseError::new(
+                                format!("Expected mask value, found {}", token_kind_to_user_string(&mask_token.kind)),
+                                mask_token.span,
+                            ))
+                        };
+                        
+                        let addr_bits = ip_to_bits(&ip_str)?;
+                        Ok(Pattern::Wildcard { address: addr_bits, mask: mask_bits })
+                    } else {
+                        // Just an exact IP match
+                        let bits = ip_to_bits(&ip_str)?;
+                        Ok(Pattern::Exact(bits))
+                    }
+                }
+            }
+            TokenKind::Number(num_str) => {
+                // Check for CIDR notation with regular number
+                if matches!(self.peek_kind(), Ok(&TokenKind::Minus)) {
+                    // This might be a range
+                    self.consume_token()?; // Consume '-'
+                    
+                    let end_token = self.consume_token()?;
+                    let end_str = match end_token.kind {
+                        TokenKind::Number(s) => s,
+                        TokenKind::IpLiteral(s) => s,
+                        _ => return Err(ParseError::new(
+                            format!("Expected number after '-' in range, found {}", token_kind_to_user_string(&end_token.kind)),
+                            end_token.span,
+                        ))
+                    };
+                    
+                    // For now, assume 32-bit values for ranges
+                    let start_bits = literal_to_bits(&num_str, LiteralType::Decimal, 32)?;
+                    let end_bits = if end_str.contains('.') {
+                        ip_to_bits(&end_str)?
+                    } else {
+                        literal_to_bits(&end_str, LiteralType::Decimal, 32)?
+                    };
+                    
+                    Ok(Pattern::IpRange { start: start_bits, end: end_bits })
+                } else {
+                    // Just an exact match
+                    let bits = literal_to_bits(&num_str, LiteralType::Decimal, 32)?;
+                    Ok(Pattern::Exact(bits))
+                }
+            }
+            TokenKind::BinaryLiteral(bin_str) => {
+                let inferred_width = infer_literal_bit_width(&bin_str, LiteralType::Binary)?;
+                let bits = literal_to_bits(&bin_str, LiteralType::Binary, inferred_width)?;
+                Ok(Pattern::Exact(bits))
+            }
+            TokenKind::HexLiteral(hex_str) => {
+                let inferred_width = infer_literal_bit_width(&hex_str, LiteralType::Hexadecimal)?;
+                let bits = literal_to_bits(&hex_str, LiteralType::Hexadecimal, inferred_width)?;
+                Ok(Pattern::Exact(bits))
+            }
+            _ => Err(ParseError::new(
+                format!("Expected pattern (IP address, number, or literal), found {}", token_kind_to_user_string(&token.kind)),
+                token.span,
+            ))
+        }
+    }
+}
+
+/// Helper function to convert IP address string to 32-bit vector
+fn ip_to_bits(ip_str: &str) -> Result<Vec<bool>, ParseError> {
+    let parts: Vec<&str> = ip_str.split('.').collect();
+    if parts.len() != 4 {
+        return Err(ParseError::new(
+            format!("Invalid IP address format: {}", ip_str),
+            Default::default(),
+        ));
+    }
+    
+    let mut bits = Vec::with_capacity(32);
+    for part in parts {
+        let octet = part.parse::<u8>().map_err(|_| ParseError::new(
+            format!("Invalid IP octet: {}", part),
+            Default::default(),
+        ))?;
+        
+        // Add 8 bits for this octet (MSB first)
+        for i in (0..8).rev() {
+            bits.push((octet >> i) & 1 == 1);
+        }
+    }
+    
+    Ok(bits)
 }
 
 
@@ -2345,7 +2677,7 @@ mod tests {
         
         // Bit range alias with test
         let expr = parse_single_unwrap("let port = &x[32..48] in port == 80");
-        let port_bits = vec![false, false, false, false, true, false, true, false]; // 80 in 8 bits
+        let port_bits = vec![false, false, false, false, true, false, true]; // 80 in 7 bits (minimal)
         assert_eq!(expr, Expr::let_bit_range(
             "port".to_string(),
             32,

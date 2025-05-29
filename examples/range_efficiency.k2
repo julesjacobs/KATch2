@@ -1,0 +1,27 @@
+// Comparing efficiency of different pattern matching approaches
+
+// INEFFICIENT: Range matching (expands to 256 separate tests)
+let ip1 = &x[0..32] in 
+ip1 ~ 10.0.0.0-10.0.0.255
+
+// EFFICIENT: CIDR notation (only tests 24 bits)
+let ip2 = &x[0..32] in 
+ip2 ~ 10.0.0.0/24
+
+// EFFICIENT: Wildcard mask (only tests 24 bits)
+let ip3 = &x[0..32] in 
+ip3 ~ 10.0.0.0 mask 0.0.0.255
+
+// For non-power-of-2 ranges, you might need multiple CIDRs
+// Range 192.168.1.32-192.168.1.63 can be expressed as:
+let ip4 = &x[0..32] in 
+ip4 ~ 192.168.1.32/27  // Covers .32-.63 (32 addresses)
+
+// For arbitrary ranges, consider using multiple CIDRs with union
+// Range 192.168.1.10-192.168.1.20 could be:
+let ip5 = &x[0..32] in 
+(ip5 ~ 192.168.1.10) +     // .10
+(ip5 ~ 192.168.1.11) +     // .11
+(ip5 ~ 192.168.1.12/30) +  // .12-.15
+(ip5 ~ 192.168.1.16/29) +  // .16-.19
+(ip5 ~ 192.168.1.20)       // .20

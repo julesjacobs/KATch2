@@ -1,5 +1,27 @@
 use crate::pre::{Field, Value};
 
+/// Represents different pattern types for matching
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Pattern {
+    /// CIDR notation: 192.168.1.0/24
+    Cidr { 
+        address: Vec<bool>,  // Base IP address as bits
+        prefix_len: usize,   // Number of bits in prefix
+    },
+    /// IP range: 192.168.1.10-192.168.1.20
+    IpRange {
+        start: Vec<bool>,    // Start IP as bits
+        end: Vec<bool>,      // End IP as bits  
+    },
+    /// Wildcard mask: 192.168.1.0 with mask 0.0.0.255
+    Wildcard {
+        address: Vec<bool>,  // Base IP address as bits
+        mask: Vec<bool>,     // Wildcard mask as bits (1 = don't care)
+    },
+    /// Exact match (for consistency)
+    Exact(Vec<bool>),
+}
+
 /// Represents NetKAT expressions with LTL extensions
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Expr {
@@ -12,6 +34,8 @@ pub enum Expr {
     VarTest(String, Vec<bool>),   // var == value (for aliases)
     BitRangeAssign(Field, Field, Vec<bool>), // x[start..end] := value (as bits)
     BitRangeTest(Field, Field, Vec<bool>),   // x[start..end] == value (as bits)
+    BitRangeMatch(Field, Field, Pattern),    // x[start..end] ~ pattern
+    VarMatch(String, Pattern),                // var ~ pattern (for aliases)
     Union(Exp, Exp),      // e1 + e2
     Intersect(Exp, Exp),  // e1 & e2
     Xor(Exp, Exp),        // e1 ^ e2
@@ -60,6 +84,12 @@ impl Expr {
     }
     pub fn bit_range_test(start: Field, end: Field, bits: Vec<bool>) -> Exp {
         Box::new(Expr::BitRangeTest(start, end, bits))
+    }
+    pub fn bit_range_match(start: Field, end: Field, pattern: Pattern) -> Exp {
+        Box::new(Expr::BitRangeMatch(start, end, pattern))
+    }
+    pub fn var_match(var: String, pattern: Pattern) -> Exp {
+        Box::new(Expr::VarMatch(var, pattern))
     }
     pub fn union(e1: Exp, e2: Exp) -> Exp {
         Box::new(Expr::Union(e1, e2))
@@ -127,7 +157,8 @@ impl Expr {
     pub fn is_test_fragment(&self) -> bool {
         match self {
             Expr::Zero | Expr::One => true,
-            Expr::Test(_, _) | Expr::BitRangeTest(_, _, _) | Expr::VarTest(_, _) => true,
+            Expr::Test(_, _) | Expr::BitRangeTest(_, _, _) | Expr::VarTest(_, _) |
+            Expr::BitRangeMatch(_, _, _) | Expr::VarMatch(_, _) => true,
             Expr::Union(e1, e2) | Expr::Intersect(e1, e2) | 
             Expr::Xor(e1, e2) | Expr::Difference(e1, e2) |
             Expr::Sequence(e1, e2) => e1.is_test_fragment() && e2.is_test_fragment(),
@@ -144,8 +175,9 @@ impl Expr {
         match self {
             Expr::Zero | Expr::One | Expr::Top | Expr::Dup | Expr::End => 0,
             Expr::Assign(field, _) | Expr::Test(field, _) => field + 1,
-            Expr::VarAssign(_, _) | Expr::VarTest(_, _) => 0, // Variables don't directly reference fields
-            Expr::BitRangeAssign(_start, end, _) | Expr::BitRangeTest(_start, end, _) => end + 1,
+            Expr::VarAssign(_, _) | Expr::VarTest(_, _) | Expr::VarMatch(_, _) => 0, // Variables don't directly reference fields
+            Expr::BitRangeAssign(_start, end, _) | Expr::BitRangeTest(_start, end, _) | 
+            Expr::BitRangeMatch(_start, end, _) => end + 1,
             Expr::Union(e1, e2)
             | Expr::Intersect(e1, e2)
             | Expr::Xor(e1, e2)
@@ -254,6 +286,8 @@ impl Expr {
             // Bit range operations don't contain variables
             Expr::BitRangeAssign(start, end, value) => Expr::bit_range_assign(*start, *end, value.clone()),
             Expr::BitRangeTest(start, end, value) => Expr::bit_range_test(*start, *end, value.clone()),
+            Expr::BitRangeMatch(start, end, pattern) => Expr::bit_range_match(*start, *end, pattern.clone()),
+            Expr::VarMatch(var_name, pattern) => Expr::var_match(var_name.clone(), pattern.clone()),
         }
     }
 }
@@ -304,6 +338,12 @@ impl std::fmt::Display for Expr {
                 let num = bits_to_number(value);
                 write!(f, "x[{}..{}] == {}", start, end, num)
             }
+            Expr::BitRangeMatch(start, end, pattern) => {
+                write!(f, "x[{}..{}] ~ {}", start, end, pattern)
+            }
+            Expr::VarMatch(var, pattern) => {
+                write!(f, "{} ~ {}", var, pattern)
+            }
         }
     }
 }
@@ -313,4 +353,54 @@ fn bits_to_number(bits: &[bool]) -> u128 {
     bits.iter().enumerate().fold(0u128, |acc, (i, &bit)| {
         if bit { acc | (1 << i) } else { acc }
     })
+}
+
+impl std::fmt::Display for Pattern {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Pattern::Exact(bits) => {
+                let num = bits_to_number(bits);
+                write!(f, "{}", num)
+            }
+            Pattern::Cidr { address, prefix_len } => {
+                // Convert to IP address format if 32 bits
+                if address.len() == 32 {
+                    let num = bits_to_number(address);
+                    let a = (num >> 24) & 0xff;
+                    let b = (num >> 16) & 0xff;
+                    let c = (num >> 8) & 0xff;
+                    let d = num & 0xff;
+                    write!(f, "{}.{}.{}.{}/{}", a, b, c, d, prefix_len)
+                } else {
+                    let num = bits_to_number(address);
+                    write!(f, "{}/{}", num, prefix_len)
+                }
+            }
+            Pattern::Wildcard { address, mask } => {
+                let addr_num = bits_to_number(address);
+                let mask_num = bits_to_number(mask);
+                write!(f, "{} mask {}", addr_num, mask_num)
+            }
+            Pattern::IpRange { start, end } => {
+                // Convert to IP address format if 32 bits
+                if start.len() == 32 && end.len() == 32 {
+                    let start_num = bits_to_number(start);
+                    let end_num = bits_to_number(end);
+                    let s_a = (start_num >> 24) & 0xff;
+                    let s_b = (start_num >> 16) & 0xff;
+                    let s_c = (start_num >> 8) & 0xff;
+                    let s_d = start_num & 0xff;
+                    let e_a = (end_num >> 24) & 0xff;
+                    let e_b = (end_num >> 16) & 0xff;
+                    let e_c = (end_num >> 8) & 0xff;
+                    let e_d = end_num & 0xff;
+                    write!(f, "{}.{}.{}.{}-{}.{}.{}.{}", s_a, s_b, s_c, s_d, e_a, e_b, e_c, e_d)
+                } else {
+                    let start_num = bits_to_number(start);
+                    let end_num = bits_to_number(end);
+                    write!(f, "{}-{}", start_num, end_num)
+                }
+            }
+        }
+    }
 }

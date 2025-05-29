@@ -686,4 +686,215 @@ mod perf_tests {
         let worklist_time = start.elapsed();
         println!("Worklist algorithm ({} iterations): {:?}", iterations, worklist_time);
     }
+    
+    #[test]
+    fn test_pattern_matching_cidr() {
+        // Test CIDR notation pattern matching
+        let expr_str = "let ip = &x[0..32] in ip ~ 192.168.1.0/24";
+        
+        // Parse and desugar
+        let expressions = parser::parse_expressions(expr_str).unwrap();
+        assert_eq!(expressions.len(), 1);
+        println!("Parsed expression: {:?}", expressions[0]);
+        
+        let desugared = desugar::desugar(&expressions[0]).unwrap();
+        println!("Desugared expression: {:?}", desugared);
+        
+        // Check that it desugars to the expected structure
+        let num_fields = desugared.num_fields();
+        println!("Number of fields: {}", num_fields);
+        
+        // For now, use a fixed number of fields if num_fields is 0
+        let actual_fields = if num_fields == 0 { 32 } else { num_fields };
+        
+        // Create automaton and check it's not empty
+        let mut aut = aut::Aut::new(actual_fields);
+        let state = aut.expr_to_state(&desugared);
+        assert!(!aut.is_empty(state), "CIDR pattern should allow some traffic");
+    }
+    
+    #[test]
+    fn test_pattern_matching_ip_range() {
+        // Test IP range pattern matching
+        let expr_str = "let src = &x[0..32] in src ~ 10.0.0.1-10.0.0.10";
+        
+        let expressions = parser::parse_expressions(expr_str).unwrap();
+        assert_eq!(expressions.len(), 1);
+        let desugared = desugar::desugar(&expressions[0]).unwrap();
+        
+        let num_fields = desugared.num_fields();
+        let actual_fields = if num_fields == 0 { 32 } else { num_fields };
+        
+        let mut aut = aut::Aut::new(actual_fields);
+        let state = aut.expr_to_state(&desugared);
+        assert!(!aut.is_empty(state), "IP range pattern should allow some traffic");
+    }
+    
+    #[test]
+    fn test_pattern_matching_wildcard() {
+        // Test wildcard mask pattern matching
+        let expr_str = "let dst = &x[32..64] in dst ~ 192.168.1.0 mask 0.0.0.255";
+        
+        let expressions = parser::parse_expressions(expr_str).unwrap();
+        assert_eq!(expressions.len(), 1);
+        let desugared = desugar::desugar(&expressions[0]).unwrap();
+        
+        let num_fields = desugared.num_fields();
+        let actual_fields = if num_fields == 0 { 64 } else { num_fields };
+        
+        let mut aut = aut::Aut::new(actual_fields);
+        let state = aut.expr_to_state(&desugared);
+        assert!(!aut.is_empty(state), "Wildcard pattern should allow some traffic");
+    }
+    
+    #[test]
+    fn test_pattern_matching_exact() {
+        // Test exact IP pattern matching
+        let expr_str = "x[0..32] ~ 192.168.1.100";
+        
+        let expressions = parser::parse_expressions(expr_str).unwrap();
+        assert_eq!(expressions.len(), 1);
+        let desugared = desugar::desugar(&expressions[0]).unwrap();
+        
+        let num_fields = desugared.num_fields();
+        let actual_fields = if num_fields == 0 { 32 } else { num_fields };
+        
+        let mut aut = aut::Aut::new(actual_fields);
+        let state = aut.expr_to_state(&desugared);
+        assert!(!aut.is_empty(state), "Exact IP pattern should allow some traffic");
+    }
+    
+    #[test]
+    fn test_pattern_matching_combined() {
+        // Test combining pattern matching with other operations
+        let expr_str = "let src = &x[0..32] in let dst = &x[32..64] in (src ~ 10.0.0.0/8) & (dst ~ 192.168.0.0/16)";
+        
+        let expressions = parser::parse_expressions(expr_str).unwrap();
+        assert_eq!(expressions.len(), 1);
+        let desugared = desugar::desugar(&expressions[0]).unwrap();
+        
+        let num_fields = desugared.num_fields();
+        let actual_fields = if num_fields == 0 { 64 } else { num_fields };
+        
+        let mut aut = aut::Aut::new(actual_fields);
+        let state = aut.expr_to_state(&desugared);
+        assert!(!aut.is_empty(state), "Combined pattern should allow some traffic");
+    }
+    
+    #[test]
+    fn test_pattern_matching_negation() {
+        // Test complement of pattern matching (using set difference)
+        let expr_str = "let ip = &x[0..32] in T - (ip ~ 192.168.1.0/24)";
+        
+        let expressions = parser::parse_expressions(expr_str).unwrap();
+        assert_eq!(expressions.len(), 1);
+        let desugared = desugar::desugar(&expressions[0]).unwrap();
+        
+        let num_fields = desugared.num_fields();
+        let actual_fields = if num_fields == 0 { 32 } else { num_fields };
+        
+        let mut aut = aut::Aut::new(actual_fields);
+        let state = aut.expr_to_state(&desugared);
+        assert!(!aut.is_empty(state), "Complement of pattern should allow some traffic");
+    }
+    
+    #[test]
+    fn test_large_ip_range_performance() {
+        use std::time::Instant;
+        
+        // Test various large IP ranges to ensure efficient handling
+        let test_cases = vec![
+            ("x[0..32] ~ 10.0.0.0-10.0.255.255", "Class A /16 range (65,536 addresses)"),
+            ("x[0..32] ~ 172.16.0.0-172.31.255.255", "Private network range (1,048,576 addresses)"),
+            ("x[0..32] ~ 0.0.0.0-255.255.255.255", "Full IPv4 range (4,294,967,296 addresses)"),
+            ("let ip = &x[0..32] in ip ~ 1.0.0.0-200.255.255.255", "Large range with alias"),
+        ];
+        
+        for (expr_str, description) in test_cases {
+            println!("\nTesting {}: {}", description, expr_str);
+            
+            // Parse the expression
+            let start = Instant::now();
+            let expressions = parser::parse_expressions(expr_str)
+                .expect(&format!("Failed to parse: {}", expr_str));
+            let parse_time = start.elapsed();
+            
+            // Desugar the expression
+            let start = Instant::now();
+            let desugared = desugar::desugar(&expressions[0])
+                .expect(&format!("Failed to desugar: {}", expr_str));
+            let desugar_time = start.elapsed();
+            
+            // Count unions to verify efficiency
+            fn count_unions(expr: &expr::Expr) -> usize {
+                match expr {
+                    expr::Expr::Union(e1, e2) => 1 + count_unions(e1) + count_unions(e2),
+                    expr::Expr::Intersect(e1, e2) => count_unions(e1) + count_unions(e2),
+                    expr::Expr::Sequence(e1, e2) => count_unions(e1) + count_unions(e2),
+                    expr::Expr::Star(e) => count_unions(e),
+                    expr::Expr::TestNegation(e) => count_unions(e),
+                    _ => 0,
+                }
+            }
+            
+            let union_count = count_unions(&desugared);
+            println!("  Parse time: {:?}", parse_time);
+            println!("  Desugar time: {:?}", desugar_time);
+            println!("  Union count: {}", union_count);
+            
+            // Verify the times are reasonable (not exponential)
+            assert!(parse_time.as_millis() < 100, "Parsing took too long: {:?}", parse_time);
+            assert!(desugar_time.as_millis() < 100, "Desugaring took too long: {:?}", desugar_time);
+            
+            // Verify union count is bounded (not exponential in address count)
+            assert!(union_count <= 128, "Too many unions ({}), likely not using efficient bounds", union_count);
+            
+            // Try to build automaton (this would fail or hang with exponential expressions)
+            let num_fields = desugared.num_fields();
+            let actual_fields = if num_fields == 0 { 32 } else { num_fields };
+            
+            let start = Instant::now();
+            let mut aut = aut::Aut::new(actual_fields);
+            let state = aut.expr_to_state(&desugared);
+            let aut_time = start.elapsed();
+            
+            println!("  Automaton construction time: {:?}", aut_time);
+            assert!(aut_time.as_millis() < 1000, "Automaton construction took too long: {:?}", aut_time);
+            
+            // Verify the automaton is not trivially empty
+            assert!(!aut.is_empty(state), "Range should allow some traffic");
+        }
+    }
+    
+    #[test]
+    fn test_pattern_matching_literals() {
+        // Test pattern matching with different literal formats
+        
+        // Hexadecimal literal
+        let hex_expr = "x[0..32] ~ 0xC0A80101";  // 192.168.1.1 in hex
+        let expressions = parser::parse_expressions(hex_expr).unwrap();
+        let desugared = desugar::desugar(&expressions[0]).unwrap();
+        let mut aut = aut::Aut::new(32);
+        let state = aut.expr_to_state(&desugared);
+        assert!(!aut.is_empty(state), "Hex pattern should allow traffic");
+        
+        // Binary literal
+        let bin_expr = "x[0..8] ~ 0b11000000";  // 192 in binary
+        let expressions = parser::parse_expressions(bin_expr).unwrap();
+        let desugared = desugar::desugar(&expressions[0]).unwrap();
+        let mut aut = aut::Aut::new(8);
+        let state = aut.expr_to_state(&desugared);
+        assert!(!aut.is_empty(state), "Binary pattern should allow traffic");
+        
+        // Decimal literal
+        let dec_expr = "x[0..32] ~ 3232235777";  // 192.168.1.1 as decimal
+        let expressions = parser::parse_expressions(dec_expr).unwrap();
+        let desugared = desugar::desugar(&expressions[0]).unwrap();
+        let mut aut = aut::Aut::new(32);
+        let state = aut.expr_to_state(&desugared);
+        assert!(!aut.is_empty(state), "Decimal pattern should allow traffic");
+        
+        // Test that different literal formats work for exact matches
+        println!("All literal format tests passed!");
+    }
 }
