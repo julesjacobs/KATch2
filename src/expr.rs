@@ -8,6 +8,8 @@ pub enum Expr {
     Top,                  // T
     Assign(Field, Value), // field := value
     Test(Field, Value),   // field == value
+    BitRangeAssign(Field, Field, Vec<bool>), // x[start..end] := value (as bits)
+    BitRangeTest(Field, Field, Vec<bool>),   // x[start..end] == value (as bits)
     Union(Exp, Exp),      // e1 + e2
     Intersect(Exp, Exp),  // e1 & e2
     Xor(Exp, Exp),        // e1 ^ e2
@@ -43,6 +45,12 @@ impl Expr {
     }
     pub fn test(field: Field, value: Value) -> Exp {
         Box::new(Expr::Test(field, value))
+    }
+    pub fn bit_range_assign(start: Field, end: Field, bits: Vec<bool>) -> Exp {
+        Box::new(Expr::BitRangeAssign(start, end, bits))
+    }
+    pub fn bit_range_test(start: Field, end: Field, bits: Vec<bool>) -> Exp {
+        Box::new(Expr::BitRangeTest(start, end, bits))
     }
     pub fn union(e1: Exp, e2: Exp) -> Exp {
         Box::new(Expr::Union(e1, e2))
@@ -107,14 +115,14 @@ impl Expr {
     pub fn is_test_fragment(&self) -> bool {
         match self {
             Expr::Zero | Expr::One => true,
-            Expr::Test(_, _) => true,
+            Expr::Test(_, _) | Expr::BitRangeTest(_, _, _) => true,
             Expr::Union(e1, e2) | Expr::Intersect(e1, e2) | 
             Expr::Xor(e1, e2) | Expr::Difference(e1, e2) |
             Expr::Sequence(e1, e2) => e1.is_test_fragment() && e2.is_test_fragment(),
             Expr::TestNegation(e) => e.is_test_fragment(),
             // Everything else is not in test fragment
-            Expr::Top | Expr::Assign(_, _) | Expr::Complement(_) | 
-            Expr::Star(_) | Expr::Dup | Expr::LtlNext(_) | 
+            Expr::Top | Expr::Assign(_, _) | Expr::BitRangeAssign(_, _, _) | 
+            Expr::Complement(_) | Expr::Star(_) | Expr::Dup | Expr::LtlNext(_) | 
             Expr::LtlUntil(_, _) | Expr::End | Expr::IfThenElse(_, _, _) |
             Expr::Var(_) | Expr::Let(_, _, _) => false,
         }
@@ -124,6 +132,7 @@ impl Expr {
         match self {
             Expr::Zero | Expr::One | Expr::Top | Expr::Dup | Expr::End => 0,
             Expr::Assign(field, _) | Expr::Test(field, _) => field + 1,
+            Expr::BitRangeAssign(_start, end, _) | Expr::BitRangeTest(_start, end, _) => end + 1,
             Expr::Union(e1, e2)
             | Expr::Intersect(e1, e2)
             | Expr::Xor(e1, e2)
@@ -214,6 +223,10 @@ impl Expr {
                     Expr::let_in(bound_var.clone(), def.substitute(var, replacement), body.substitute(var, replacement))
                 }
             }
+            
+            // Bit range operations don't contain variables
+            Expr::BitRangeAssign(start, end, value) => Expr::bit_range_assign(*start, *end, value.clone()),
+            Expr::BitRangeTest(start, end, value) => Expr::bit_range_test(*start, *end, value.clone()),
         }
     }
 }
@@ -247,6 +260,21 @@ impl std::fmt::Display for Expr {
             Expr::LtlNext(e) => write!(f, "X({})", e),
             Expr::LtlUntil(e1, e2) => write!(f, "({} U {})", e1, e2),
             Expr::End => write!(f, "end"),
+            Expr::BitRangeAssign(start, end, value) => {
+                let num = bits_to_number(value);
+                write!(f, "x[{}..{}] := {}", start, end, num)
+            }
+            Expr::BitRangeTest(start, end, value) => {
+                let num = bits_to_number(value);
+                write!(f, "x[{}..{}] == {}", start, end, num)
+            }
         }
     }
+}
+
+// Helper function to convert bit vector to number for display
+fn bits_to_number(bits: &[bool]) -> u128 {
+    bits.iter().enumerate().fold(0u128, |acc, (i, &bit)| {
+        if bit { acc | (1 << i) } else { acc }
+    })
 }

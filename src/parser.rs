@@ -114,7 +114,11 @@ pub enum TokenKind {
     LtlR,       // R
     LParen,     // (
     RParen,     // )
+    LBracket,   // [
+    RBracket,   // ]
+    DotDot,     // ..
     Field(u32), // x followed by digits
+    Number(String), // Numeric literal
     Ident(String), // Variable identifier
     If,         // if keyword
     Then,       // then keyword
@@ -228,8 +232,25 @@ impl<'a> Lexer<'a> {
             None => Ok(Token::new(TokenKind::Eof, Span::new(start_pos, self.current_pos))),
             Some((c, _char_start_pos)) => { // _char_start_pos is same as start_pos due to skip_whitespace
                 let kind = match c {
-                    '0' => TokenKind::Zero,
-                    '1' => TokenKind::One,
+                    '0' | '1' => {
+                        // Check if this is part of a larger number
+                        if self.peek_char().map_or(false, |ch| ch.is_digit(10)) {
+                            // This is part of a multi-digit number, parse it as a number
+                            let mut num_str = String::new();
+                            num_str.push(c);
+                            while let Some(&next_c) = self.peek_char() {
+                                if next_c.is_digit(10) {
+                                    num_str.push(self.next_char_with_pos().unwrap().0);
+                                } else {
+                                    break;
+                                }
+                            }
+                            TokenKind::Number(num_str)
+                        } else {
+                            // Single digit 0 or 1
+                            if c == '0' { TokenKind::Zero } else { TokenKind::One }
+                        }
+                    }
                     '+' => TokenKind::Plus,
                     '&' => TokenKind::And,
                     '^' => TokenKind::Xor,
@@ -240,6 +261,19 @@ impl<'a> Lexer<'a> {
                     '*' => TokenKind::Star,
                     '(' => TokenKind::LParen,
                     ')' => TokenKind::RParen,
+                    '[' => TokenKind::LBracket,
+                    ']' => TokenKind::RBracket,
+                    '.' => {
+                        if self.peek_char() == Some(&'.') {
+                            self.next_char_with_pos(); // Consume second '.'
+                            TokenKind::DotDot
+                        } else {
+                            return Err(ParseError::new(
+                                "Expected '..' for range operator".to_string(),
+                                Span::new(start_pos, self.current_pos),
+                            ));
+                        }
+                    }
                     ':' => {
                         if self.peek_char() == Some(&'=') {
                             self.next_char_with_pos(); // Consume '='
@@ -260,39 +294,23 @@ impl<'a> Lexer<'a> {
                             TokenKind::Eq
                         }
                     }
-                    'x' => {
-                        let mut num_str = String::new();
-                        while let Some(&next_c) = self.peek_char() {
-                            if next_c.is_digit(10) {
-                                num_str.push(self.next_char_with_pos().unwrap().0); // Consume digit
-                            } else {
-                                break;
-                            }
-                        }
-                        if num_str.is_empty() {
-                            // If 'x' can be an identifier on its own, this needs adjustment.
-                            // Assuming 'x' must be followed by digits for TokenKind::Field.
-                            // If 'x' alone is an LTL X, it should be handled before/separately.
-                            // The current setup means 'X' (uppercase) is LtlX, 'x' must be Field.
-                            return Err(ParseError::new(
-                                "Expected digits after 'x' for field".to_string(),
-                                Span::new(start_pos, self.current_pos),
-                            ));
-                        } else {
-                            match num_str.parse::<u32>() {
-                                Ok(index) => TokenKind::Field(index),
-                                Err(_) => {
-                                    return Err(ParseError::new(
-                                        "Invalid field index number".to_string(),
-                                        Span::new(start_pos, self.current_pos), // Span covers 'x' and digits
-                                    ));
+                    // Let all identifiers including 'x', 'x0', 'x1', etc. go through the general identifier handling
+                    _ => {
+                        // Check if it's a digit that could start a number
+                        if c.is_digit(10) {
+                            let mut num_str = String::new();
+                            num_str.push(c);
+                            while let Some(&next_c) = self.peek_char() {
+                                if next_c.is_digit(10) {
+                                    num_str.push(self.next_char_with_pos().unwrap().0);
+                                } else {
+                                    break;
                                 }
                             }
+                            TokenKind::Number(num_str)
                         }
-                    }
-                    _ => {
                         // Check if it's a letter that could start an identifier
-                        if c.is_alphabetic() {
+                        else if c.is_alphabetic() {
                             let mut ident = String::new();
                             ident.push(c);
                             while let Some(&next_c) = self.peek_char() {
@@ -319,6 +337,13 @@ impl<'a> Lexer<'a> {
                                 "F" => TokenKind::LtlF,
                                 "G" => TokenKind::LtlG,
                                 "R" => TokenKind::LtlR,
+                                // Handle field identifiers like x0, x1, x2, etc.
+                                s if s.starts_with('x') && s.len() > 1 && s[1..].chars().all(|c| c.is_digit(10)) => {
+                                    match s[1..].parse::<u32>() {
+                                        Ok(index) => TokenKind::Field(index),
+                                        Err(_) => TokenKind::Ident(ident)
+                                    }
+                                }
                                 _ => TokenKind::Ident(ident)
                             }
                         } else {
@@ -765,6 +790,101 @@ impl<'a> Parser<'a> {
                 
                 let next_token_after_field = self.peek_token()?.clone();
                 match next_token_after_field.kind {
+                    TokenKind::LBracket => {
+                        // Parse bit range: x[start..end]
+                        self.consume_token()?; // Consume '['
+                        
+                        // Parse start index
+                        let start_token = self.consume_token()?;
+                        let start = match start_token.kind {
+                            TokenKind::Number(num_str) => {
+                                num_str.parse::<u32>().map_err(|_| ParseError::new(
+                                    format!("Invalid start index in bit range: {}", num_str),
+                                    start_token.span,
+                                ))?
+                            }
+                            _ => return Err(ParseError::new(
+                                format!("Expected number for bit range start, found {}", token_kind_to_user_string(&start_token.kind)),
+                                start_token.span,
+                            )),
+                        };
+                        
+                        // Expect '..'
+                        match self.consume_token()? {
+                            Token { kind: TokenKind::DotDot, .. } => {},
+                            tok => return Err(ParseError::new(
+                                format!("Expected '..' in bit range, found {}", token_kind_to_user_string(&tok.kind)),
+                                tok.span,
+                            )),
+                        }
+                        
+                        // Parse end index
+                        let end_token = self.consume_token()?;
+                        let end = match end_token.kind {
+                            TokenKind::Number(num_str) => {
+                                num_str.parse::<u32>().map_err(|_| ParseError::new(
+                                    format!("Invalid end index in bit range: {}", num_str),
+                                    end_token.span,
+                                ))?
+                            }
+                            _ => return Err(ParseError::new(
+                                format!("Expected number for bit range end, found {}", token_kind_to_user_string(&end_token.kind)),
+                                end_token.span,
+                            )),
+                        };
+                        
+                        // Expect ']'
+                        match self.consume_token()? {
+                            Token { kind: TokenKind::RBracket, .. } => {},
+                            tok => return Err(ParseError::new(
+                                format!("Expected ']' to close bit range, found {}", token_kind_to_user_string(&tok.kind)),
+                                tok.span,
+                            )),
+                        }
+                        
+                        // Check what follows: := or ==
+                        let op_token = self.peek_token()?.clone();
+                        match op_token.kind {
+                            TokenKind::Assign => {
+                                self.consume_token()?; // Consume ':='
+                                
+                                // Parse the number value
+                                let value_token = self.consume_token()?;
+                                let value_str = match value_token.kind {
+                                    TokenKind::Number(num_str) => num_str,
+                                    _ => return Err(ParseError::new(
+                                        format!("Expected number after bit range assignment, found {}", token_kind_to_user_string(&value_token.kind)),
+                                        value_token.span,
+                                    )),
+                                };
+                                
+                                // Convert number to bit vector
+                                let bits = number_to_bits(&value_str, (end - start) as usize)?;
+                                Ok(Expr::bit_range_assign(start, end, bits))
+                            }
+                            TokenKind::Eq => {
+                                self.consume_token()?; // Consume '=='
+                                
+                                // Parse the number value
+                                let value_token = self.consume_token()?;
+                                let value_str = match value_token.kind {
+                                    TokenKind::Number(num_str) => num_str,
+                                    _ => return Err(ParseError::new(
+                                        format!("Expected number after bit range test, found {}", token_kind_to_user_string(&value_token.kind)),
+                                        value_token.span,
+                                    )),
+                                };
+                                
+                                // Convert number to bit vector
+                                let bits = number_to_bits(&value_str, (end - start) as usize)?;
+                                Ok(Expr::bit_range_test(start, end, bits))
+                            }
+                            _ => return Err(ParseError::new(
+                                format!("Expected ':=' or '==' after bit range, found {}", token_kind_to_user_string(&op_token.kind)),
+                                op_token.span,
+                            )),
+                        }
+                    }
                     TokenKind::Assign => {
                         self.consume_token()?; // Consume ':='
                         
@@ -889,10 +1009,125 @@ impl<'a> Parser<'a> {
                 
                 Ok(Expr::let_in(var_name, def, body))
             }
-            // Variable reference
+            // Variable reference or bit range
             TokenKind::Ident(name) => {
-                self.consume_token()?; // Consume the identifier
-                Ok(Expr::var(name))
+                // Look ahead to see if this is a bit range
+                if name == "x" {
+                    // Try to peek at the next token after 'x'
+                    // We need to temporarily consume 'x' to peek at what follows
+                    let _x_token = self.consume_token()?; // Consume 'x'
+                    
+                    if matches!(self.peek_kind(), Ok(&TokenKind::LBracket)) {
+                        // This is a bit range expression x[start..end]
+                        // 'x' is already consumed above
+                        self.consume_token()?; // Consume '['
+                    
+                    // Parse start index
+                    let start_token = self.consume_token()?;
+                    let start = match start_token.kind {
+                        TokenKind::Number(num_str) => {
+                            num_str.parse::<u32>().map_err(|_| ParseError::new(
+                                format!("Invalid start index in bit range: {}", num_str),
+                                start_token.span,
+                            ))?
+                        }
+                        TokenKind::Zero => 0,
+                        TokenKind::One => 1,
+                        _ => return Err(ParseError::new(
+                            format!("Expected number for bit range start, found {}", token_kind_to_user_string(&start_token.kind)),
+                            start_token.span,
+                        )),
+                    };
+                    
+                    // Expect '..'
+                    match self.consume_token()? {
+                        Token { kind: TokenKind::DotDot, .. } => {},
+                        tok => return Err(ParseError::new(
+                            format!("Expected '..' in bit range, found {}", token_kind_to_user_string(&tok.kind)),
+                            tok.span,
+                        )),
+                    }
+                    
+                    // Parse end index
+                    let end_token = self.consume_token()?;
+                    let end = match end_token.kind {
+                        TokenKind::Number(num_str) => {
+                            num_str.parse::<u32>().map_err(|_| ParseError::new(
+                                format!("Invalid end index in bit range: {}", num_str),
+                                end_token.span,
+                            ))?
+                        }
+                        TokenKind::Zero => 0,
+                        TokenKind::One => 1,
+                        _ => return Err(ParseError::new(
+                            format!("Expected number for bit range end, found {}", token_kind_to_user_string(&end_token.kind)),
+                            end_token.span,
+                        )),
+                    };
+                    
+                    // Expect ']'
+                    match self.consume_token()? {
+                        Token { kind: TokenKind::RBracket, .. } => {},
+                        tok => return Err(ParseError::new(
+                            format!("Expected ']' to close bit range, found {}", token_kind_to_user_string(&tok.kind)),
+                            tok.span,
+                        )),
+                    }
+                    
+                    // Check what follows: := or ==
+                    let op_token = self.peek_token()?.clone();
+                    match op_token.kind {
+                        TokenKind::Assign => {
+                            self.consume_token()?; // Consume ':='
+                            
+                            // Parse the number value
+                            let value_token = self.consume_token()?;
+                            let value_str = match value_token.kind {
+                                TokenKind::Number(num_str) => num_str,
+                                TokenKind::Zero => "0".to_string(),
+                                TokenKind::One => "1".to_string(),
+                                _ => return Err(ParseError::new(
+                                    format!("Expected number after bit range assignment, found {}", token_kind_to_user_string(&value_token.kind)),
+                                    value_token.span,
+                                )),
+                            };
+                            
+                            // Convert number to bit vector
+                            let bits = number_to_bits(&value_str, (end - start) as usize)?;
+                            Ok(Expr::bit_range_assign(start, end, bits))
+                        }
+                        TokenKind::Eq => {
+                            self.consume_token()?; // Consume '=='
+                            
+                            // Parse the number value
+                            let value_token = self.consume_token()?;
+                            let value_str = match value_token.kind {
+                                TokenKind::Number(num_str) => num_str,
+                                TokenKind::Zero => "0".to_string(),
+                                TokenKind::One => "1".to_string(),
+                                _ => return Err(ParseError::new(
+                                    format!("Expected number after bit range test, found {}", token_kind_to_user_string(&value_token.kind)),
+                                    value_token.span,
+                                )),
+                            };
+                            
+                            // Convert number to bit vector
+                            let bits = number_to_bits(&value_str, (end - start) as usize)?;
+                            Ok(Expr::bit_range_test(start, end, bits))
+                        }
+                        _ => return Err(ParseError::new(
+                            format!("Expected ':=' or '==' after bit range, found {}", token_kind_to_user_string(&op_token.kind)),
+                            op_token.span,
+                        )),
+                    }
+                    } else {
+                        // Not a bit range, 'x' is already consumed, just return it as a variable
+                        Ok(Expr::var(name))
+                    }
+                } else {
+                    self.consume_token()?; // Consume the identifier
+                    Ok(Expr::var(name))
+                }
             }
             // These are simple primaries, handled by the simplified parse_primary
             TokenKind::Zero | TokenKind::One | TokenKind::Top | TokenKind::Dup | TokenKind::LParen | TokenKind::End => {
@@ -931,7 +1166,8 @@ impl<'a> Parser<'a> {
             TokenKind::LtlX | TokenKind::LtlF | TokenKind::LtlG | TokenKind::LtlU | TokenKind::LtlR |
             TokenKind::Not | TokenKind::TestNot | TokenKind::Star | TokenKind::Semicolon | TokenKind::Plus |
             TokenKind::And | TokenKind::Xor | TokenKind::Minus | TokenKind::Assign | TokenKind::Eq |
-            TokenKind::RParen | TokenKind::If | TokenKind::Then | TokenKind::Else | TokenKind::Let | TokenKind::In | TokenKind::Eof => { // Removed End from here due to unreachable pattern, it's handled below.
+            TokenKind::RParen | TokenKind::LBracket | TokenKind::RBracket | TokenKind::DotDot | TokenKind::Number(_) |
+            TokenKind::If | TokenKind::Then | TokenKind::Else | TokenKind::Let | TokenKind::In | TokenKind::Eof => { // Removed End from here due to unreachable pattern, it's handled below.
                  Err(ParseError::new(
                     format!("Unexpected {} when expecting a primary expression (like '0', '1', 'T', 'dup', or '(')", token_kind_to_user_string(&token.kind)),
                     token.span,
@@ -942,6 +1178,30 @@ impl<'a> Parser<'a> {
     }
 }
 
+
+// Helper function to convert a number string to a bit vector
+fn number_to_bits(num_str: &str, expected_bits: usize) -> Result<Vec<bool>, ParseError> {
+    // Parse as u128 to support large numbers
+    let num = num_str.parse::<u128>().map_err(|_| ParseError::new(
+        format!("Number {} is too large to parse", num_str),
+        Default::default(), // We don't have a good span here
+    ))?;
+    
+    let mut bits = Vec::with_capacity(expected_bits);
+    for i in 0..expected_bits {
+        bits.push((num >> i) & 1 == 1);
+    }
+    
+    // Check if the number fits in the expected bits
+    if num >= (1u128 << expected_bits) {
+        return Err(ParseError::new(
+            format!("Number {} requires more than {} bits", num_str, expected_bits),
+            Default::default(),
+        ));
+    }
+    
+    Ok(bits)
+}
 
 // Main public parsing function
 // It needs to convert the internal ParseError (with its 0-indexed Span)
@@ -1046,7 +1306,11 @@ fn token_kind_to_user_string(kind: &TokenKind) -> String {
         TokenKind::LtlR => "LTL operator 'R'".to_string(),
         TokenKind::LParen => "character '('".to_string(),
         TokenKind::RParen => "character ')'".to_string(),
+        TokenKind::LBracket => "character '['".to_string(),
+        TokenKind::RBracket => "character ']'".to_string(),
+        TokenKind::DotDot => "operator '..'".to_string(),
         TokenKind::Field(u) => format!("field 'x{}'", u),
+        TokenKind::Number(n) => format!("number '{}'", n),
         TokenKind::Ident(s) => format!("identifier '{}'", s),
         TokenKind::If => "keyword 'if'".to_string(),
         TokenKind::Then => "keyword 'then'".to_string(),
@@ -1466,6 +1730,44 @@ mod tests {
                    parse_single_unwrap("(dup ; T) ^ 1"));
         assert_eq!(parse_single_unwrap("T ; 0 - 1"), 
                    parse_single_unwrap("(T ; 0) - 1"));
+    }
+    
+    #[test]
+    fn test_bit_range_parsing() {
+        // Test parsing bit range assignments
+        assert_eq!(parse_single_unwrap("x[0..8] := 255"), 
+                   Expr::bit_range_assign(0, 8, vec![true, true, true, true, true, true, true, true]));
+        
+        // Test parsing bit range tests
+        assert_eq!(parse_single_unwrap("x[2..4] == 3"), 
+                   Expr::bit_range_test(2, 4, vec![true, true]));
+        
+        // Test with zero
+        assert_eq!(parse_single_unwrap("x[0..4] == 0"), 
+                   Expr::bit_range_test(0, 4, vec![false, false, false, false]));
+        
+        // Test single bit range
+        assert_eq!(parse_single_unwrap("x[5..6] := 1"), 
+                   Expr::bit_range_assign(5, 6, vec![true]));
+    }
+    
+    #[test]
+    fn test_bit_range_in_expression() {
+        // Test bit ranges in larger expressions
+        let expr = parse_single_unwrap("x[0..4] == 5 + x[4..8] := 10");
+        let expected = Expr::union(
+            Expr::bit_range_test(0, 4, vec![true, false, true, false]),
+            Expr::bit_range_assign(4, 8, vec![false, true, false, true])
+        );
+        assert_eq!(expr, expected);
+        
+        // Test with sequence
+        let expr2 = parse_single_unwrap("x[0..2] := 3 ; x[2..4] == 0");
+        let expected2 = Expr::sequence(
+            Expr::bit_range_assign(0, 2, vec![true, true]),
+            Expr::bit_range_test(2, 4, vec![false, false])
+        );
+        assert_eq!(expr2, expected2);
     }
 }
 

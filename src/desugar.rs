@@ -127,6 +127,16 @@ pub fn desugar(expr: &Expr) -> Result<Exp, DesugarError> {
                 message: format!("Unbound variable '{}' encountered during desugaring", name)
             })
         }
+        
+        // BitRangeAssign - desugar to sequence of individual assignments
+        Expr::BitRangeAssign(start, end, bits) => {
+            desugar_bit_range_assign(*start, *end, bits)
+        }
+        
+        // BitRangeTest - desugar to conjunction of individual tests
+        Expr::BitRangeTest(start, end, bits) => {
+            desugar_bit_range_test(*start, *end, bits)
+        }
     }
 }
 
@@ -189,10 +199,75 @@ fn desugar_test_negation(expr: &Expr) -> Result<Exp, DesugarError> {
         // !!e = e (double negation)
         Expr::TestNegation(e) => desugar(e),
         
+        // BitRangeTest in test fragment
+        Expr::BitRangeTest(start, end, bits) => {
+            desugar_bit_range_test(*start, *end, bits).and_then(|e| desugar_test_negation(&e))
+        }
+        
         _ => Err(DesugarError {
             message: format!("Internal error: desugar_test_negation called on non-test fragment expression: {}", expr)
         })
     }
+}
+
+/// Desugar bit range assignment to sequence of individual assignments
+fn desugar_bit_range_assign(start: u32, end: u32, bits: &[bool]) -> Result<Exp, DesugarError> {
+    if bits.len() != (end - start) as usize {
+        return Err(DesugarError {
+            message: format!("Bit range [{}, {}) expects {} bits, but got {}", 
+                           start, end, end - start, bits.len())
+        });
+    }
+    
+    if bits.is_empty() {
+        // Empty range, return 1 (identity for sequence)
+        return Ok(Expr::one());
+    }
+    
+    // Build sequence of assignments (right-associative to match test expectations)
+    if bits.len() == 1 {
+        return Ok(Expr::assign(start, bits[0]));
+    }
+    
+    // Build from right to left for right-associativity
+    let mut result = Expr::assign(start + (bits.len() - 1) as u32, bits[bits.len() - 1]);
+    
+    for i in (0..bits.len() - 1).rev() {
+        let field = start + i as u32;
+        result = Expr::sequence(Expr::assign(field, bits[i]), result);
+    }
+    
+    Ok(result)
+}
+
+/// Desugar bit range test to conjunction of individual tests
+fn desugar_bit_range_test(start: u32, end: u32, bits: &[bool]) -> Result<Exp, DesugarError> {
+    if bits.len() != (end - start) as usize {
+        return Err(DesugarError {
+            message: format!("Bit range [{}, {}) expects {} bits, but got {}", 
+                           start, end, end - start, bits.len())
+        });
+    }
+    
+    if bits.is_empty() {
+        // Empty range, return 1 (identity for intersection)
+        return Ok(Expr::one());
+    }
+    
+    // Build conjunction of tests (right-associative to match test expectations)
+    if bits.len() == 1 {
+        return Ok(Expr::test(start, bits[0]));
+    }
+    
+    // Build from right to left for right-associativity
+    let mut result = Expr::test(start + (bits.len() - 1) as u32, bits[bits.len() - 1]);
+    
+    for i in (0..bits.len() - 1).rev() {
+        let field = start + i as u32;
+        result = Expr::intersect(Expr::test(field, bits[i]), result);
+    }
+    
+    Ok(result)
 }
 
 #[cfg(test)]
@@ -363,5 +438,53 @@ mod tests {
             Expr::star(Expr::sequence(Expr::test(0, true), Expr::assign(1, false)))
         );
         assert_eq!(desugar(&let_expr).unwrap(), expected);
+    }
+    
+    #[test]
+    fn test_bit_range_assign() {
+        // x[0..3] := 5 (binary: 101)
+        let expr = Expr::bit_range_assign(0, 3, vec![true, false, true]);
+        let expected = Expr::sequence(
+            Expr::assign(0, true),
+            Expr::sequence(
+                Expr::assign(1, false),
+                Expr::assign(2, true)
+            )
+        );
+        assert_eq!(desugar(&expr).unwrap(), expected);
+    }
+    
+    #[test]
+    fn test_bit_range_test() {
+        // x[2..5] == 6 (binary: 110)
+        let expr = Expr::bit_range_test(2, 5, vec![false, true, true]);
+        let expected = Expr::intersect(
+            Expr::test(2, false),
+            Expr::intersect(
+                Expr::test(3, true),
+                Expr::test(4, true)
+            )
+        );
+        assert_eq!(desugar(&expr).unwrap(), expected);
+    }
+    
+    #[test]
+    fn test_bit_range_empty() {
+        // Empty ranges should desugar to 1
+        let assign = Expr::bit_range_assign(5, 5, vec![]);
+        assert_eq!(desugar(&assign).unwrap(), Expr::one());
+        
+        let test = Expr::bit_range_test(5, 5, vec![]);
+        assert_eq!(desugar(&test).unwrap(), Expr::one());
+    }
+    
+    #[test]
+    fn test_bit_range_single() {
+        // Single bit ranges
+        let assign = Expr::bit_range_assign(10, 11, vec![true]);
+        assert_eq!(desugar(&assign).unwrap(), Expr::assign(10, true));
+        
+        let test = Expr::bit_range_test(10, 11, vec![false]);
+        assert_eq!(desugar(&test).unwrap(), Expr::test(10, false));
     }
 }
