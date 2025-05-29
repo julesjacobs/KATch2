@@ -1283,13 +1283,13 @@ class KATch2Editor {
                 i += 2;
                 matched = true;
             }
-            else if (['+', '&', '^', '-', '~', '!', ';', '*'].includes(code[i])) {
+            else if (['+', '&', '^', '-', '~', ';', '*'].includes(code[i])) {
                 tokens.push({ type: 'operator', text: code[i] });
                 i++;
                 matched = true;
             }
-            // Check for brackets
-            else if (['(', ')', '[', ']'].includes(code[i])) {
+            // Check for square brackets only (parens will be black/default)
+            else if (['[', ']'].includes(code[i])) {
                 tokens.push({ type: 'brackets', text: code[i] });
                 i++;
                 matched = true;
