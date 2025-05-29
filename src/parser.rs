@@ -118,7 +118,10 @@ pub enum TokenKind {
     RBracket,   // ]
     DotDot,     // ..
     Field(u32), // x followed by digits
-    Number(String), // Numeric literal
+    Number(String), // Decimal numeric literal
+    BinaryLiteral(String), // Binary literal (0b1010)
+    HexLiteral(String), // Hexadecimal literal (0xFF)
+    IpLiteral(String), // IP address literal (192.168.1.1)
     Ident(String), // Variable identifier
     If,         // if keyword
     Then,       // then keyword
@@ -174,6 +177,32 @@ impl<'a> Lexer<'a> {
     // Only peeks at char, doesn't advance position or return it
     fn peek_char(&mut self) -> Option<&char> {
         self.iter.peek()
+    }
+    
+    fn is_valid_ip_format(&self, s: &str) -> bool {
+        let parts: Vec<&str> = s.split('.').collect();
+        if parts.len() != 4 {
+            return false;
+        }
+        
+        for part in parts {
+            if part.is_empty() {
+                return false;
+            }
+            // Check if all characters are digits
+            if !part.chars().all(|c| c.is_digit(10)) {
+                return false;
+            }
+            // Check if the number is in valid range (0-255)
+            if let Ok(num) = part.parse::<u32>() {
+                if num > 255 {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        }
+        true
     }
 
     fn skip_whitespace(&mut self) -> Result<(), ParseError> {
@@ -232,23 +261,115 @@ impl<'a> Lexer<'a> {
             None => Ok(Token::new(TokenKind::Eof, Span::new(start_pos, self.current_pos))),
             Some((c, _char_start_pos)) => { // _char_start_pos is same as start_pos due to skip_whitespace
                 let kind = match c {
-                    '0' | '1' => {
+                    '0' => {
+                        // Check for special prefixes: 0b (binary) or 0x (hex)
+                        match self.peek_char() {
+                            Some(&'b') => {
+                                // Binary literal
+                                self.next_char_with_pos(); // Consume 'b'
+                                let mut binary_str = String::new();
+                                while let Some(&next_c) = self.peek_char() {
+                                    if next_c == '0' || next_c == '1' {
+                                        binary_str.push(self.next_char_with_pos().unwrap().0);
+                                    } else {
+                                        break;
+                                    }
+                                }
+                                if binary_str.is_empty() {
+                                    return Err(ParseError::new(
+                                        "Expected binary digits after '0b'".to_string(),
+                                        Span::new(start_pos, self.current_pos),
+                                    ));
+                                }
+                                TokenKind::BinaryLiteral(binary_str)
+                            }
+                            Some(&'x') | Some(&'X') => {
+                                // Hexadecimal literal
+                                self.next_char_with_pos(); // Consume 'x' or 'X'
+                                let mut hex_str = String::new();
+                                while let Some(&next_c) = self.peek_char() {
+                                    if next_c.is_ascii_hexdigit() {
+                                        hex_str.push(self.next_char_with_pos().unwrap().0);
+                                    } else {
+                                        break;
+                                    }
+                                }
+                                if hex_str.is_empty() {
+                                    return Err(ParseError::new(
+                                        "Expected hexadecimal digits after '0x'".to_string(),
+                                        Span::new(start_pos, self.current_pos),
+                                    ));
+                                }
+                                TokenKind::HexLiteral(hex_str)
+                            }
+                            Some(ch) if ch.is_digit(10) => {
+                                // This is part of a multi-digit number, parse it as a decimal number
+                                let mut num_str = String::new();
+                                num_str.push(c);
+                                while let Some(&next_c) = self.peek_char() {
+                                    if next_c.is_digit(10) {
+                                        num_str.push(self.next_char_with_pos().unwrap().0);
+                                    } else if next_c == '.' {
+                                        // Look ahead to see if this is ".." (range operator) or part of IP
+                                        let mut temp_iter = self.iter.clone();
+                                        temp_iter.next(); // Skip the first '.'
+                                        if temp_iter.peek() == Some(&'.') {
+                                            // This is "..", don't consume it
+                                            break;
+                                        } else {
+                                            // This might be part of an IP address
+                                            num_str.push(self.next_char_with_pos().unwrap().0);
+                                        }
+                                    } else {
+                                        break;
+                                    }
+                                }
+                                // Check if this looks like an IP address (contains dots)
+                                if num_str.contains('.') && self.is_valid_ip_format(&num_str) {
+                                    TokenKind::IpLiteral(num_str)
+                                } else {
+                                    TokenKind::Number(num_str.replace(".", ""))
+                                }
+                            }
+                            _ => {
+                                // Single digit 0
+                                TokenKind::Zero
+                            }
+                        }
+                    }
+                    '1' => {
                         // Check if this is part of a larger number
-                        if self.peek_char().map_or(false, |ch| ch.is_digit(10)) {
+                        if self.peek_char().map_or(false, |ch| ch.is_digit(10) || *ch == '.') {
                             // This is part of a multi-digit number, parse it as a number
                             let mut num_str = String::new();
                             num_str.push(c);
                             while let Some(&next_c) = self.peek_char() {
                                 if next_c.is_digit(10) {
                                     num_str.push(self.next_char_with_pos().unwrap().0);
+                                } else if next_c == '.' {
+                                    // Look ahead to see if this is ".." (range operator) or part of IP
+                                    let mut temp_iter = self.iter.clone();
+                                    temp_iter.next(); // Skip the first '.'
+                                    if temp_iter.peek() == Some(&'.') {
+                                        // This is "..", don't consume it
+                                        break;
+                                    } else {
+                                        // This might be part of an IP address
+                                        num_str.push(self.next_char_with_pos().unwrap().0);
+                                    }
                                 } else {
                                     break;
                                 }
                             }
-                            TokenKind::Number(num_str)
+                            // Check if this looks like an IP address (contains dots)
+                            if num_str.contains('.') && self.is_valid_ip_format(&num_str) {
+                                TokenKind::IpLiteral(num_str)
+                            } else {
+                                TokenKind::Number(num_str.replace(".", ""))
+                            }
                         } else {
-                            // Single digit 0 or 1
-                            if c == '0' { TokenKind::Zero } else { TokenKind::One }
+                            // Single digit 1
+                            TokenKind::One
                         }
                     }
                     '+' => TokenKind::Plus,
@@ -303,11 +424,27 @@ impl<'a> Lexer<'a> {
                             while let Some(&next_c) = self.peek_char() {
                                 if next_c.is_digit(10) {
                                     num_str.push(self.next_char_with_pos().unwrap().0);
+                                } else if next_c == '.' {
+                                    // Look ahead to see if this is ".." (range operator) or part of IP
+                                    let mut temp_iter = self.iter.clone();
+                                    temp_iter.next(); // Skip the first '.'
+                                    if temp_iter.peek() == Some(&'.') {
+                                        // This is "..", don't consume it
+                                        break;
+                                    } else {
+                                        // This might be part of an IP address
+                                        num_str.push(self.next_char_with_pos().unwrap().0);
+                                    }
                                 } else {
                                     break;
                                 }
                             }
-                            TokenKind::Number(num_str)
+                            // Check if this looks like an IP address (contains dots)
+                            if num_str.contains('.') && self.is_valid_ip_format(&num_str) {
+                                TokenKind::IpLiteral(num_str)
+                            } else {
+                                TokenKind::Number(num_str.replace(".", ""))
+                            }
                         }
                         // Check if it's a letter that could start an identifier
                         else if c.is_alphabetic() {
@@ -994,7 +1131,13 @@ impl<'a> Parser<'a> {
                     )),
                 }
                 
+                // Parse the definition
                 let def = self.parse_until()?; // Parse definition
+                
+                // Check if the definition is a variable named 'x' and this might be a special bit range alias
+                // For now, we'll handle bit range aliases through a different approach in desugaring
+                // The parser will parse "let alias = x[0..32] in expr" as a regular let binding
+                // and the desugarer will detect and handle x[start..end] patterns
                 
                 // Expect 'in'
                 match self.consume_token()? {
@@ -1080,39 +1223,45 @@ impl<'a> Parser<'a> {
                         TokenKind::Assign => {
                             self.consume_token()?; // Consume ':='
                             
-                            // Parse the number value
+                            // Parse the literal value
                             let value_token = self.consume_token()?;
-                            let value_str = match value_token.kind {
-                                TokenKind::Number(num_str) => num_str,
-                                TokenKind::Zero => "0".to_string(),
-                                TokenKind::One => "1".to_string(),
+                            let (value_str, literal_type) = match value_token.kind {
+                                TokenKind::Number(num_str) => (num_str, LiteralType::Decimal),
+                                TokenKind::BinaryLiteral(bin_str) => (bin_str, LiteralType::Binary),
+                                TokenKind::HexLiteral(hex_str) => (hex_str, LiteralType::Hexadecimal),
+                                TokenKind::IpLiteral(ip_str) => (ip_str, LiteralType::IpAddress),
+                                TokenKind::Zero => ("0".to_string(), LiteralType::Decimal),
+                                TokenKind::One => ("1".to_string(), LiteralType::Decimal),
                                 _ => return Err(ParseError::new(
                                     format!("Expected number after bit range assignment, found {}", token_kind_to_user_string(&value_token.kind)),
                                     value_token.span,
                                 )),
                             };
                             
-                            // Convert number to bit vector
-                            let bits = number_to_bits(&value_str, (end - start) as usize)?;
+                            // Convert literal to bit vector
+                            let bits = literal_to_bits(&value_str, literal_type, (end - start) as usize)?;
                             Ok(Expr::bit_range_assign(start, end, bits))
                         }
                         TokenKind::Eq => {
                             self.consume_token()?; // Consume '=='
                             
-                            // Parse the number value
+                            // Parse the literal value
                             let value_token = self.consume_token()?;
-                            let value_str = match value_token.kind {
-                                TokenKind::Number(num_str) => num_str,
-                                TokenKind::Zero => "0".to_string(),
-                                TokenKind::One => "1".to_string(),
+                            let (value_str, literal_type) = match value_token.kind {
+                                TokenKind::Number(num_str) => (num_str, LiteralType::Decimal),
+                                TokenKind::BinaryLiteral(bin_str) => (bin_str, LiteralType::Binary),
+                                TokenKind::HexLiteral(hex_str) => (hex_str, LiteralType::Hexadecimal),
+                                TokenKind::IpLiteral(ip_str) => (ip_str, LiteralType::IpAddress),
+                                TokenKind::Zero => ("0".to_string(), LiteralType::Decimal),
+                                TokenKind::One => ("1".to_string(), LiteralType::Decimal),
                                 _ => return Err(ParseError::new(
                                     format!("Expected number after bit range test, found {}", token_kind_to_user_string(&value_token.kind)),
                                     value_token.span,
                                 )),
                             };
                             
-                            // Convert number to bit vector
-                            let bits = number_to_bits(&value_str, (end - start) as usize)?;
+                            // Convert literal to bit vector
+                            let bits = literal_to_bits(&value_str, literal_type, (end - start) as usize)?;
                             Ok(Expr::bit_range_test(start, end, bits))
                         }
                         _ => return Err(ParseError::new(
@@ -1166,7 +1315,8 @@ impl<'a> Parser<'a> {
             TokenKind::LtlX | TokenKind::LtlF | TokenKind::LtlG | TokenKind::LtlU | TokenKind::LtlR |
             TokenKind::Not | TokenKind::TestNot | TokenKind::Star | TokenKind::Semicolon | TokenKind::Plus |
             TokenKind::And | TokenKind::Xor | TokenKind::Minus | TokenKind::Assign | TokenKind::Eq |
-            TokenKind::RParen | TokenKind::LBracket | TokenKind::RBracket | TokenKind::DotDot | TokenKind::Number(_) |
+            TokenKind::RParen | TokenKind::LBracket | TokenKind::RBracket | TokenKind::DotDot | 
+            TokenKind::Number(_) | TokenKind::BinaryLiteral(_) | TokenKind::HexLiteral(_) | TokenKind::IpLiteral(_) |
             TokenKind::If | TokenKind::Then | TokenKind::Else | TokenKind::Let | TokenKind::In | TokenKind::Eof => { // Removed End from here due to unreachable pattern, it's handled below.
                  Err(ParseError::new(
                     format!("Unexpected {} when expecting a primary expression (like '0', '1', 'T', 'dup', or '(')", token_kind_to_user_string(&token.kind)),
@@ -1179,13 +1329,56 @@ impl<'a> Parser<'a> {
 }
 
 
-// Helper function to convert a number string to a bit vector
-fn number_to_bits(num_str: &str, expected_bits: usize) -> Result<Vec<bool>, ParseError> {
-    // Parse as u128 to support large numbers
-    let num = num_str.parse::<u128>().map_err(|_| ParseError::new(
-        format!("Number {} is too large to parse", num_str),
-        Default::default(), // We don't have a good span here
-    ))?;
+#[derive(Debug, Clone, Copy)]
+enum LiteralType {
+    Decimal,
+    Binary,
+    Hexadecimal,
+    IpAddress,
+}
+
+// Helper function to convert various literal formats to a bit vector
+fn literal_to_bits(literal_str: &str, literal_type: LiteralType, expected_bits: usize) -> Result<Vec<bool>, ParseError> {
+    let num = match literal_type {
+        LiteralType::Decimal => {
+            literal_str.parse::<u128>().map_err(|_| ParseError::new(
+                format!("Invalid decimal number: {}", literal_str),
+                Default::default(),
+            ))?
+        }
+        LiteralType::Binary => {
+            u128::from_str_radix(literal_str, 2).map_err(|_| ParseError::new(
+                format!("Invalid binary literal: 0b{}", literal_str),
+                Default::default(),
+            ))?
+        }
+        LiteralType::Hexadecimal => {
+            u128::from_str_radix(literal_str, 16).map_err(|_| ParseError::new(
+                format!("Invalid hexadecimal literal: 0x{}", literal_str),
+                Default::default(),
+            ))?
+        }
+        LiteralType::IpAddress => {
+            // Convert IP address to 32-bit integer
+            let parts: Vec<&str> = literal_str.split('.').collect();
+            if parts.len() != 4 {
+                return Err(ParseError::new(
+                    format!("Invalid IP address format: {}", literal_str),
+                    Default::default(),
+                ));
+            }
+            
+            let mut ip_num = 0u128;
+            for (i, part) in parts.iter().enumerate() {
+                let octet = part.parse::<u8>().map_err(|_| ParseError::new(
+                    format!("Invalid IP octet: {}", part),
+                    Default::default(),
+                ))?;
+                ip_num |= (octet as u128) << (8 * (3 - i));
+            }
+            ip_num
+        }
+    };
     
     let mut bits = Vec::with_capacity(expected_bits);
     for i in 0..expected_bits {
@@ -1195,12 +1388,17 @@ fn number_to_bits(num_str: &str, expected_bits: usize) -> Result<Vec<bool>, Pars
     // Check if the number fits in the expected bits
     if num >= (1u128 << expected_bits) {
         return Err(ParseError::new(
-            format!("Number {} requires more than {} bits", num_str, expected_bits),
+            format!("Number {} requires more than {} bits", num, expected_bits),
             Default::default(),
         ));
     }
     
     Ok(bits)
+}
+
+// Helper function to convert a number string to a bit vector (for backward compatibility)
+fn number_to_bits(num_str: &str, expected_bits: usize) -> Result<Vec<bool>, ParseError> {
+    literal_to_bits(num_str, LiteralType::Decimal, expected_bits)
 }
 
 // Main public parsing function
@@ -1311,6 +1509,9 @@ fn token_kind_to_user_string(kind: &TokenKind) -> String {
         TokenKind::DotDot => "operator '..'".to_string(),
         TokenKind::Field(u) => format!("field 'x{}'", u),
         TokenKind::Number(n) => format!("number '{}'", n),
+        TokenKind::BinaryLiteral(b) => format!("binary literal '0b{}'", b),
+        TokenKind::HexLiteral(h) => format!("hexadecimal literal '0x{}'", h),
+        TokenKind::IpLiteral(ip) => format!("IP literal '{}'", ip),
         TokenKind::Ident(s) => format!("identifier '{}'", s),
         TokenKind::If => "keyword 'if'".to_string(),
         TokenKind::Then => "keyword 'then'".to_string(),
@@ -1768,6 +1969,184 @@ mod tests {
             Expr::bit_range_test(2, 4, vec![false, false])
         );
         assert_eq!(expr2, expected2);
+    }
+    
+    #[test]
+    fn test_literal_formats() {
+        // Test binary literals
+        let expr1 = parse_single_unwrap("x[0..4] := 0b1010");
+        assert_eq!(expr1, Expr::bit_range_assign(0, 4, vec![false, true, false, true]));
+        
+        // Test hexadecimal literals
+        let expr2 = parse_single_unwrap("x[0..8] := 0xFF");
+        assert_eq!(expr2, Expr::bit_range_assign(0, 8, vec![true, true, true, true, true, true, true, true]));
+        
+        // Test IP address literals (192.168.1.1 = 0xC0A80101)
+        let expr3 = parse_single_unwrap("x[0..32] := 192.168.1.1");
+        // IP addresses are converted in big-endian format: 192.168.1.1 = 0xC0A80101
+        // But our bit vector is little-endian, so bit 0 is the LSB
+        // 0xC0A80101 = 3232235777 in decimal  
+        let mut ip_bits = vec![false; 32];
+        let ip_num = 0xC0A80101u32;
+        for i in 0..32 {
+            ip_bits[i] = (ip_num >> i) & 1 == 1;
+        }
+        assert_eq!(expr3, Expr::bit_range_assign(0, 32, ip_bits));
+        
+        // Test mixed formats in compound expression
+        let expr4 = parse_single_unwrap("x[0..4] == 0b1100 + x[4..12] := 0xF0");
+        let expected4 = Expr::union(
+            Expr::bit_range_test(0, 4, vec![false, false, true, true]),
+            Expr::bit_range_assign(4, 12, vec![false, false, false, false, true, true, true, true])
+        );
+        assert_eq!(expr4, expected4);
+    }
+    
+    #[test]
+    fn test_literal_edge_cases() {
+        // Test single bits
+        assert_eq!(parse_single_unwrap("x[0..1] := 0b1"), 
+                   Expr::bit_range_assign(0, 1, vec![true]));
+        
+        assert_eq!(parse_single_unwrap("x[5..6] == 0x0"), 
+                   Expr::bit_range_test(5, 6, vec![false]));
+                   
+        // Test larger hex values
+        assert_eq!(parse_single_unwrap("x[0..16] := 0xABCD"),
+                   Expr::bit_range_assign(0, 16, vec![
+                       true, false, true, true, false, false, true, true, // 0xCD = 205
+                       true, true, false, true, false, true, false, true   // 0xAB = 171
+                   ]));
+    }
+    
+    #[test]
+    fn test_let_parsing() {
+        // Basic let binding
+        let expr = parse_single_unwrap("let x = 1 in x + 0");
+        assert_eq!(expr, Expr::let_in(
+            "x".to_string(),
+            Expr::one(),
+            Expr::union(Expr::var("x".to_string()), Expr::zero())
+        ));
+        
+        // Let with assignment
+        let expr = parse_single_unwrap("let config = x0 := 1 in config ; x1 := 0");
+        assert_eq!(expr, Expr::let_in(
+            "config".to_string(),
+            Expr::assign(0, true),
+            Expr::sequence(
+                Expr::var("config".to_string()),
+                Expr::assign(1, false)
+            )
+        ));
+        
+        // Let with test
+        let expr = parse_single_unwrap("let test = x0 == 1 in test & x1 == 0");
+        assert_eq!(expr, Expr::let_in(
+            "test".to_string(),
+            Expr::test(0, true),
+            Expr::intersect(
+                Expr::var("test".to_string()),
+                Expr::test(1, false)
+            )
+        ));
+    }
+    
+    #[test]
+    fn test_nested_let_parsing() {
+        // Nested let bindings
+        let expr = parse_single_unwrap("let x = 0 in let y = 1 in x + y");
+        assert_eq!(expr, Expr::let_in(
+            "x".to_string(),
+            Expr::zero(),
+            Expr::let_in(
+                "y".to_string(),
+                Expr::one(),
+                Expr::union(
+                    Expr::var("x".to_string()),
+                    Expr::var("y".to_string())
+                )
+            )
+        ));
+        
+        // Let with complex expression
+        let expr = parse_single_unwrap("let p = (x0 := 1 ; x1 := 0) in p + p*");
+        assert_eq!(expr, Expr::let_in(
+            "p".to_string(),
+            Expr::sequence(Expr::assign(0, true), Expr::assign(1, false)),
+            Expr::union(
+                Expr::var("p".to_string()),
+                Expr::star(Expr::var("p".to_string()))
+            )
+        ));
+    }
+    
+    #[test]
+    fn test_let_with_various_names() {
+        // Let with various valid variable names
+        let expr = parse_single_unwrap("let myVar = 1 in myVar");
+        assert_eq!(expr, Expr::let_in(
+            "myVar".to_string(),
+            Expr::one(),
+            Expr::var("myVar".to_string())
+        ));
+        
+        let expr = parse_single_unwrap("let test_var = 0 in test_var");
+        assert_eq!(expr, Expr::let_in(
+            "test_var".to_string(),
+            Expr::zero(),
+            Expr::var("test_var".to_string())
+        ));
+        
+        let expr = parse_single_unwrap("let v123 = x0 := 1 in v123");
+        assert_eq!(expr, Expr::let_in(
+            "v123".to_string(),
+            Expr::assign(0, true),
+            Expr::var("v123".to_string())
+        ));
+    }
+    
+    #[test]
+    fn test_let_precedence() {
+        // Let has low precedence, binds to the right
+        let expr = parse_single_unwrap("0 + let x = 1 in x");
+        assert_eq!(expr, Expr::union(
+            Expr::zero(),
+            Expr::let_in(
+                "x".to_string(),
+                Expr::one(),
+                Expr::var("x".to_string())
+            )
+        ));
+        
+        // Parentheses override precedence
+        let expr = parse_single_unwrap("(let x = 1 in x) + 0");
+        assert_eq!(expr, Expr::union(
+            Expr::let_in(
+                "x".to_string(),
+                Expr::one(),
+                Expr::var("x".to_string())
+            ),
+            Expr::zero()
+        ));
+    }
+    
+    #[test]
+    fn test_let_errors() {
+        // Missing 'in' keyword
+        assert!(parse_all("let x = 1 x").is_err());
+        
+        // Missing body
+        assert!(parse_all("let x = 1 in").is_err());
+        
+        // Missing definition
+        assert!(parse_all("let x = in 1").is_err());
+        
+        // Missing variable name
+        assert!(parse_all("let = 1 in 0").is_err());
+        
+        // Invalid variable name
+        assert!(parse_all("let 123 = 1 in 0").is_err());
     }
 }
 

@@ -1,4 +1,76 @@
 use crate::expr::{Expr, Exp};
+use crate::pre::Field;
+use std::collections::HashMap;
+
+/// Environment for variable bindings and bit range aliases
+#[derive(Debug, Clone)]
+pub struct DesugarEnv {
+    /// Maps variable names to their bound expressions (for let bindings)
+    variables: HashMap<String, Exp>,
+    /// Maps alias names to (start_field, end_field) pairs (for bit range aliases)
+    ranges: HashMap<String, (Field, Field)>,
+}
+
+impl DesugarEnv {
+    pub fn new() -> Self {
+        Self {
+            variables: HashMap::new(),
+            ranges: HashMap::new(),
+        }
+    }
+    
+    /// Add a variable binding to the environment
+    pub fn add_variable(&mut self, name: String, expr: Exp) {
+        self.variables.insert(name, expr);
+    }
+    
+    /// Add a bit range alias to the environment
+    pub fn add_alias(&mut self, alias: String, start: Field, end: Field) {
+        self.ranges.insert(alias, (start, end));
+    }
+    
+    /// Look up a variable binding, returns None if not found
+    pub fn lookup_variable(&self, name: &str) -> Option<&Exp> {
+        self.variables.get(name)
+    }
+    
+    /// Look up a bit range alias, returns None if not found
+    pub fn lookup_alias(&self, alias: &str) -> Option<(Field, Field)> {
+        self.ranges.get(alias).copied()
+    }
+    
+    /// Compute fundamental bit range for alias[start..end]
+    /// Returns the actual field range in the packet
+    pub fn compute_subrange(&self, alias: &str, sub_start: Field, sub_end: Field) -> Option<(Field, Field)> {
+        if let Some((alias_start, alias_end)) = self.lookup_alias(alias) {
+            let actual_start = alias_start + sub_start;
+            let actual_end = alias_start + sub_end;
+            
+            // Bounds check
+            if actual_end <= alias_end {
+                Some((actual_start, actual_end))
+            } else {
+                None // Sub-range exceeds alias bounds
+            }
+        } else {
+            None // Alias not found
+        }
+    }
+    
+    /// Create a new environment with an additional variable binding (for scoping)
+    pub fn with_variable(&self, name: String, expr: Exp) -> Self {
+        let mut new_env = self.clone();
+        new_env.add_variable(name, expr);
+        new_env
+    }
+    
+    /// Create a new environment with an additional alias binding (for scoping)
+    pub fn with_alias(&self, alias: String, start: Field, end: Field) -> Self {
+        let mut new_env = self.clone();
+        new_env.add_alias(alias, start, end);
+        new_env
+    }
+}
 
 /// Error type for desugaring phase
 #[derive(Debug, Clone)]
@@ -14,10 +86,16 @@ impl std::fmt::Display for DesugarError {
 
 impl std::error::Error for DesugarError {}
 
-/// Desugar an expression, eliminating TestNegation operators
+/// Desugar an expression, eliminating TestNegation operators and bit range aliases
 /// This validates that TestNegation is only applied to test fragments
 /// and transforms it using De Morgan's laws
 pub fn desugar(expr: &Expr) -> Result<Exp, DesugarError> {
+    let env = DesugarEnv::new();
+    desugar_with_env(expr, &env)
+}
+
+/// Desugar an expression with a given environment for variables and aliases
+fn desugar_with_env(expr: &Expr, env: &DesugarEnv) -> Result<Exp, DesugarError> {
     match expr {
         // Base cases - no transformation needed
         Expr::Zero => Ok(Expr::zero()),
@@ -28,47 +106,69 @@ pub fn desugar(expr: &Expr) -> Result<Exp, DesugarError> {
         Expr::Assign(f, v) => Ok(Expr::assign(*f, *v)),
         Expr::Test(f, v) => Ok(Expr::test(*f, *v)),
         
+        // Variable assignment/test - resolve alias from environment
+        Expr::VarAssign(var, bits) => {
+            if let Some((start, end)) = env.lookup_alias(var) {
+                // Transform to bit range assignment
+                Ok(Expr::bit_range_assign(start, end, bits.clone()))
+            } else {
+                Err(DesugarError {
+                    message: format!("Unknown alias '{}' in assignment", var)
+                })
+            }
+        }
+        Expr::VarTest(var, bits) => {
+            if let Some((start, end)) = env.lookup_alias(var) {
+                // Transform to bit range test
+                Ok(Expr::bit_range_test(start, end, bits.clone()))
+            } else {
+                Err(DesugarError {
+                    message: format!("Unknown alias '{}' in test", var)
+                })
+            }
+        }
+        
         // Recursive cases - desugar subexpressions
         Expr::Union(e1, e2) => {
-            let d1 = desugar(e1)?;
-            let d2 = desugar(e2)?;
+            let d1 = desugar_with_env(e1, env)?;
+            let d2 = desugar_with_env(e2, env)?;
             Ok(Expr::union(d1, d2))
         }
         Expr::Intersect(e1, e2) => {
-            let d1 = desugar(e1)?;
-            let d2 = desugar(e2)?;
+            let d1 = desugar_with_env(e1, env)?;
+            let d2 = desugar_with_env(e2, env)?;
             Ok(Expr::intersect(d1, d2))
         }
         Expr::Xor(e1, e2) => {
-            let d1 = desugar(e1)?;
-            let d2 = desugar(e2)?;
+            let d1 = desugar_with_env(e1, env)?;
+            let d2 = desugar_with_env(e2, env)?;
             Ok(Expr::xor(d1, d2))
         }
         Expr::Difference(e1, e2) => {
-            let d1 = desugar(e1)?;
-            let d2 = desugar(e2)?;
+            let d1 = desugar_with_env(e1, env)?;
+            let d2 = desugar_with_env(e2, env)?;
             Ok(Expr::difference(d1, d2))
         }
         Expr::Sequence(e1, e2) => {
-            let d1 = desugar(e1)?;
-            let d2 = desugar(e2)?;
+            let d1 = desugar_with_env(e1, env)?;
+            let d2 = desugar_with_env(e2, env)?;
             Ok(Expr::sequence(d1, d2))
         }
         Expr::Complement(e) => {
-            let d = desugar(e)?;
+            let d = desugar_with_env(e, env)?;
             Ok(Expr::complement(d))
         }
         Expr::Star(e) => {
-            let d = desugar(e)?;
+            let d = desugar_with_env(e, env)?;
             Ok(Expr::star(d))
         }
         Expr::LtlNext(e) => {
-            let d = desugar(e)?;
+            let d = desugar_with_env(e, env)?;
             Ok(Expr::ltl_next(d))
         }
         Expr::LtlUntil(e1, e2) => {
-            let d1 = desugar(e1)?;
-            let d2 = desugar(e2)?;
+            let d1 = desugar_with_env(e1, env)?;
+            let d2 = desugar_with_env(e2, env)?;
             Ok(Expr::ltl_until(d1, d2))
         }
         
@@ -95,9 +195,9 @@ pub fn desugar(expr: &Expr) -> Result<Exp, DesugarError> {
             }
             
             // Desugar all subexpressions
-            let d_cond = desugar(cond)?;
-            let d_then = desugar(then_expr)?;
-            let d_else = desugar(else_expr)?;
+            let d_cond = desugar_with_env(cond, env)?;
+            let d_then = desugar_with_env(then_expr, env)?;
+            let d_else = desugar_with_env(else_expr, env)?;
             
             // Create negated condition using test negation then desugar it
             let neg_cond = desugar_test_negation(cond)?;
@@ -109,23 +209,43 @@ pub fn desugar(expr: &Expr) -> Result<Exp, DesugarError> {
             ))
         }
         
-        // Let binding - desugar by substitution
+        // Let binding - add to environment and desugar body
         Expr::Let(var, def, body) => {
-            // First desugar the definition
-            let d_def = desugar(def)?;
+            // First desugar the definition in the current environment
+            let d_def = desugar_with_env(def, env)?;
             
-            // Substitute all occurrences of var with d_def in body
-            let substituted_body = body.substitute(var, &d_def);
+            // Create new environment with the variable binding
+            let new_env = env.with_variable(var.clone(), d_def);
             
-            // Then desugar the substituted body
-            desugar(&substituted_body)
+            // Desugar the body in the new environment
+            desugar_with_env(body, &new_env)
         }
         
-        // Variable - should have been eliminated by let substitution
+        // Bit range alias - add to environment and desugar body
+        Expr::LetBitRange(alias_name, start, end, body) => {
+            // Create new environment with the alias binding
+            let new_env = env.with_alias(alias_name.clone(), *start, *end);
+            
+            // Desugar the body in the new environment
+            desugar_with_env(body, &new_env)
+        }
+        
+        // Variable - look up in environment
         Expr::Var(name) => {
-            Err(DesugarError {
-                message: format!("Unbound variable '{}' encountered during desugaring", name)
-            })
+            if let Some(expr) = env.lookup_variable(name) {
+                // Return a clone of the bound expression
+                Ok(expr.clone())
+            } else if env.lookup_alias(name).is_some() {
+                // This is a bit range alias used without assignment/test - error
+                Err(DesugarError {
+                    message: format!("Bit range alias '{}' must be used with assignment (:=) or test (==) operations", name)
+                })
+            } else {
+                // Unbound variable
+                Err(DesugarError {
+                    message: format!("Unbound variable: {}", name),
+                })
+            }
         }
         
         // BitRangeAssign - desugar to sequence of individual assignments
@@ -486,5 +606,322 @@ mod tests {
         
         let test = Expr::bit_range_test(10, 11, vec![false]);
         assert_eq!(desugar(&test).unwrap(), Expr::test(10, false));
+    }
+    
+    #[test]
+    fn test_bit_range_alias() {
+        // Test basic bit range alias: let ip = x[0..32] in ip := 192.168.1.1
+        let ip_bits = vec![true, false, false, false, false, false, false, false, // 1
+                          true, false, false, false, false, false, false, false, // 1  
+                          true, false, true, false, true, false, false, false, // 168
+                          true, true, false, false, false, false, false, false]; // 192
+        
+        let alias_expr = Expr::let_bit_range(
+            "ip".to_string(),
+            0, // start
+            32, // end  
+            Expr::var_assign("ip".to_string(), ip_bits.clone())
+        );
+        
+        let result = desugar(&alias_expr).unwrap();
+        let expected = Expr::bit_range_assign(0, 32, ip_bits);
+        assert_eq!(result, expected);
+    }
+    
+    #[test]
+    fn test_bit_range_alias_test() {
+        // Test bit range alias test: let port = x[32..48] in port == 80
+        let port_bits = vec![false, false, false, false, true, false, true, false, // 80 in little-endian
+                            false, false, false, false, false, false, false, false];
+        
+        let alias_expr = Expr::let_bit_range(
+            "port".to_string(),
+            32, // start
+            48, // end
+            Expr::var_test("port".to_string(), port_bits.clone())
+        );
+        
+        let result = desugar(&alias_expr).unwrap();
+        let expected = Expr::bit_range_test(32, 48, port_bits);
+        assert_eq!(result, expected);
+    }
+    
+    #[test]
+    fn test_nested_bit_range_aliases() {
+        // Test nested bit range aliases:
+        // let header = x[0..64] in
+        //   let src = x[0..32] in
+        //     let dst = x[32..64] in
+        //       src := 10.0.0.1 ; dst := 10.0.0.2
+        
+        let src_bits = vec![true, false, false, false, false, false, false, false,  // 1
+                           false, false, false, false, false, false, false, false, // 0
+                           false, false, false, false, false, false, false, false, // 0
+                           false, true, false, true, false, false, false, false]; // 10
+        
+        let dst_bits = vec![false, true, false, false, false, false, false, false, // 2
+                           false, false, false, false, false, false, false, false, // 0
+                           false, false, false, false, false, false, false, false, // 0
+                           false, true, false, true, false, false, false, false]; // 10
+        
+        let inner_body = Expr::sequence(
+            Expr::var_assign("src".to_string(), src_bits.clone()),
+            Expr::var_assign("dst".to_string(), dst_bits.clone())
+        );
+        
+        let expr = Expr::let_bit_range(
+            "header".to_string(),
+            0,
+            64,
+            Expr::let_bit_range(
+                "src".to_string(),
+                0,
+                32,
+                Expr::let_bit_range(
+                    "dst".to_string(),
+                    32,
+                    64,
+                    inner_body
+                )
+            )
+        );
+        
+        let result = desugar(&expr).unwrap();
+        let expected = Expr::sequence(
+            Expr::bit_range_assign(0, 32, src_bits),
+            Expr::bit_range_assign(32, 64, dst_bits)
+        );
+        assert_eq!(result, expected);
+    }
+    
+    #[test]
+    fn test_mixed_let_and_alias() {
+        // Test mixing regular let and bit range alias:
+        // let config = (x0 := 1) in
+        //   let ip = x[0..32] in
+        //     config ; ip := 192.168.1.1
+        
+        let ip_bits = vec![true, false, false, false, false, false, false, false, // 1
+                          true, false, false, false, false, false, false, false, // 1  
+                          true, false, true, false, true, false, false, false, // 168
+                          true, true, false, false, false, false, false, false]; // 192
+        
+        let config_expr = Expr::assign(0, true);
+        
+        let expr = Expr::let_in(
+            "config".to_string(),
+            config_expr.clone(),
+            Expr::let_bit_range(
+                "ip".to_string(),
+                0,
+                32,
+                Expr::sequence(
+                    Expr::var("config".to_string()),
+                    Expr::var_assign("ip".to_string(), ip_bits.clone())
+                )
+            )
+        );
+        
+        let result = desugar(&expr).unwrap();
+        let expected = Expr::sequence(
+            Expr::assign(0, true),
+            Expr::bit_range_assign(0, 32, ip_bits)
+        );
+        assert_eq!(result, expected);
+    }
+    
+    #[test]
+    fn test_alias_shadowing() {
+        // Test that inner aliases can shadow outer ones:
+        // let ip = x[0..32] in
+        //   let ip = x[32..64] in
+        //     ip := 10.0.0.1
+        
+        let ip_bits = vec![true, false, false, false, false, false, false, false,  // 1
+                          false, false, false, false, false, false, false, false, // 0
+                          false, false, false, false, false, false, false, false, // 0
+                          false, true, false, true, false, false, false, false]; // 10
+        
+        let expr = Expr::let_bit_range(
+            "ip".to_string(),
+            0,
+            32,
+            Expr::let_bit_range(
+                "ip".to_string(),
+                32,
+                64,
+                Expr::var_assign("ip".to_string(), ip_bits.clone())
+            )
+        );
+        
+        let result = desugar(&expr).unwrap();
+        let expected = Expr::bit_range_assign(32, 64, ip_bits); // Uses the inner binding
+        assert_eq!(result, expected);
+    }
+    
+    #[test]
+    fn test_variable_shadowing_alias() {
+        // Test that regular let can shadow bit range alias:
+        // let ip = x[0..32] in
+        //   let ip = (x1 := 1) in
+        //     ip ; x2 := 1
+        
+        let expr = Expr::let_bit_range(
+            "ip".to_string(),
+            0,
+            32,
+            Expr::let_in(
+                "ip".to_string(),
+                Expr::assign(1, true),
+                Expr::sequence(
+                    Expr::var("ip".to_string()),
+                    Expr::assign(2, true)
+                )
+            )
+        );
+        
+        let result = desugar(&expr).unwrap();
+        let expected = Expr::sequence(
+            Expr::assign(1, true), // Uses the regular let binding, not the alias
+            Expr::assign(2, true)
+        );
+        assert_eq!(result, expected);
+    }
+    
+    #[test]
+    fn test_complex_nested_aliases() {
+        // Test a more complex scenario with multiple levels:
+        // let packet = x[0..128] in
+        //   let header = x[0..64] in
+        //     let payload = x[64..128] in
+        //       let src_ip = x[0..32] in
+        //         let src_port = x[32..48] in
+        //           src_ip == 10.0.0.1 & src_port == 80
+        
+        let ip_bits = vec![true, false, false, false, false, false, false, false,  // 1
+                          false, false, false, false, false, false, false, false, // 0
+                          false, false, false, false, false, false, false, false, // 0
+                          false, true, false, true, false, false, false, false]; // 10
+        
+        let port_bits = vec![false, false, false, false, true, false, true, false, // 80
+                            false, false, false, false, false, false, false, false];
+        
+        let test_expr = Expr::intersect(
+            Expr::var_test("src_ip".to_string(), ip_bits.clone()),
+            Expr::var_test("src_port".to_string(), port_bits.clone())
+        );
+        
+        let expr = Expr::let_bit_range(
+            "packet".to_string(),
+            0,
+            128,
+            Expr::let_bit_range(
+                "header".to_string(),
+                0,
+                64,
+                Expr::let_bit_range(
+                    "payload".to_string(),
+                    64,
+                    128,
+                    Expr::let_bit_range(
+                        "src_ip".to_string(),
+                        0,
+                        32,
+                        Expr::let_bit_range(
+                            "src_port".to_string(),
+                            32,
+                            48,
+                            test_expr
+                        )
+                    )
+                )
+            )
+        );
+        
+        let result = desugar(&expr).unwrap();
+        let expected = Expr::intersect(
+            Expr::bit_range_test(0, 32, ip_bits),
+            Expr::bit_range_test(32, 48, port_bits)
+        );
+        assert_eq!(result, expected);
+    }
+    
+    #[test]
+    fn test_let_with_alias_in_definition() {
+        // Test using an alias in a regular let definition:
+        // let ip = x[0..32] in
+        //   let is_local = (ip == 10.0.0.1) in
+        //     is_local + (ip := 10.0.0.2)
+        
+        let ip1_bits = vec![true, false, false, false, false, false, false, false,  // 1
+                           false, false, false, false, false, false, false, false, // 0
+                           false, false, false, false, false, false, false, false, // 0
+                           false, true, false, true, false, false, false, false]; // 10
+        
+        let ip2_bits = vec![false, true, false, false, false, false, false, false, // 2
+                           false, false, false, false, false, false, false, false, // 0
+                           false, false, false, false, false, false, false, false, // 0
+                           false, true, false, true, false, false, false, false]; // 10
+        
+        let expr = Expr::let_bit_range(
+            "ip".to_string(),
+            0,
+            32,
+            Expr::let_in(
+                "is_local".to_string(),
+                Expr::var_test("ip".to_string(), ip1_bits.clone()),
+                Expr::union(
+                    Expr::var("is_local".to_string()),
+                    Expr::var_assign("ip".to_string(), ip2_bits.clone())
+                )
+            )
+        );
+        
+        let result = desugar(&expr).unwrap();
+        let expected = Expr::union(
+            Expr::bit_range_test(0, 32, ip1_bits),
+            Expr::bit_range_assign(0, 32, ip2_bits)
+        );
+        assert_eq!(result, expected);
+    }
+    
+    #[test]
+    fn test_multiple_aliases_same_range() {
+        // Test multiple aliases pointing to the same range:
+        // let src = x[0..32] in
+        //   let source = x[0..32] in
+        //     src == 10.0.0.1 ; source := 10.0.0.2
+        
+        let ip1_bits = vec![true, false, false, false, false, false, false, false,  // 1
+                           false, false, false, false, false, false, false, false, // 0
+                           false, false, false, false, false, false, false, false, // 0
+                           false, true, false, true, false, false, false, false]; // 10
+        
+        let ip2_bits = vec![false, true, false, false, false, false, false, false, // 2
+                           false, false, false, false, false, false, false, false, // 0
+                           false, false, false, false, false, false, false, false, // 0
+                           false, true, false, true, false, false, false, false]; // 10
+        
+        let expr = Expr::let_bit_range(
+            "src".to_string(),
+            0,
+            32,
+            Expr::let_bit_range(
+                "source".to_string(),
+                0,
+                32,
+                Expr::sequence(
+                    Expr::var_test("src".to_string(), ip1_bits.clone()),
+                    Expr::var_assign("source".to_string(), ip2_bits.clone())
+                )
+            )
+        );
+        
+        let result = desugar(&expr).unwrap();
+        let expected = Expr::sequence(
+            Expr::bit_range_test(0, 32, ip1_bits),
+            Expr::bit_range_assign(0, 32, ip2_bits)
+        );
+        assert_eq!(result, expected);
     }
 }

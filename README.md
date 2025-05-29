@@ -76,7 +76,7 @@ e ::=
     | e1 U e2     -- LTL until (maybe change this into LDL)
 
 field ::= x0 | x1 | x2 | ... | xk  -- packet forms a bitfield
-value ::= 0 | 1 | number           -- for bit ranges, value can be any number
+value ::= 0 | 1 | number | 0b... | 0x... | ip -- for bit ranges, supports multiple formats
 ```
 
 Notes:
@@ -94,8 +94,12 @@ Notes:
 - Bit range operations `x[start..end] := value` and `x[start..end] == value` operate on multiple bits at once:
   - `x[0..8] := 255` assigns bits 0-7 to the binary representation of 255
   - `x[0..4] == 5` tests if bits 0-3 equal the binary representation of 5
+  - `x[0..8] := 0xFF` uses hexadecimal notation (equivalent to 255)
+  - `x[0..4] := 0b1010` uses binary notation (equivalent to 10)
+  - `x[0..32] := 192.168.1.1` uses IP address notation (converted to 32-bit integer)
   - These are desugared into sequences of individual bit operations
   - The range `[start..end)` is half-open (excludes end)
+  - All literal formats are converted to little-endian bit vectors
 
 ## Web UI
 

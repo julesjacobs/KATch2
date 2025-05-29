@@ -8,6 +8,8 @@ pub enum Expr {
     Top,                  // T
     Assign(Field, Value), // field := value
     Test(Field, Value),   // field == value
+    VarAssign(String, Vec<bool>), // var := value (for aliases)
+    VarTest(String, Vec<bool>),   // var == value (for aliases)
     BitRangeAssign(Field, Field, Vec<bool>), // x[start..end] := value (as bits)
     BitRangeTest(Field, Field, Vec<bool>),   // x[start..end] == value (as bits)
     Union(Exp, Exp),      // e1 + e2
@@ -19,6 +21,7 @@ pub enum Expr {
     IfThenElse(Exp, Exp, Exp), // if e1 then e2 else e3 (e1 must be test fragment)
     Var(String),          // Variable reference
     Let(String, Exp, Exp), // let x = e1 in e2
+    LetBitRange(String, Field, Field, Exp), // let alias = x[start..end] in e
     Sequence(Exp, Exp),   // e1; e2
     Star(Exp),            // e*
     Dup,                  // dup
@@ -45,6 +48,12 @@ impl Expr {
     }
     pub fn test(field: Field, value: Value) -> Exp {
         Box::new(Expr::Test(field, value))
+    }
+    pub fn var_assign(var: String, bits: Vec<bool>) -> Exp {
+        Box::new(Expr::VarAssign(var, bits))
+    }
+    pub fn var_test(var: String, bits: Vec<bool>) -> Exp {
+        Box::new(Expr::VarTest(var, bits))
     }
     pub fn bit_range_assign(start: Field, end: Field, bits: Vec<bool>) -> Exp {
         Box::new(Expr::BitRangeAssign(start, end, bits))
@@ -78,6 +87,9 @@ impl Expr {
     }
     pub fn let_in(var_name: String, def: Exp, body: Exp) -> Exp {
         Box::new(Expr::Let(var_name, def, body))
+    }
+    pub fn let_bit_range(alias_name: String, start: Field, end: Field, body: Exp) -> Exp {
+        Box::new(Expr::LetBitRange(alias_name, start, end, body))
     }
     pub fn sequence(e1: Exp, e2: Exp) -> Exp {
         Box::new(Expr::Sequence(e1, e2))
@@ -115,16 +127,16 @@ impl Expr {
     pub fn is_test_fragment(&self) -> bool {
         match self {
             Expr::Zero | Expr::One => true,
-            Expr::Test(_, _) | Expr::BitRangeTest(_, _, _) => true,
+            Expr::Test(_, _) | Expr::BitRangeTest(_, _, _) | Expr::VarTest(_, _) => true,
             Expr::Union(e1, e2) | Expr::Intersect(e1, e2) | 
             Expr::Xor(e1, e2) | Expr::Difference(e1, e2) |
             Expr::Sequence(e1, e2) => e1.is_test_fragment() && e2.is_test_fragment(),
             Expr::TestNegation(e) => e.is_test_fragment(),
             // Everything else is not in test fragment
-            Expr::Top | Expr::Assign(_, _) | Expr::BitRangeAssign(_, _, _) | 
+            Expr::Top | Expr::Assign(_, _) | Expr::BitRangeAssign(_, _, _) | Expr::VarAssign(_, _) |
             Expr::Complement(_) | Expr::Star(_) | Expr::Dup | Expr::LtlNext(_) | 
             Expr::LtlUntil(_, _) | Expr::End | Expr::IfThenElse(_, _, _) |
-            Expr::Var(_) | Expr::Let(_, _, _) => false,
+            Expr::Var(_) | Expr::Let(_, _, _) | Expr::LetBitRange(_, _, _, _) => false,
         }
     }
 
@@ -132,6 +144,7 @@ impl Expr {
         match self {
             Expr::Zero | Expr::One | Expr::Top | Expr::Dup | Expr::End => 0,
             Expr::Assign(field, _) | Expr::Test(field, _) => field + 1,
+            Expr::VarAssign(_, _) | Expr::VarTest(_, _) => 0, // Variables don't directly reference fields
             Expr::BitRangeAssign(_start, end, _) | Expr::BitRangeTest(_start, end, _) => end + 1,
             Expr::Union(e1, e2)
             | Expr::Intersect(e1, e2)
@@ -143,6 +156,7 @@ impl Expr {
                 cond.num_fields().max(then_expr.num_fields()).max(else_expr.num_fields())
             }
             Expr::Let(_, def, body) => def.num_fields().max(body.num_fields()),
+            Expr::LetBitRange(_, _start, end, body) => (end + 1).max(body.num_fields()),
             Expr::Complement(e) | Expr::TestNegation(e) | Expr::Star(e) | Expr::LtlNext(e) => e.num_fields(),
             Expr::Var(_) => 0, // Variables don't directly reference fields
         }
@@ -186,6 +200,8 @@ impl Expr {
             Expr::End => Expr::end(),
             Expr::Assign(f, v) => Expr::assign(*f, *v),
             Expr::Test(f, v) => Expr::test(*f, *v),
+            Expr::VarAssign(var, bits) => Expr::var_assign(var.clone(), bits.clone()),
+            Expr::VarTest(var, bits) => Expr::var_test(var.clone(), bits.clone()),
             
             // Variable case - this is where substitution happens
             Expr::Var(name) => {
@@ -224,6 +240,17 @@ impl Expr {
                 }
             }
             
+            // Let bit range case - careful with variable shadowing
+            Expr::LetBitRange(alias_name, start, end, body) => {
+                if alias_name == var {
+                    // Alias is shadowed, don't substitute in body
+                    Expr::let_bit_range(alias_name.clone(), *start, *end, body.clone())
+                } else {
+                    // Substitute in body
+                    Expr::let_bit_range(alias_name.clone(), *start, *end, body.substitute(var, replacement))
+                }
+            }
+            
             // Bit range operations don't contain variables
             Expr::BitRangeAssign(start, end, value) => Expr::bit_range_assign(*start, *end, value.clone()),
             Expr::BitRangeTest(start, end, value) => Expr::bit_range_test(*start, *end, value.clone()),
@@ -243,6 +270,14 @@ impl std::fmt::Display for Expr {
             Expr::Test(field, value) => {
                 write!(f, "x{} == {}", field, if *value { "1" } else { "0" })
             }
+            Expr::VarAssign(var, bits) => {
+                let num = bits_to_number(bits);
+                write!(f, "{} := {}", var, num)
+            }
+            Expr::VarTest(var, bits) => {
+                let num = bits_to_number(bits);
+                write!(f, "{} == {}", var, num)
+            }
             Expr::Union(e1, e2) => write!(f, "({} + {})", e1, e2),
             Expr::Intersect(e1, e2) => write!(f, "({} & {})", e1, e2),
             Expr::Xor(e1, e2) => write!(f, "({} ^ {})", e1, e2),
@@ -254,6 +289,7 @@ impl std::fmt::Display for Expr {
             }
             Expr::Var(name) => write!(f, "{}", name),
             Expr::Let(var, def, body) => write!(f, "(let {} = {} in {})", var, def, body),
+            Expr::LetBitRange(alias, start, end, body) => write!(f, "(let {} = x[{}..{}] in {})", alias, start, end, body),
             Expr::Sequence(e1, e2) => write!(f, "({} ; {})", e1, e2),
             Expr::Star(e) => write!(f, "({})*", e),
             Expr::Dup => write!(f, "dup"),

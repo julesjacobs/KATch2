@@ -451,6 +451,9 @@ impl Aut {
             Expr::IfThenElse(_, _, _) => panic!("IfThenElse should have been eliminated during desugaring"),
             Expr::Var(_) => panic!("Variables should have been eliminated during desugaring"),
             Expr::Let(_, _, _) => panic!("Let expressions should have been eliminated during desugaring"),
+            Expr::LetBitRange(_, _, _, _) => panic!("LetBitRange expressions should have been eliminated during desugaring"),
+            Expr::VarAssign(_, _) => panic!("VarAssign expressions should have been eliminated during desugaring"),
+            Expr::VarTest(_, _) => panic!("VarTest expressions should have been eliminated during desugaring"),
             Expr::BitRangeAssign(_, _, _) => panic!("BitRangeAssign should have been eliminated during desugaring"),
             Expr::BitRangeTest(_, _, _) => panic!("BitRangeTest should have been eliminated during desugaring"),
         }
