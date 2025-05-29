@@ -4,6 +4,7 @@ use serde::{Serialize, Deserialize};
 use serde_wasm_bindgen;
 
 pub mod aut;
+pub mod desugar;
 pub mod expr;
 pub mod parser;
 pub mod pre;
@@ -93,8 +94,31 @@ fn analyze_expressions_internal(
         return Err((expr1_parse_result, expr2_parse_result));
     }
 
-    let expr1 = parsed_expr1.unwrap();
-    let expr2 = parsed_expr2.unwrap();
+    let parsed1 = parsed_expr1.unwrap();
+    let parsed2 = parsed_expr2.unwrap();
+    
+    // Desugar the expressions
+    let expr1 = match desugar::desugar(&parsed1) {
+        Ok(e) => e,
+        Err(err) => {
+            expr1_parse_result = Some(parser::ParseErrorDetails {
+                message: format!("Desugaring error: {}", err),
+                span: None,
+            });
+            return Err((expr1_parse_result, expr2_parse_result));
+        }
+    };
+    
+    let expr2 = match desugar::desugar(&parsed2) {
+        Ok(e) => e,
+        Err(err) => {
+            expr2_parse_result = Some(parser::ParseErrorDetails {
+                message: format!("Desugaring error: {}", err),
+                span: None,
+            });
+            return Err((expr1_parse_result, expr2_parse_result));
+        }
+    };
 
     // Determine the unified field count
     let expr1_fields = expr1.num_fields();

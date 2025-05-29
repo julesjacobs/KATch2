@@ -102,7 +102,8 @@ pub enum TokenKind {
     And,        // &
     Xor,        // ^
     Minus,      // -
-    Not,        // !
+    Not,        // ~
+    TestNot,    // !
     Semicolon,  // ;
     Star,       // *
     Dup,        // dup
@@ -114,6 +115,9 @@ pub enum TokenKind {
     LParen,     // (
     RParen,     // )
     Field(u32), // x followed by digits
+    If,         // if keyword
+    Then,       // then keyword
+    Else,       // else keyword
     End,        // end keyword (for multiple expressions parsing)
     Eof,        // End of input
 }
@@ -228,6 +232,7 @@ impl<'a> Lexer<'a> {
                     '^' => TokenKind::Xor,
                     '-' => TokenKind::Minus,
                     '~' => TokenKind::Not,
+                    '!' => TokenKind::TestNot,
                     ';' => TokenKind::Semicolon,
                     '*' => TokenKind::Star,
                     '(' => TokenKind::LParen,
@@ -250,9 +255,28 @@ impl<'a> Lexer<'a> {
                                     Span::new(start_pos, self.current_pos),
                                 ));
                             }
+                        } else if self.peek_char() == Some(&'l') {
+                            self.next_char_with_pos(); // Consume 'l'
+                            if self.peek_char() == Some(&'s') {
+                                self.next_char_with_pos(); // Consume 's'
+                                if self.peek_char() == Some(&'e') {
+                                    self.next_char_with_pos(); // Consume 'e'
+                                    TokenKind::Else
+                                } else {
+                                    return Err(ParseError::new(
+                                        "Expected 'else'".to_string(),
+                                        Span::new(start_pos, self.current_pos),
+                                    ));
+                                }
+                            } else {
+                                return Err(ParseError::new(
+                                    "Expected 'else' or 'end'".to_string(),
+                                    Span::new(start_pos, self.current_pos),
+                                ));
+                            }
                         } else {
                              return Err(ParseError::new(
-                                "Expected 'end'".to_string(),
+                                "Expected 'end' or 'else'".to_string(),
                                 Span::new(start_pos, self.current_pos),
                             ));
                         }
@@ -331,6 +355,44 @@ impl<'a> Lexer<'a> {
                             ));
                         }
                     }
+                    'i' => {
+                        if self.peek_char() == Some(&'f') {
+                            self.next_char_with_pos(); // Consume 'f'
+                            TokenKind::If
+                        } else {
+                            return Err(ParseError::new(
+                                "Expected 'if'".to_string(),
+                                Span::new(start_pos, self.current_pos),
+                            ));
+                        }
+                    }
+                    't' => {
+                        if self.peek_char() == Some(&'h') {
+                            self.next_char_with_pos(); // Consume 'h'
+                            if self.peek_char() == Some(&'e') {
+                                self.next_char_with_pos(); // Consume 'e'
+                                if self.peek_char() == Some(&'n') {
+                                    self.next_char_with_pos(); // Consume 'n'
+                                    TokenKind::Then
+                                } else {
+                                    return Err(ParseError::new(
+                                        "Expected 'then'".to_string(),
+                                        Span::new(start_pos, self.current_pos),
+                                    ));
+                                }
+                            } else {
+                                return Err(ParseError::new(
+                                    "Expected 'then'".to_string(),
+                                    Span::new(start_pos, self.current_pos),
+                                ));
+                            }
+                        } else {
+                            return Err(ParseError::new(
+                                "Expected 'then'".to_string(),
+                                Span::new(start_pos, self.current_pos),
+                            ));
+                        }
+                    }
                     _ => {
                         return Err(ParseError::new(
                             format!("Unexpected character: {}", c),
@@ -391,11 +453,12 @@ The parser implements the following precedence hierarchy (highest to lowest prec
 
 3. PREFIX OPERATORS  
    - Complement: ~
+   - Test Negation: !
    - LTL Next: X
    - LTL Future: F  
    - LTL Globally: G
    - All prefix operators are right-associative
-   - Example: ~~a = ~(~(a)), ~X a = ~(X(a))
+   - Example: ~~a = ~(~(a)), ~X a = ~(X(a)), !!a = !(!(a))
 
 4. INTERSECTION (left-associative)
    - And: &
@@ -695,6 +758,19 @@ impl<'a> Parser<'a> {
                 let operand = self.parse_prefix()?; // Right-associative
                 Ok(Expr::complement(operand))
             }
+            TokenKind::TestNot => {
+                let op_token = self.consume_token()?; // Consume '!'
+                // Check for EOF before parsing operand
+                if self.peek_kind()? == &TokenKind::Eof {
+                    return Err(ParseError::new(
+                        format!("Expected expression after {} but found end of input", token_kind_to_user_string(&op_token.kind)),
+                        op_token.span,
+                    ));
+                }
+                let operand = self.parse_prefix()?; // Right-associative
+                // We'll validate that operand is in test fragment during desugaring
+                Ok(Expr::test_negation(operand))
+            }
             TokenKind::LtlX => { // LTL Next
                 let op_token = self.consume_token()?; // Consume 'X'
                 // Check for EOF before parsing operand
@@ -818,6 +894,35 @@ impl<'a> Parser<'a> {
                     )),
                 }
             }
+            // If expression
+            TokenKind::If => {
+                self.consume_token()?; // Consume 'if'
+                let cond = self.parse_until()?; // Parse condition
+                
+                // Expect 'then'
+                match self.consume_token()? {
+                    Token { kind: TokenKind::Then, .. } => {},
+                    tok => return Err(ParseError::new(
+                        format!("Expected 'then' after condition, but found {}", token_kind_to_user_string(&tok.kind)),
+                        tok.span,
+                    )),
+                }
+                
+                let then_expr = self.parse_until()?; // Parse then branch
+                
+                // Expect 'else'
+                match self.consume_token()? {
+                    Token { kind: TokenKind::Else, .. } => {},
+                    tok => return Err(ParseError::new(
+                        format!("Expected 'else' after then branch, but found {}", token_kind_to_user_string(&tok.kind)),
+                        tok.span,
+                    )),
+                }
+                
+                let else_expr = self.parse_until()?; // Parse else branch
+                
+                Ok(Expr::if_then_else(cond, then_expr, else_expr))
+            }
             // These are simple primaries, handled by the simplified parse_primary
             TokenKind::Zero | TokenKind::One | TokenKind::Top | TokenKind::Dup | TokenKind::LParen | TokenKind::End => {
                 self.parse_primary()
@@ -853,9 +958,9 @@ impl<'a> Parser<'a> {
             // Other tokens are invalid starts for a primary expression.
             TokenKind::Field(_) |
             TokenKind::LtlX | TokenKind::LtlF | TokenKind::LtlG | TokenKind::LtlU | TokenKind::LtlR |
-            TokenKind::Not | TokenKind::Star | TokenKind::Semicolon | TokenKind::Plus |
+            TokenKind::Not | TokenKind::TestNot | TokenKind::Star | TokenKind::Semicolon | TokenKind::Plus |
             TokenKind::And | TokenKind::Xor | TokenKind::Minus | TokenKind::Assign | TokenKind::Eq |
-            TokenKind::RParen | TokenKind::Eof => { // Removed End from here due to unreachable pattern, it's handled below.
+            TokenKind::RParen | TokenKind::If | TokenKind::Then | TokenKind::Else | TokenKind::Eof => { // Removed End from here due to unreachable pattern, it's handled below.
                  Err(ParseError::new(
                     format!("Unexpected {} when expecting a primary expression (like '0', '1', 'T', 'dup', or '(')", token_kind_to_user_string(&token.kind)),
                     token.span,
@@ -959,6 +1064,7 @@ fn token_kind_to_user_string(kind: &TokenKind) -> String {
         TokenKind::Xor => "operator '^'".to_string(),
         TokenKind::Minus => "operator '-'".to_string(),
         TokenKind::Not => "operator '~'".to_string(),
+        TokenKind::TestNot => "operator '!'".to_string(),
         TokenKind::Semicolon => "operator ';'".to_string(),
         TokenKind::Star => "operator '*'".to_string(),
         TokenKind::Dup => "keyword 'dup'".to_string(),
@@ -970,6 +1076,9 @@ fn token_kind_to_user_string(kind: &TokenKind) -> String {
         TokenKind::LParen => "character '('".to_string(),
         TokenKind::RParen => "character ')'".to_string(),
         TokenKind::Field(u) => format!("field 'x{}'", u),
+        TokenKind::If => "keyword 'if'".to_string(),
+        TokenKind::Then => "keyword 'then'".to_string(),
+        TokenKind::Else => "keyword 'else'".to_string(),
         TokenKind::End => "keyword 'end'".to_string(),
         TokenKind::Eof => "end of input".to_string(),
     }

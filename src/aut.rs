@@ -447,6 +447,8 @@ impl Aut {
                 self.intern(AExpr::LtlUntil(aexp1, aexp2))
             }
             Expr::End => self.mk_spp(self.spp.top),
+            Expr::TestNegation(_) => panic!("TestNegation should have been eliminated during desugaring"),
+            Expr::IfThenElse(_, _, _) => panic!("IfThenElse should have been eliminated during desugaring"),
         }
     }
 

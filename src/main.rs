@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 mod aut;
+mod desugar;
 mod expr;
 mod fuzz;
 mod parser;
@@ -100,19 +101,31 @@ fn process_file(file_path: &Path, out_dir: &Path) {
                         println!("No expressions found or parsed in {}.", file_path.display());
                     } else {
                         println!("Parsed {} expressions from {}.", expressions.len(), file_path.display());
-                        // Optional: Print details of expressions if needed for debugging
-                        // for (i, expr) in expressions.iter().enumerate() {
-                        //     println!("  {}: {:?}", i + 1, expr);
-                        // }
-
-                        let source_file_name = file_path
-                            .file_name()
-                            .unwrap_or_else(|| std::ffi::OsStr::new("unknown.k2"))
-                            .to_string_lossy();
                         
-                        println!("Generating static site for {}...", source_file_name);
-                        if let Err(e) = crate::ui::generate_static_site(&expressions, &source_file_name, out_dir) {
-                            eprintln!("  Error generating static site for {}: {}", source_file_name, e);
+                        // Desugar all expressions
+                        let mut desugared_expressions = Vec::new();
+                        for (i, expr) in expressions.iter().enumerate() {
+                            match crate::desugar::desugar(expr) {
+                                Ok(desugared) => desugared_expressions.push(desugared),
+                                Err(e) => {
+                                    eprintln!("  Error desugaring expression {} in {}: {}", i + 1, file_path.display(), e);
+                                    // Skip this expression but continue with others
+                                }
+                            }
+                        }
+                        
+                        if desugared_expressions.is_empty() {
+                            println!("No valid expressions after desugaring in {}.", file_path.display());
+                        } else {
+                            let source_file_name = file_path
+                                .file_name()
+                                .unwrap_or_else(|| std::ffi::OsStr::new("unknown.k2"))
+                                .to_string_lossy();
+                            
+                            println!("Generating static site for {}...", source_file_name);
+                            if let Err(e) = crate::ui::generate_static_site(&desugared_expressions, &source_file_name, out_dir) {
+                                eprintln!("  Error generating static site for {}: {}", source_file_name, e);
+                            }
                         }
                     }
                 }

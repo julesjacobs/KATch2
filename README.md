@@ -64,6 +64,8 @@ e ::=
     | e1 ^ e2     -- xor
     | e1 - e2     -- difference
     | ~e1         -- complement, negation
+    | !e1         -- test negation (only for test fragment)
+    | if e1 then e2 else e3  -- conditional (e1 must be test fragment)
     | e1; e2      -- sequence
     | e*          -- star, iteration
     | dup         -- log current packet to trace
@@ -74,7 +76,16 @@ field ::= x0 | x1 | x2 | ... | xk  -- packet forms a bitfield
 value ::= 0 | 1
 ```
 
-Note: The parser takes `k` as an argument to determine the number of available fields.
+Notes:
+- The parser takes `k` as an argument to determine the number of available fields.
+- Test negation `!e` is only valid for expressions in the test fragment, which consists of:
+  - Constants: 0, 1
+  - Field tests: x == value
+  - Logical operators: +, &, ^, -, ;
+  - Test negation itself: !
+  - Expressions built from the above
+- The `!` operator is eliminated during desugaring using De Morgan's laws.
+- The `if-then-else` expression is desugared to `(cond ; then) + (!cond ; else)`.
 
 ## Web UI
 
