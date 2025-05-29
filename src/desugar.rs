@@ -125,10 +125,12 @@ fn desugar_with_env(expr: &Expr, env: &DesugarEnv) -> Result<Exp, DesugarError> 
                     // This is only allowed for decimal literals (which use minimal width)
                     let mut expanded = bits.clone();
                     expanded.resize(expected_bits, false);
-                    Ok(Expr::bit_range_assign(start, end, expanded))
+                    // Recursively desugar the bit range assignment
+                    desugar_bit_range_assign(start, end, &expanded)
                 } else {
                     // Exact match
-                    Ok(Expr::bit_range_assign(start, end, bits.clone()))
+                    // Recursively desugar the bit range assignment
+                    desugar_bit_range_assign(start, end, bits)
                 }
             } else {
                 Err(DesugarError {
@@ -154,10 +156,12 @@ fn desugar_with_env(expr: &Expr, env: &DesugarEnv) -> Result<Exp, DesugarError> 
                     // This is only allowed for decimal literals (which use minimal width)
                     let mut expanded = bits.clone();
                     expanded.resize(expected_bits, false);
-                    Ok(Expr::bit_range_test(start, end, expanded))
+                    // Recursively desugar the bit range test
+                    desugar_bit_range_test(start, end, &expanded)
                 } else {
                     // Exact match
-                    Ok(Expr::bit_range_test(start, end, bits.clone()))
+                    // Recursively desugar the bit range test
+                    desugar_bit_range_test(start, end, bits)
                 }
             } else {
                 Err(DesugarError {

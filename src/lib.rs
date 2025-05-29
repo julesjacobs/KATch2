@@ -508,6 +508,100 @@ mod perf_tests {
     }
 
     #[test]
+    fn test_web_ui_alias_expressions() {
+        // Test the specific expression that's causing errors in the web UI
+        let test_cases = vec![
+            ("let ip = &x[0..23] in ip==2", "Basic bit range alias"),
+            ("let ip = &x[0..32] in ip==192.168.1.1", "IP address alias"),
+            ("let port = &x[32..48] in port==80", "Port alias"),
+            ("let byte = &x[0..8] in byte := 255", "Byte assignment"),
+            ("let nibble = &x[0..4] in nibble == 15", "Nibble test"),
+            ("let a = &x[0..8] in let b = &x[8..16] in a==1 & b==2", "Nested aliases"),
+        ];
+
+        for (expr_str, description) in test_cases {
+            println!("\nTesting {}: {}", description, expr_str);
+            
+            // Test parsing
+            match parser::parse_expressions(expr_str) {
+                Ok(parsed_exprs) => {
+                    println!("  ✓ Parsing succeeded");
+                    if let Some(expr) = parsed_exprs.first() {
+                        println!("  Parsed: {:?}", expr);
+                        
+                        // Test desugaring
+                        match desugar::desugar(expr) {
+                            Ok(desugared) => {
+                                println!("  ✓ Desugaring succeeded");
+                                println!("  Desugared: {:?}", desugared);
+                                
+                                // Test that it can be processed by automaton
+                                let num_fields = desugared.num_fields();
+                                let mut aut = aut::Aut::new(num_fields);
+                                
+                                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                                    aut.expr_to_state(&desugared)
+                                })) {
+                                    Ok(state_id) => {
+                                        println!("  ✓ Automaton conversion succeeded: state {}", state_id);
+                                        
+                                        // Test emptiness check
+                                        let is_empty = aut.is_empty(state_id);
+                                        println!("  Is empty: {}", is_empty);
+                                    }
+                                    Err(e) => {
+                                        println!("  ✗ Automaton conversion panicked: {:?}", e);
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                println!("  ✗ Desugaring failed: {}", e);
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    println!("  ✗ Parsing failed: {}", e);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_analyze_expression_web_ui() {
+        // Test the actual web UI function with problematic expressions
+        let test_cases = vec![
+            "let ip = &x[0..23] in ip==2",
+            "let ip = &x[0..32] in ip==192.168.1.1",
+            "x[0..8] == 255",  // Direct bit range test
+            "x[0..8] := 10",   // Direct bit range assignment
+            "let byte = &x[0..8] in byte == 10",
+            "let nibble = &x[0..4] in nibble := 15",
+        ];
+
+        for expr_str in test_cases {
+            println!("\nTesting analyze_expression with: {}", expr_str);
+            
+            match analyze_expressions_internal(expr_str, "0", 5, 5) {
+                Ok((is_empty, traces)) => {
+                    println!("  ✓ Analysis succeeded");
+                    println!("  Is empty: {}", is_empty);
+                    if let Some(traces) = traces {
+                        println!("  Traces found: {}", traces.len());
+                    }
+                }
+                Err((expr1_err, _)) => {
+                    if let Some(err) = expr1_err {
+                        println!("  ✗ Analysis failed: {}", err.message);
+                    } else {
+                        println!("  ✗ Analysis failed with unknown error");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn test_is_empty_profiling() {
         println!("Profiling individual operations in is_empty algorithm");
         
