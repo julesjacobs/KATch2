@@ -1131,26 +1131,113 @@ impl<'a> Parser<'a> {
                     )),
                 }
                 
-                // Parse the definition
-                let def = self.parse_until()?; // Parse definition
-                
-                // Check if the definition is a variable named 'x' and this might be a special bit range alias
-                // For now, we'll handle bit range aliases through a different approach in desugaring
-                // The parser will parse "let alias = x[0..32] in expr" as a regular let binding
-                // and the desugarer will detect and handle x[start..end] patterns
-                
-                // Expect 'in'
-                match self.consume_token()? {
-                    Token { kind: TokenKind::In, .. } => {},
-                    tok => return Err(ParseError::new(
-                        format!("Expected 'in' after definition, but found {}", token_kind_to_user_string(&tok.kind)),
-                        tok.span,
-                    )),
+                // Check if this is a bit range alias by looking for &x[...]
+                if self.peek_kind()? == &TokenKind::And {
+                    // This is a bit range alias: let alias = &x[start..end] in expr
+                    self.consume_token()?; // Consume '&'
+                    
+                    // Expect 'x'
+                    let x_token = self.consume_token()?;
+                    match &x_token.kind {
+                        TokenKind::Ident(name) if name == "x" => {
+                            // Good, continue
+                        }
+                        _ => return Err(ParseError::new(
+                            format!("Expected 'x' after '&' in bit range alias, but found {}", token_kind_to_user_string(&x_token.kind)),
+                            x_token.span,
+                        )),
+                    }
+                    
+                    // Expect '['
+                    match self.consume_token()? {
+                        Token { kind: TokenKind::LBracket, .. } => {},
+                        tok => return Err(ParseError::new(
+                            format!("Expected '[' after '&x' in bit range alias, but found {}", token_kind_to_user_string(&tok.kind)),
+                            tok.span,
+                        )),
+                    }
+                    
+                    // Parse start index
+                    let start_token = self.consume_token()?;
+                    let start = match start_token.kind {
+                        TokenKind::Number(num_str) => {
+                            num_str.parse::<u32>().map_err(|_| ParseError::new(
+                                format!("Invalid start index in bit range alias: {}", num_str),
+                                start_token.span,
+                            ))?
+                        }
+                        TokenKind::Zero => 0,
+                        TokenKind::One => 1,
+                        _ => return Err(ParseError::new(
+                            format!("Expected number for start index, found {}", token_kind_to_user_string(&start_token.kind)),
+                            start_token.span,
+                        )),
+                    };
+                    
+                    // Expect '..'
+                    match self.consume_token()? {
+                        Token { kind: TokenKind::DotDot, .. } => {},
+                        tok => return Err(ParseError::new(
+                            "Expected '..' in bit range alias".to_string(),
+                            tok.span,
+                        )),
+                    }
+                    
+                    // Parse end index
+                    let end_token = self.consume_token()?;
+                    let end = match end_token.kind {
+                        TokenKind::Number(num_str) => {
+                            num_str.parse::<u32>().map_err(|_| ParseError::new(
+                                format!("Invalid end index in bit range alias: {}", num_str),
+                                end_token.span,
+                            ))?
+                        }
+                        TokenKind::Zero => 0,
+                        TokenKind::One => 1,
+                        _ => return Err(ParseError::new(
+                            format!("Expected number for end index, found {}", token_kind_to_user_string(&end_token.kind)),
+                            end_token.span,
+                        )),
+                    };
+                    
+                    // Expect ']'
+                    match self.consume_token()? {
+                        Token { kind: TokenKind::RBracket, .. } => {},
+                        tok => return Err(ParseError::new(
+                            "Expected ']' after bit range alias".to_string(),
+                            tok.span,
+                        )),
+                    }
+                    
+                    // Expect 'in'
+                    match self.consume_token()? {
+                        Token { kind: TokenKind::In, .. } => {},
+                        tok => return Err(ParseError::new(
+                            format!("Expected 'in' after bit range alias, but found {}", token_kind_to_user_string(&tok.kind)),
+                            tok.span,
+                        )),
+                    }
+                    
+                    let body = self.parse_until()?; // Parse body
+                    
+                    Ok(Expr::let_bit_range(var_name, start, end, body))
+                } else {
+                    // Regular let binding
+                    let def = self.parse_until()?; // Parse definition
+                    
+                    // Expect 'in'
+                    match self.consume_token()? {
+                        Token { kind: TokenKind::In, .. } => {},
+                        tok => return Err(ParseError::new(
+                            format!("Expected 'in' after definition, but found {}", token_kind_to_user_string(&tok.kind)),
+                            tok.span,
+                        )),
+                    }
+                    
+                    let body = self.parse_until()?; // Parse body
+                    
+                    Ok(Expr::let_in(var_name, def, body))
                 }
-                
-                let body = self.parse_until()?; // Parse body
-                
-                Ok(Expr::let_in(var_name, def, body))
             }
             // Variable reference or bit range
             TokenKind::Ident(name) => {
@@ -1274,8 +1361,64 @@ impl<'a> Parser<'a> {
                         Ok(Expr::var(name))
                     }
                 } else {
+                    // Check if this identifier is followed by := or ==
                     self.consume_token()?; // Consume the identifier
-                    Ok(Expr::var(name))
+                    
+                    // Look ahead for assignment or test
+                    match self.peek_kind()? {
+                        TokenKind::Assign => {
+                            // Variable assignment: var := value
+                            self.consume_token()?; // Consume ':='
+                            
+                            // Parse the value (should be a number or literal that evaluates to bits)
+                            let value_token = self.consume_token()?;
+                            let (value_str, literal_type) = match value_token.kind {
+                                TokenKind::Number(num_str) => (num_str, LiteralType::Decimal),
+                                TokenKind::BinaryLiteral(bin_str) => (bin_str, LiteralType::Binary),
+                                TokenKind::HexLiteral(hex_str) => (hex_str, LiteralType::Hexadecimal),
+                                TokenKind::IpLiteral(ip_str) => (ip_str, LiteralType::IpAddress),
+                                TokenKind::Zero => ("0".to_string(), LiteralType::Decimal),
+                                TokenKind::One => ("1".to_string(), LiteralType::Decimal),
+                                _ => return Err(ParseError::new(
+                                    format!("Expected value after variable assignment, found {}", token_kind_to_user_string(&value_token.kind)),
+                                    value_token.span,
+                                )),
+                            };
+                            
+                            // For variable assignment, infer bit width from literal format
+                            let inferred_bits = infer_literal_bit_width(&value_str, literal_type)?;
+                            let bits = literal_to_bits(&value_str, literal_type, inferred_bits)?;
+                            Ok(Expr::var_assign(name, bits))
+                        }
+                        TokenKind::Eq => {
+                            // Variable test: var == value
+                            self.consume_token()?; // Consume '=='
+                            
+                            // Parse the value
+                            let value_token = self.consume_token()?;
+                            let (value_str, literal_type) = match value_token.kind {
+                                TokenKind::Number(num_str) => (num_str, LiteralType::Decimal),
+                                TokenKind::BinaryLiteral(bin_str) => (bin_str, LiteralType::Binary),
+                                TokenKind::HexLiteral(hex_str) => (hex_str, LiteralType::Hexadecimal),
+                                TokenKind::IpLiteral(ip_str) => (ip_str, LiteralType::IpAddress),
+                                TokenKind::Zero => ("0".to_string(), LiteralType::Decimal),
+                                TokenKind::One => ("1".to_string(), LiteralType::Decimal),
+                                _ => return Err(ParseError::new(
+                                    format!("Expected value after variable test, found {}", token_kind_to_user_string(&value_token.kind)),
+                                    value_token.span,
+                                )),
+                            };
+                            
+                            // For variable test, infer bit width from literal format
+                            let inferred_bits = infer_literal_bit_width(&value_str, literal_type)?;
+                            let bits = literal_to_bits(&value_str, literal_type, inferred_bits)?;
+                            Ok(Expr::var_test(name, bits))
+                        }
+                        _ => {
+                            // Just a variable reference
+                            Ok(Expr::var(name))
+                        }
+                    }
                 }
             }
             // These are simple primaries, handled by the simplified parse_primary
@@ -1338,6 +1481,39 @@ enum LiteralType {
 }
 
 // Helper function to convert various literal formats to a bit vector
+// Infer bit width based on literal format
+fn infer_literal_bit_width(literal_str: &str, literal_type: LiteralType) -> Result<usize, ParseError> {
+    match literal_type {
+        LiteralType::Binary => {
+            // Binary literal: bit width = number of digits
+            Ok(literal_str.len())
+        }
+        LiteralType::Hexadecimal => {
+            // Hex literal: bit width = 4 * number of digits
+            Ok(literal_str.len() * 4)
+        }
+        LiteralType::IpAddress => {
+            // IP address: always 32 bits
+            Ok(32)
+        }
+        LiteralType::Decimal => {
+            // Decimal: use minimal bit width
+            let num = literal_str.parse::<u128>().map_err(|_| ParseError::new(
+                format!("Invalid decimal number: {}", literal_str),
+                Default::default(),
+            ))?;
+            
+            // Find minimal bit width needed
+            if num == 0 {
+                Ok(1)
+            } else {
+                // Calculate bits needed: floor(log2(num)) + 1
+                Ok((128 - num.leading_zeros()) as usize)
+            }
+        }
+    }
+}
+
 fn literal_to_bits(literal_str: &str, literal_type: LiteralType, expected_bits: usize) -> Result<Vec<bool>, ParseError> {
     let num = match literal_type {
         LiteralType::Decimal => {
@@ -2147,6 +2323,127 @@ mod tests {
         
         // Invalid variable name
         assert!(parse_all("let 123 = 1 in 0").is_err());
+    }
+    
+    #[test]
+    fn test_bit_range_alias_parsing() {
+        // Basic bit range alias
+        let expr = parse_single_unwrap("let ip = &x[0..32] in ip := 192.168.1.1");
+        // IP address 192.168.1.1 in little-endian bit representation
+        // Using the same conversion as in test_literal_formats
+        let mut ip_bits = vec![false; 32];
+        let ip_num = 0xC0A80101u32; // 192.168.1.1 in hex
+        for i in 0..32 {
+            ip_bits[i] = (ip_num >> i) & 1 == 1;
+        }
+        assert_eq!(expr, Expr::let_bit_range(
+            "ip".to_string(),
+            0,
+            32,
+            Expr::var_assign("ip".to_string(), ip_bits)
+        ));
+        
+        // Bit range alias with test
+        let expr = parse_single_unwrap("let port = &x[32..48] in port == 80");
+        let port_bits = vec![false, false, false, false, true, false, true, false]; // 80 in 8 bits
+        assert_eq!(expr, Expr::let_bit_range(
+            "port".to_string(),
+            32,
+            48,
+            Expr::var_test("port".to_string(), port_bits)
+        ));
+        
+        // Multiple bit range aliases
+        let expr = parse_single_unwrap("let src = &x[0..32] in let dst = &x[32..64] in src == 10.0.0.1 & dst == 10.0.0.2");
+        let mut ip1_bits = vec![false; 32];
+        let ip1_num = 0x0A000001u32; // 10.0.0.1 in hex
+        for i in 0..32 {
+            ip1_bits[i] = (ip1_num >> i) & 1 == 1;
+        }
+        let mut ip2_bits = vec![false; 32];
+        let ip2_num = 0x0A000002u32; // 10.0.0.2 in hex
+        for i in 0..32 {
+            ip2_bits[i] = (ip2_num >> i) & 1 == 1;
+        }
+        assert_eq!(expr, Expr::let_bit_range(
+            "src".to_string(),
+            0,
+            32,
+            Expr::let_bit_range(
+                "dst".to_string(),
+                32,
+                64,
+                Expr::intersect(
+                    Expr::var_test("src".to_string(), ip1_bits),
+                    Expr::var_test("dst".to_string(), ip2_bits)
+                )
+            )
+        ));
+    }
+    
+    #[test]
+    fn test_alias_with_regular_let() {
+        // Mix of regular let and bit range alias
+        let expr = parse_single_unwrap("let config = x0 := 1 in let ip = &x[0..32] in config ; ip := 192.168.1.1");
+        let mut ip_bits = vec![false; 32];
+        let ip_num = 0xC0A80101u32; // 192.168.1.1 in hex
+        for i in 0..32 {
+            ip_bits[i] = (ip_num >> i) & 1 == 1;
+        }
+        assert_eq!(expr, Expr::let_in(
+            "config".to_string(),
+            Expr::assign(0, true),
+            Expr::let_bit_range(
+                "ip".to_string(),
+                0,
+                32,
+                Expr::sequence(
+                    Expr::var("config".to_string()),
+                    Expr::var_assign("ip".to_string(), ip_bits)
+                )
+            )
+        ));
+    }
+    
+    #[test]
+    fn test_alias_errors() {
+        // Missing ampersand
+        assert!(parse_all("let ip = x[0..32] in ip := 1").is_err());
+        
+        // Missing brackets
+        assert!(parse_all("let ip = &x in ip := 1").is_err());
+        
+        // Missing range
+        assert!(parse_all("let ip = &x[] in ip := 1").is_err());
+        
+        // Invalid range syntax
+        assert!(parse_all("let ip = &x[0-32] in ip := 1").is_err());
+        
+        // Non-x field reference
+        assert!(parse_all("let ip = &y[0..32] in ip := 1").is_err());
+        
+        // Missing 'in' keyword
+        assert!(parse_all("let ip = &x[0..32] ip := 1").is_err());
+    }
+    
+    #[test]
+    fn test_alias_precedence() {
+        // Alias in larger expression
+        let expr = parse_single_unwrap("0 + let ip = &x[0..32] in ip == 10.0.0.1");
+        let mut ip_bits = vec![false; 32];
+        let ip_num = 0x0A000001u32; // 10.0.0.1 in hex
+        for i in 0..32 {
+            ip_bits[i] = (ip_num >> i) & 1 == 1;
+        }
+        assert_eq!(expr, Expr::union(
+            Expr::zero(),
+            Expr::let_bit_range(
+                "ip".to_string(),
+                0,
+                32,
+                Expr::var_test("ip".to_string(), ip_bits)
+            )
+        ));
     }
 }
 

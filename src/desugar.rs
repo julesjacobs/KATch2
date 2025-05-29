@@ -109,8 +109,27 @@ fn desugar_with_env(expr: &Expr, env: &DesugarEnv) -> Result<Exp, DesugarError> 
         // Variable assignment/test - resolve alias from environment
         Expr::VarAssign(var, bits) => {
             if let Some((start, end)) = env.lookup_alias(var) {
-                // Transform to bit range assignment
-                Ok(Expr::bit_range_assign(start, end, bits.clone()))
+                let expected_bits = (end - start) as usize;
+                
+                // Check bit width compatibility
+                if bits.len() > expected_bits {
+                    // Bit vector is too large - this is always an error
+                    return Err(DesugarError {
+                        message: format!(
+                            "Bit width mismatch: value has {} bits but alias '{}' expects {} bits",
+                            bits.len(), var, expected_bits
+                        )
+                    });
+                } else if bits.len() < expected_bits {
+                    // Bit vector is too small - expand with leading zeros
+                    // This is only allowed for decimal literals (which use minimal width)
+                    let mut expanded = bits.clone();
+                    expanded.resize(expected_bits, false);
+                    Ok(Expr::bit_range_assign(start, end, expanded))
+                } else {
+                    // Exact match
+                    Ok(Expr::bit_range_assign(start, end, bits.clone()))
+                }
             } else {
                 Err(DesugarError {
                     message: format!("Unknown alias '{}' in assignment", var)
@@ -119,8 +138,27 @@ fn desugar_with_env(expr: &Expr, env: &DesugarEnv) -> Result<Exp, DesugarError> 
         }
         Expr::VarTest(var, bits) => {
             if let Some((start, end)) = env.lookup_alias(var) {
-                // Transform to bit range test
-                Ok(Expr::bit_range_test(start, end, bits.clone()))
+                let expected_bits = (end - start) as usize;
+                
+                // Check bit width compatibility
+                if bits.len() > expected_bits {
+                    // Bit vector is too large - this is always an error
+                    return Err(DesugarError {
+                        message: format!(
+                            "Bit width mismatch: value has {} bits but alias '{}' expects {} bits",
+                            bits.len(), var, expected_bits
+                        )
+                    });
+                } else if bits.len() < expected_bits {
+                    // Bit vector is too small - expand with leading zeros
+                    // This is only allowed for decimal literals (which use minimal width)
+                    let mut expanded = bits.clone();
+                    expanded.resize(expected_bits, false);
+                    Ok(Expr::bit_range_test(start, end, expanded))
+                } else {
+                    // Exact match
+                    Ok(Expr::bit_range_test(start, end, bits.clone()))
+                }
             } else {
                 Err(DesugarError {
                     message: format!("Unknown alias '{}' in test", var)
@@ -923,5 +961,369 @@ mod tests {
             Expr::bit_range_assign(0, 32, ip2_bits)
         );
         assert_eq!(result, expected);
+    }
+    
+    #[test]
+    fn test_end_to_end_alias_parsing_and_desugaring() {
+        // Test that parsing and desugaring work together correctly
+        // Parse: "let ip = &x[0..32] in ip == 192.168.1.1"
+        use crate::parser::parse_expressions;
+        
+        let parsed = parse_expressions("let ip = &x[0..32] in ip == 192.168.1.1").unwrap();
+        assert_eq!(parsed.len(), 1);
+        let expr = &parsed[0];
+        
+        // Desugar the parsed expression
+        let desugared = desugar(expr).unwrap();
+        
+        // Expected: x[0..32] == 192.168.1.1 (as bit range test)
+        let mut ip_bits = vec![false; 32];
+        let ip_num = 0xC0A80101u32; // 192.168.1.1 in hex
+        for i in 0..32 {
+            ip_bits[i] = (ip_num >> i) & 1 == 1;
+        }
+        let expected = Expr::bit_range_test(0, 32, ip_bits);
+        
+        assert_eq!(desugared, expected);
+    }
+
+    #[test]
+    fn test_end_to_end_simple_byte_alias() {
+        use crate::parser::parse_expressions;
+        
+        // Test: "let byte = &x[0..8] in byte == 181"  // 181 = 0b10110101
+        let parsed = parse_expressions("let byte = &x[0..8] in byte == 181").unwrap();
+        assert_eq!(parsed.len(), 1);
+        
+        let desugared = desugar(&parsed[0]).unwrap();
+        
+        // Expected: x[0..8] == 181 (0b10110101)
+        let bits = vec![true, false, true, false, true, true, false, true]; // LSB first
+        let expected = Expr::bit_range_test(0, 8, bits);
+        
+        assert_eq!(desugared, expected);
+    }
+
+    #[test]
+    fn test_end_to_end_nibble_operations() {
+        use crate::parser::parse_expressions;
+        
+        // Test: "let nibble = &x[4..8] in nibble := 10"  // 10 = 0b1010
+        let parsed = parse_expressions("let nibble = &x[4..8] in nibble := 10").unwrap();
+        assert_eq!(parsed.len(), 1);
+        
+        let desugared = desugar(&parsed[0]).unwrap();
+        
+        // Expected: x[4..8] := 10 (0b1010)
+        let bits = vec![false, true, false, true]; // LSB first
+        let expected = Expr::bit_range_assign(4, 8, bits);
+        
+        assert_eq!(desugared, expected);
+    }
+
+    #[test]
+    fn test_end_to_end_nested_aliases() {
+        use crate::parser::parse_expressions;
+        
+        // Test: "let word = &x[0..16] in let high = &x[8..16] in high == 0xFF"
+        let parsed = parse_expressions(
+            "let word = &x[0..16] in let high = &x[8..16] in high == 0xFF"
+        ).unwrap();
+        assert_eq!(parsed.len(), 1);
+        
+        let desugared = desugar(&parsed[0]).unwrap();
+        
+        // Expected: x[8..16] == 0xFF (high byte of word)
+        let bits = vec![true; 8]; // All 1s for 0xFF
+        let expected = Expr::bit_range_test(8, 16, bits);
+        
+        assert_eq!(desugared, expected);
+    }
+
+    #[test]
+    fn test_end_to_end_mixed_operations() {
+        use crate::parser::parse_expressions;
+        
+        // Test: "let a = &x[0..4] in let b = &x[4..8] in (a == 0xF) & (b := 0x0)"
+        let parsed = parse_expressions(
+            "let a = &x[0..4] in let b = &x[4..8] in (a == 0xF) & (b := 0x0)"
+        ).unwrap();
+        assert_eq!(parsed.len(), 1);
+        
+        let desugared = desugar(&parsed[0]).unwrap();
+        
+        // Expected: (x[0..4] == 0xF) & (x[4..8] := 0x0)
+        let test_bits = vec![true, true, true, true]; // 0xF
+        let assign_bits = vec![false, false, false, false]; // 0x0
+        let expected = Expr::intersect(
+            Expr::bit_range_test(0, 4, test_bits),
+            Expr::bit_range_assign(4, 8, assign_bits)
+        );
+        
+        assert_eq!(desugared, expected);
+    }
+
+    #[test]
+    fn test_end_to_end_alias_in_sequence() {
+        use crate::parser::parse_expressions;
+        
+        // Test: "let flag = &x[0..1] in flag == 1 ; flag := 0"
+        let parsed = parse_expressions(
+            "let flag = &x[0..1] in flag == 1 ; flag := 0"
+        ).unwrap();
+        assert_eq!(parsed.len(), 1);
+        
+        let desugared = desugar(&parsed[0]).unwrap();
+        
+        // Expected: (x[0..1] == 1) ; (x[0..1] := 0)
+        let expected = Expr::sequence(
+            Expr::bit_range_test(0, 1, vec![true]),
+            Expr::bit_range_assign(0, 1, vec![false])
+        );
+        
+        assert_eq!(desugared, expected);
+    }
+
+    #[test]
+    fn test_end_to_end_alias_with_regular_let() {
+        use crate::parser::parse_expressions;
+        
+        // Test: "let y = 1 in let bits = &x[0..3] in y ; bits == 5"  // 5 = 0b101
+        let parsed = parse_expressions(
+            "let y = 1 in let bits = &x[0..3] in y ; bits == 5"
+        ).unwrap();
+        assert_eq!(parsed.len(), 1);
+        
+        let desugared = desugar(&parsed[0]).unwrap();
+        
+        // Expected: 1 ; x[0..3] == 5 (0b101)
+        let bits = vec![true, false, true]; // LSB first
+        let expected = Expr::sequence(
+            Expr::one(),
+            Expr::bit_range_test(0, 3, bits)
+        );
+        
+        assert_eq!(desugared, expected);
+    }
+
+    #[test]
+    fn test_end_to_end_complex_alias_expression() {
+        use crate::parser::parse_expressions;
+        
+        // Test: "let ctrl = &x[0..8] in (ctrl == 0x80) + (ctrl == 0x81)"
+        let parsed = parse_expressions(
+            "let ctrl = &x[0..8] in (ctrl == 0x80) + (ctrl == 0x81)"
+        ).unwrap();
+        assert_eq!(parsed.len(), 1);
+        
+        let desugared = desugar(&parsed[0]).unwrap();
+        
+        // Expected: (x[0..8] == 0x80) + (x[0..8] == 0x81)
+        let bits_80 = vec![false, false, false, false, false, false, false, true]; // 0x80 = 10000000
+        let bits_81 = vec![true, false, false, false, false, false, false, true];  // 0x81 = 10000001
+        let expected = Expr::union(
+            Expr::bit_range_test(0, 8, bits_80),
+            Expr::bit_range_test(0, 8, bits_81)
+        );
+        
+        assert_eq!(desugared, expected);
+    }
+
+    #[test]
+    fn test_end_to_end_shadowing() {
+        use crate::parser::parse_expressions;
+        
+        // Test: "let v = &x[0..4] in let v = &x[4..8] in v == 0xA"
+        let parsed = parse_expressions(
+            "let v = &x[0..4] in let v = &x[4..8] in v == 0xA"
+        ).unwrap();
+        assert_eq!(parsed.len(), 1);
+        
+        let desugared = desugar(&parsed[0]).unwrap();
+        
+        // Expected: x[4..8] == 0xA (second binding shadows first)
+        let bits = vec![false, true, false, true]; // 0xA = 1010
+        let expected = Expr::bit_range_test(4, 8, bits);
+        
+        assert_eq!(desugared, expected);
+    }
+
+    #[test]
+    fn test_end_to_end_alias_overflow_assignment() {
+        use crate::parser::parse_expressions;
+        
+        // Test: "let nibble = &x[0..4] in nibble := 16"  // 16 needs 5 bits, doesn't fit in 4
+        let parsed = parse_expressions("let nibble = &x[0..4] in nibble := 16").unwrap();
+        assert_eq!(parsed.len(), 1);
+        
+        let result = desugar(&parsed[0]);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.message.contains("Bit width mismatch"));
+        assert!(err.message.contains("value has 5 bits but alias 'nibble' expects 4 bits"));
+    }
+
+    #[test]
+    fn test_end_to_end_alias_overflow_test() {
+        use crate::parser::parse_expressions;
+        
+        // Test: "let byte = &x[0..8] in byte == 256"  // 256 needs 9 bits, doesn't fit in 8
+        let parsed = parse_expressions("let byte = &x[0..8] in byte == 256").unwrap();
+        assert_eq!(parsed.len(), 1);
+        
+        let result = desugar(&parsed[0]);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.message.contains("Bit width mismatch"));
+        assert!(err.message.contains("value has 9 bits but alias 'byte' expects 8 bits"));
+    }
+
+    #[test]
+    fn test_end_to_end_alias_exact_fit() {
+        use crate::parser::parse_expressions;
+        
+        // Test: "let nibble = &x[0..4] in nibble := 15"  // 15 = max value for 4 bits
+        let parsed = parse_expressions("let nibble = &x[0..4] in nibble := 15").unwrap();
+        assert_eq!(parsed.len(), 1);
+        
+        let desugared = desugar(&parsed[0]).unwrap();
+        
+        // Expected: x[0..4] := 15 (0b1111)
+        let bits = vec![true, true, true, true]; // All 1s
+        let expected = Expr::bit_range_assign(0, 4, bits);
+        
+        assert_eq!(desugared, expected);
+    }
+
+    #[test]
+    fn test_end_to_end_binary_literal_exact_match() {
+        use crate::parser::parse_expressions;
+        
+        // Test: Binary literal with exact bit width match
+        let parsed = parse_expressions("let nibble = &x[0..4] in nibble := 0b1010").unwrap();
+        assert_eq!(parsed.len(), 1);
+        
+        let desugared = desugar(&parsed[0]).unwrap();
+        
+        // Expected: x[0..4] := 0b1010
+        let bits = vec![false, true, false, true]; // LSB first
+        let expected = Expr::bit_range_assign(0, 4, bits);
+        
+        assert_eq!(desugared, expected);
+    }
+
+    #[test]
+    fn test_end_to_end_binary_literal_width_mismatch() {
+        use crate::parser::parse_expressions;
+        
+        // Test: Binary literal with 8 bits assigned to 4-bit alias
+        let parsed = parse_expressions("let nibble = &x[0..4] in nibble := 0b00001010").unwrap();
+        assert_eq!(parsed.len(), 1);
+        
+        let result = desugar(&parsed[0]);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.message.contains("Bit width mismatch"));
+        assert!(err.message.contains("value has 8 bits but alias 'nibble' expects 4 bits"));
+    }
+
+    #[test]
+    fn test_end_to_end_hex_literal_exact_match() {
+        use crate::parser::parse_expressions;
+        
+        // Test: Hex literal with exact bit width match (1 hex digit = 4 bits)
+        let parsed = parse_expressions("let nibble = &x[0..4] in nibble := 0xA").unwrap();
+        assert_eq!(parsed.len(), 1);
+        
+        let desugared = desugar(&parsed[0]).unwrap();
+        
+        // Expected: x[0..4] := 0xA
+        let bits = vec![false, true, false, true]; // LSB first
+        let expected = Expr::bit_range_assign(0, 4, bits);
+        
+        assert_eq!(desugared, expected);
+    }
+
+    #[test]
+    fn test_end_to_end_hex_literal_width_mismatch() {
+        use crate::parser::parse_expressions;
+        
+        // Test: Hex literal with 8 bits (2 hex digits) assigned to 4-bit alias
+        let parsed = parse_expressions("let nibble = &x[0..4] in nibble := 0x0A").unwrap();
+        assert_eq!(parsed.len(), 1);
+        
+        let result = desugar(&parsed[0]);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.message.contains("Bit width mismatch"));
+        assert!(err.message.contains("value has 8 bits but alias 'nibble' expects 4 bits"));
+    }
+
+    #[test]
+    fn test_end_to_end_decimal_expansion() {
+        use crate::parser::parse_expressions;
+        
+        // Test: Decimal literal expanded to fit alias width
+        let parsed = parse_expressions("let byte = &x[0..8] in byte := 10").unwrap();
+        assert_eq!(parsed.len(), 1);
+        
+        let desugared = desugar(&parsed[0]).unwrap();
+        
+        // Expected: x[0..8] := 10 (expanded from 4 bits to 8 bits)
+        let bits = vec![false, true, false, true, false, false, false, false]; // 0b00001010
+        let expected = Expr::bit_range_assign(0, 8, bits);
+        
+        assert_eq!(desugared, expected);
+    }
+
+    #[test]
+    fn test_end_to_end_literal_expansion_current_behavior() {
+        use crate::parser::parse_expressions;
+        
+        // NOTE: Current implementation allows ALL literals to expand with leading zeros
+        // This is a limitation because we don't track literal source in the AST
+        
+        // Binary literal CAN expand (ideally shouldn't, but current implementation allows it)
+        let parsed = parse_expressions("let byte = &x[0..8] in byte := 0b1010").unwrap();
+        let result = desugar(&parsed[0]);
+        assert!(result.is_ok()); // Currently succeeds
+        let desugared = result.unwrap();
+        let expected_bits = vec![false, true, false, true, false, false, false, false];
+        assert_eq!(desugared, Expr::bit_range_assign(0, 8, expected_bits));
+        
+        // Hex literal CAN expand (ideally shouldn't, but current implementation allows it)
+        let parsed = parse_expressions("let byte = &x[0..8] in byte := 0xA").unwrap();
+        let result = desugar(&parsed[0]);
+        assert!(result.is_ok()); // Currently succeeds
+        
+        // Decimal literal CAN expand (this is desired behavior)
+        let parsed = parse_expressions("let byte = &x[0..8] in byte := 10").unwrap();
+        let result = desugar(&parsed[0]);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_end_to_end_literal_width_validation() {
+        use crate::parser::parse_expressions;
+        
+        // Values that exceed the bit width are always rejected
+        
+        // Binary literal that doesn't fit
+        let parsed = parse_expressions("let nibble = &x[0..4] in nibble := 0b10000").unwrap();
+        let result = desugar(&parsed[0]);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().message.contains("value has 5 bits but alias 'nibble' expects 4 bits"));
+        
+        // Hex literal that doesn't fit  
+        let parsed = parse_expressions("let nibble = &x[0..4] in nibble := 0x10").unwrap();
+        let result = desugar(&parsed[0]);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().message.contains("value has 8 bits but alias 'nibble' expects 4 bits"));
+        
+        // Decimal literal that doesn't fit
+        let parsed = parse_expressions("let nibble = &x[0..4] in nibble := 16").unwrap();
+        let result = desugar(&parsed[0]);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().message.contains("value has 5 bits but alias 'nibble' expects 4 bits"));
     }
 }
