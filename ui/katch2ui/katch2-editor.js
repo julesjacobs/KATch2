@@ -422,7 +422,7 @@ class KATch2Editor {
         const katchLogo = document.createElement('img');
         // Use base URL to properly resolve asset paths
         const basePath = this.baseUrl.includes('katch2ui/') ? '../' : '';
-        katchLogo.src = isKleeneMode ? `${basePath}assets/kleene-head.png` : `${basePath}assets/katch2-head.webp`;
+        katchLogo.src = isKleeneMode ? `${basePath}assets/kleene-head.webp` : `${basePath}assets/katch2-head.webp`;
         katchLogo.alt = isKleeneMode ? 'Kleene' : 'KATch2';
         katchLogo.className = 'katch2-editor-logo';
         katchLogo.style.cssText = `
