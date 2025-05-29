@@ -1001,7 +1001,7 @@ proto ~ 0x01                // ICMP (1)</netkat>
 
         <h4>Combining Patterns</h4>
         <p>Build complex filters by combining patterns:</p>
-        <netkat example="Complex firewall rule using patterns" lines="8">let src = &x[0..32] in
+        <netkat example="Complex firewall rule using patterns">let src = &x[0..32] in
 let dst = &x[32..64] in
 let port = &x[64..80] in
 

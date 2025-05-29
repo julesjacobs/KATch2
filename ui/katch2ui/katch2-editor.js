@@ -1176,28 +1176,36 @@ class KATch2Editor {
                 i = end;
                 matched = true;
             }
-            // Check for keywords
+            // Check for variables (x followed by digits) vs standalone x FIRST
+            else if (code[i] === 'x') {
+                if (i + 1 < code.length && /\d/.test(code[i + 1])) {
+                    // x followed by digits (x3, x0, x1, etc.) - variable
+                    let start = i;
+                    i++; // skip 'x'
+                    while (i < code.length && /\d/.test(code[i])) {
+                        i++;
+                    }
+                    tokens.push({ type: 'variable', text: code.substring(start, i) });
+                    matched = true;
+                } else {
+                    // standalone x (e.g., in x[0..32]) - identifier
+                    tokens.push({ type: 'identifier', text: 'x' });
+                    i++;
+                    matched = true;
+                }
+            }
+            // Check for keywords and other identifiers
             else if (/[a-zA-Z_]/.test(code[i])) {
                 let start = i;
                 while (i < code.length && /[a-zA-Z_0-9]/.test(code[i])) {
                     i++;
                 }
                 const word = code.substring(start, i);
-                if (['dup', 'T', 'X', 'U', 'F', 'G', 'R'].includes(word)) {
+                if (['dup', 'T', 'X', 'U', 'F', 'G', 'R', 'if', 'then', 'else', 'let', 'in'].includes(word)) {
                     tokens.push({ type: 'keyword', text: word });
                 } else {
                     tokens.push({ type: 'identifier', text: word });
                 }
-                matched = true;
-            }
-            // Check for variables (x followed by digits)
-            else if (code[i] === 'x' && i + 1 < code.length && /\d/.test(code[i + 1])) {
-                let start = i;
-                i++; // skip 'x'
-                while (i < code.length && /\d/.test(code[i])) {
-                    i++;
-                }
-                tokens.push({ type: 'variable', text: code.substring(start, i) });
                 matched = true;
             }
             // Check for IP addresses (e.g., 192.168.1.1)
@@ -1237,17 +1245,37 @@ class KATch2Editor {
                     matched = true;
                 }
             }
-            // Check for bit range syntax [start..end]
+            // Check for bit range syntax [digits..digits]
             else if (code[i] === '[' && i + 1 < code.length) {
-                let start = i;
-                i++; // skip '['
-                // Match digits, dots, and closing bracket
-                while (i < code.length && (code[i] === '.' || /\d/.test(code[i]) || code[i] === ']')) {
-                    i++;
-                    if (code[i-1] === ']') break;
+                // Check if this looks like a bit range
+                let j = i + 1;
+                let isBitRange = false;
+                // Look for pattern [digits..digits]
+                if (/\d/.test(code[j])) {
+                    while (j < code.length && /\d/.test(code[j])) j++;
+                    if (j + 1 < code.length && code.substr(j, 2) === '..') {
+                        j += 2;
+                        if (j < code.length && /\d/.test(code[j])) {
+                            while (j < code.length && /\d/.test(code[j])) j++;
+                            if (j < code.length && code[j] === ']') {
+                                isBitRange = true;
+                                j++;
+                            }
+                        }
+                    }
                 }
-                tokens.push({ type: 'variable', text: code.substring(start, i) });
-                matched = true;
+                
+                if (isBitRange) {
+                    // Token the entire [0..32] as variable.name to match Monaco
+                    tokens.push({ type: 'variable', text: code.substring(i, j) });
+                    i = j;
+                    matched = true;
+                } else {
+                    // Just a regular bracket
+                    tokens.push({ type: 'brackets', text: '[' });
+                    i++;
+                    matched = true;
+                }
             }
             // Check for operators
             else if (code.substr(i, 2) === ':=' || code.substr(i, 2) === '==') {
