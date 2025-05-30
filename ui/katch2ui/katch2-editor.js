@@ -817,10 +817,7 @@ class KATch2Editor {
                                 overallEquivalent = false;
                                 feedbackHtml += '<div><strong>❌ Missing (solution has, you don\'t): </strong><br>';
                                 diff1_result.example_traces.forEach(trace => {
-                                    const [inputTrace, finalOutput] = trace;
-                                    const traceString = inputTrace.map(p => p.map(bit => bit ? '1' : '0').join('')).join(' → ');
-                                    const outputString = finalOutput ? ` → ${finalOutput.map(bit => bit ? '1' : '0').join('')}` : ' → ...';
-                                    feedbackHtml += `<span style="${this.getTraceStyle()}">${this.htmlEscape(traceString + outputString)}</span>`;
+                                    feedbackHtml += this.formatTraceWithBitRangeColors(trace, currentTargetSolution);
                                 });
                                 feedbackHtml += '</div>';
                             }
@@ -835,10 +832,7 @@ class KATch2Editor {
                                 overallEquivalent = false;
                                 feedbackHtml += '<div><strong>❌ Extra (you have, solution doesn\'t): </strong><br>';
                                 diff2_result.example_traces.forEach(trace => {
-                                    const [inputTrace, finalOutput] = trace;
-                                    const traceString = inputTrace.map(p => p.map(bit => bit ? '1' : '0').join('')).join(' → ');
-                                    const outputString = finalOutput ? ` → ${finalOutput.map(bit => bit ? '1' : '0').join('')}` : ' → ...';
-                                    feedbackHtml += `<span style="${this.getTraceStyle()}">${this.htmlEscape(traceString + outputString)}</span>`;
+                                    feedbackHtml += this.formatTraceWithBitRangeColors(trace, userCode);
                                 });
                                 feedbackHtml += '</div>';
                             }
@@ -871,13 +865,9 @@ class KATch2Editor {
                         let html = `<strong>${analysis.status}</strong>`;
                         
                         if (analysis.traces && analysis.status === "Analysis result: Allows traffic") {
-                            const formatPacket = (packet) => packet.map(bit => bit ? '1' : '0').join('');
-                        let tracesHtml = '';
+                            let tracesHtml = '';
                             for (let i = 0; i < analysis.traces.length; i++) {
-                                const [inputTrace, finalOutput] = analysis.traces[i];
-                            const traceString = inputTrace.map(formatPacket).join(' → ');
-                            const outputString = finalOutput ? ` → ${formatPacket(finalOutput)}` : ' → ...';
-                            tracesHtml += `<span style="${this.getTraceStyle()}">${traceString}${outputString}</span>`;
+                                tracesHtml += this.formatTraceWithBitRangeColors(analysis.traces[i], codeToAnalyze);
                             }
                             html += `<br><strong>Example traces:</strong> ` + tracesHtml;
                         }
@@ -985,7 +975,7 @@ class KATch2Editor {
     }
 
     generateUniqueId(prefix = 'id-') {
-        return prefix + Math.random().toString(36).substr(2, 9);
+        return prefix + Math.random().toString(36).substring(2, 11);
     }
 
     createExerciseLoaderUI(originalElement, description, solution, targetId) {
@@ -1161,6 +1151,117 @@ class KATch2Editor {
     // Helper function to generate consistent trace styling
     getTraceStyle(backgroundColor = 'white', borderColor = '#e9ecef') {
         return `font-family: monospace; font-size: 14px; background-color: ${backgroundColor}; padding: 2px 4px; border-radius: 3px; border: 1px solid ${borderColor}; display: inline-block; margin: 2px 4px 2px 0;`;
+    }
+
+    // Extract bit ranges from expression (e.g., x[0..32] returns [{start: 0, end: 32}])
+    extractBitRanges(expression) {
+        const bitRanges = [];
+        const regex = /x\[(\d+)\.\.(\d+)\]/g;
+        let match;
+        
+        while ((match = regex.exec(expression)) !== null) {
+            const start = parseInt(match[1], 10);
+            const end = parseInt(match[2], 10);
+            bitRanges.push({ start, end });
+        }
+        
+        return bitRanges;
+    }
+
+    // Assign colors to bit ranges
+    assignColorsToRanges(bitRanges) {
+        const colors = [
+            '#ffb3b3', // light red
+            '#87bfff', // light blue
+            '#ffe066', // light yellow
+            '#b4a7ff', // light purple
+            '#81e6d9', // light teal
+            '#ffc0e6', // light pink
+            '#b8e6c8', // light mint green
+            '#ffb3d1', // light rose
+            '#87d3e6', // pale blue
+            '#ffe599', // light gold
+            '#c5baff', // pale purple
+            '#99e6ff', // pale sky blue
+        ];
+        
+        // Assign a color to each range
+        return bitRanges.map((range, index) => ({
+            ...range,
+            color: colors[index % colors.length]
+        }));
+    }
+    
+    // Get color for a bit position based on colored ranges
+    getBitPositionColor(bitIndex, coloredRanges) {
+        // Find all ranges that contain this bit position
+        const containingRanges = coloredRanges.filter(
+            range => bitIndex >= range.start && bitIndex <= range.end
+        );
+        
+        if (containingRanges.length === 0) {
+            return null; // No color
+        }
+        
+        // For overlapping ranges, use the color of the last (highest index) range
+        // This gives precedence to ranges defined later in the expression
+        return containingRanges[containingRanges.length - 1].color;
+    }
+
+    // Format a trace with bit range coloring
+    formatTraceWithBitRangeColors(trace, expression) {
+        const bitRanges = this.extractBitRanges(expression);
+        if (bitRanges.length === 0) {
+            // No bit ranges found, use default formatting
+            const formatPacket = (packet) => packet.map(bit => bit ? '1' : '0').join('');
+            const [inputTrace, finalOutput] = trace;
+            const traceString = inputTrace.map(formatPacket).join(' → ');
+            const outputString = finalOutput ? ` → ${formatPacket(finalOutput)}` : ' → ...';
+            return `<span style="${this.getTraceStyle()}">${traceString}${outputString}</span>`;
+        }
+        
+        // Assign colors to ranges once
+        const coloredRanges = this.assignColorsToRanges(bitRanges);
+        
+        const [inputTrace, finalOutput] = trace;
+        const formattedPackets = [];
+        
+        // Format each packet in the trace
+        for (const packet of inputTrace) {
+            const bitStrings = [];
+            for (let i = 0; i < packet.length; i++) {
+                const bitValue = packet[i] ? '1' : '0';
+                const color = this.getBitPositionColor(i, coloredRanges);
+                
+                if (!color) {
+                    bitStrings.push(bitValue);
+                } else {
+                    bitStrings.push(`<span style="background-color: ${color}; padding: 0 1px; border-radius: 2px;">${bitValue}</span>`);
+                }
+            }
+            formattedPackets.push(bitStrings.join(''));
+        }
+        
+        // Format final output if present
+        if (finalOutput) {
+            const bitStrings = [];
+            for (let i = 0; i < finalOutput.length; i++) {
+                const bitValue = finalOutput[i] ? '1' : '0';
+                const color = this.getBitPositionColor(i, coloredRanges);
+                
+                if (!color) {
+                    bitStrings.push(bitValue);
+                } else {
+                    bitStrings.push(`<span style="background-color: ${color}; padding: 0 1px; border-radius: 2px;">${bitValue}</span>`);
+                }
+            }
+            formattedPackets.push(bitStrings.join(''));
+        }
+        
+        const traceHtml = formattedPackets.join(' → ');
+        const finalSuffix = finalOutput ? '' : ' → ...';
+        
+        return `<span style="${this.getTraceStyle()}">${traceHtml}${finalSuffix}</span>`;
     }
 
     // Simple syntax highlighter for NetKAT code

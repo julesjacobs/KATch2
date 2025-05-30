@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Bit Range Coloring</title>
+    <link rel="icon" type="image/png" href="assets/favicon.png">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            margin: 20px;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        h1 { color: #333; margin-bottom: 30px; }
+        h2 { color: #555; margin-top: 30px; margin-bottom: 15px; }
+        .test-section {
+            background: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        p { margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <h1>Bit Range Coloring Test</h1>
+    
+    <div class="test-section">
+        <h2>Test 1: Single Bit Range</h2>
+        <p>Expression with x[2..5] - bits 2 through 5 should be colored</p>
+        <netkat lines="3">// Test single bit range
+x[2..5] := 1;
+x0 := 1; x1 := 1; x6 := 1</netkat>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 2: Multiple Non-Overlapping Ranges</h2>
+        <p>Expression with x[0..2] and x[4..6] - two different color regions</p>
+        <netkat lines="3">// Test multiple non-overlapping ranges
+x[0..2] == 1; x[4..6] := 0;
+x3 := 1</netkat>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 3: Overlapping Ranges</h2>
+        <p>Expression with x[0..4] and x[2..6] - overlapping at bits 2-4</p>
+        <netkat lines="3">// Test overlapping ranges
+x[0..4] == 1; x[2..6] := 0;
+x7 := 1</netkat>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 4: Complex Expression with Multiple Ranges</h2>
+        <p>Complex expression with many bit ranges</p>
+        <netkat lines="5">// Complex bit range example
+(x[0..3] == 1; x[4..7] := 0) + 
+(x[2..5] == 0; x[6..9] := 1);
+x[1..2] := 1;
+x[8..10] == 0</netkat>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 5: Sequential Ranges</h2>
+        <p>Testing color changes as we move through sequential ranges</p>
+        <netkat lines="4">// Sequential ranges
+x[0..1] := 1;
+x[2..3] := 0;
+x[4..5] := 1</netkat>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 6: Nested and Overlapping</h2>
+        <p>Testing nested ranges: x[0..7] contains x[2..5]</p>
+        <netkat lines="3">// Nested ranges
+x[0..7] == 1;
+x[2..5] := 0</netkat>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 7: Example with Single Bit Fields</h2>
+        <netkat>// Testing x0 ~ 0 and x0 ~ 1 syntax
+(x0 ~ 0; x1 ~ 1) + (x0 ~ 1; x1 ~ 0);
+x2 := 1</netkat>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 8: Nate's Test</h2>
+        <netkat lines="15">
+let sw = &x[0..4] in
+let pt = &x[4..8] in
+let src = &x[8..40] in
+let dst = &x[40..72] in
+let topo =
+  if sw ~ 0x1 & pt ~ 0x2 then sw := 0x2; pt := 0x1
+  else if sw ~ 0x1 & pt ~ 0x3 then sw := 0x3; pt := 0x1
+  else if sw ~ 0x2 & pt ~ 0x1 then sw := 0x1; pt := 0x2
+  else if sw ~ 0x2 & pt ~ 0x3 then sw := 0x3; pt := 0x2
+  else if sw ~ 0x3 & pt ~ 0x1 then sw := 0x1; pt := 0x3
+  else if sw ~ 0x3 & pt ~ 0x2 then sw := 0x2; pt := 0x3
+  else 0 in
+let switch = 
+  if dst ~ 10.0.1.1 then pt := 0x1 
+  else if dst ~ 10.0.2.2 then pt := 0x2
+  else if dst ~ 10.0.3.3 then pt := 0x3
+  else 0 in
+let edge =
+  sw ~ 0x1 & pt ~ 0x1 +
+  sw ~ 0x2 & pt ~ 0x2 +
+  sw ~ 0x3 & pt ~ 0x3 in
+let net =
+  edge; (switch; topo)*; switch; edge in
+  sw ~ 0x1 & pt ~ 0x1 & dst ~ 10.0.3.3; net
+        </netkat>
+    </div>
+
+    <script type="module" src="katch2ui/katch2-editor.js"></script>
+</body>
+</html>

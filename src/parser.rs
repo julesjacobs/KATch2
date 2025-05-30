@@ -1245,8 +1245,27 @@ impl<'a> Parser<'a> {
                         };
                         Ok(Expr::test(index, value_bool))
                     }
+                    TokenKind::Not => {
+                        // Pattern match: xN ~ pattern
+                        self.consume_token()?; // Consume '~'
+                        
+                        // Parse pattern
+                        let pattern = self.parse_pattern(None)?;
+                        
+                        // Convert to test based on pattern
+                        match pattern {
+                            Pattern::Exact(bits) if bits.len() == 1 => {
+                                // Single bit pattern, convert to test
+                                Ok(Expr::test(index, bits[0]))
+                            }
+                            _ => Err(ParseError::new(
+                                format!("Field 'x{}' with '~' operator only supports patterns '0' or '1'", index),
+                                next_token_after_field.span,
+                            ))
+                        }
+                    }
                     _ => Err(ParseError::new(
-                        format!("Expected ':=' or '==' after field 'x{}', found {}", index, token_kind_to_user_string(&next_token_after_field.kind)),
+                        format!("Expected ':=', '==' or '~' after field 'x{}', found {}", index, token_kind_to_user_string(&next_token_after_field.kind)),
                         next_token_after_field.span,
                     )),
                 }
@@ -1825,6 +1844,14 @@ impl<'a> Parser<'a> {
                 let inferred_width = infer_literal_bit_width(&hex_str, LiteralType::Hexadecimal)?;
                 let bits = literal_to_bits(&hex_str, LiteralType::Hexadecimal, inferred_width)?;
                 Ok(Pattern::Exact(bits))
+            }
+            TokenKind::Zero => {
+                // Handle pattern ~ 0
+                Ok(Pattern::Exact(vec![false]))
+            }
+            TokenKind::One => {
+                // Handle pattern ~ 1
+                Ok(Pattern::Exact(vec![true]))
             }
             _ => Err(ParseError::new(
                 format!("Expected pattern (IP address, number, or literal), found {}", token_kind_to_user_string(&token.kind)),

@@ -1,0 +1,9 @@
+// Test bit range coloring in traces
+// This expression uses bit ranges x[start..end] syntax
+
+// Simple bit range test
+x[0..3] := 1; x[4..7] := 0; dup;
+
+// Overlapping ranges
+(x[0..4] == 1; x[2..6] := 0) +
+(x[1..5] == 0; x[3..7] := 1)

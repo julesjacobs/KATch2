@@ -1,0 +1,12 @@
+// Test that pat ~ 0 and pat ~ 1 work correctly
+
+// Basic tests
+x0 ~ 0;
+x0 ~ 1;
+
+// Comparison with == syntax
+x1 == 0;
+x1 == 1;
+
+// Combined test
+(x0 ~ 0; x1 ~ 1) + (x0 ~ 1; x1 ~ 0)
