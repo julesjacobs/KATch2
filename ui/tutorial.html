@@ -394,7 +394,7 @@ x2 == 1
 
         <netkat exercise="Write a policy that either tests x0 == 1 or assigns x1 := 0">x0 == 1 + x1 := 0</netkat>
 
-        <h2>Encoding If-Then-Else</h2>
+        <h2 id="if-then-else">Encoding If-Then-Else</h2>
         <p>NetKAT can express conditional logic (if-then-else) by combining tests, assignments, and choice. The general pattern for "if C then P1 else P2" is: <nk>(C; P1) + (not C; P2)</nk>.</p>
 
         <h3>Test Negation (!)</h3>
@@ -870,7 +870,7 @@ x1 == 0
 
         <p>This concludes the basic NetKAT tutorial. Experiment with these constructs to build more complex network policies!</p>
 
-        <h2>Syntactic Sugar for Modeling Real Networks</h2>
+        <h2 id="sugar">Syntactic Sugar for Modeling Real Networks</h2>
         <p>KATch<sup>2</sup> provides additional syntactic constructs to make it easier to work with real network packets, which often contain multi-bit fields like IP addresses, ports, and protocol numbers.</p>
 
         <h3>Bit Range Tests and Mutations</h3>

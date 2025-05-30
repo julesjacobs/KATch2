@@ -232,30 +232,32 @@ fn desugar_with_env(expr: &Expr, env: &DesugarEnv) -> Result<Exp, DesugarError> 
         
         // TestNegation - the interesting case
         Expr::TestNegation(e) => {
+            let d = desugar_with_env(e, env)?;
+
             // First check if e is in the test fragment
-            if !e.is_test_fragment() {
+            if !d.is_test_fragment() {
                 return Err(DesugarError {
                     message: format!("Test negation (!) can only be applied to test fragment expressions, but was applied to: {}", e)
                 });
             }
             
             // Now apply De Morgan's laws to eliminate TestNegation
-            desugar_test_negation(e)
+            desugar_test_negation(&d)
         }
         
         // IfThenElse - desugar to (cond ; then) + (!cond ; else)
         Expr::IfThenElse(cond, then_expr, else_expr) => {
-            // First check if condition is in the test fragment
-            if !cond.is_test_fragment() {
-                return Err(DesugarError {
-                    message: format!("If-then-else condition must be a test fragment expression, but got: {}", cond)
-                });
-            }
-            
             // Desugar all subexpressions
             let d_cond = desugar_with_env(cond, env)?;
             let d_then = desugar_with_env(then_expr, env)?;
             let d_else = desugar_with_env(else_expr, env)?;
+
+            // First check if condition is in the test fragment
+            if !d_cond.is_test_fragment() {
+                return Err(DesugarError {
+                    message: format!("If-then-else condition must be a test fragment expression, but got: {}", cond)
+                });
+            }
             
             // Create negated condition by first creating TestNegation then desugaring it
             // This ensures pattern matches are desugared before negation
