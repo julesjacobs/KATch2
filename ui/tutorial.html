@@ -880,24 +880,24 @@ x1 == 0
             <h4 style="margin-top: 0;">Bit Range Syntax</h4>
             <ul style="margin-bottom: 12px;">
                 <li><nk>x[start..end]</nk> - References bits from position <nk>start</nk> (inclusive) to <nk>end</nk> (exclusive)</li>
-                <li><nk>x[0..8] == 255</nk> - Tests if the first byte equals 255</li>
+                <li><nk>x[0..8] ~ 255</nk> - Tests if the first byte equals 255</li>
                 <li><nk>x[0..8] := 10</nk> - Sets the first byte to 10</li>
             </ul>
             <p style="margin-bottom: 0; font-style: italic; color: #666;">The bit range notation follows Rust-style syntax where the end index is exclusive.</p>
         </div>
 
-        <netkat example="Test if the first byte (bits 0-7) equals 255">x[0..8] == 255</netkat>
+        <netkat example="Test if the first byte (bits 0-7) equals 255">x[0..8] ~ 255</netkat>
         
         <netkat example="Set the second byte to 192">x[8..16] := 192</netkat>
 
         <h4>Working with Different Literal Formats</h4>
         <p>Bit ranges can be tested or set using various literal formats:</p>
         
-        <netkat example="Binary literal: Test if a nibble equals binary 1010">x[0..4] == 0b1010</netkat>
+        <netkat example="Binary literal: Test if a nibble equals binary 1010">x[0..4] ~ 0b1010</netkat>
         
         <netkat example="Hexadecimal literal: Set a byte to hex FF">x[0..8] := 0xFF</netkat>
         
-        <netkat example="IP address literal: Test if bits represent an IP address">x[0..32] == 192.168.1.1</netkat>
+        <netkat example="IP address literal: Test if bits represent an IP address">x[0..32] ~ 192.168.1.1</netkat>
 
         <h3>Let Aliases for Bit Ranges</h3>
         <p>To make policies more readable, you can create named aliases for bit ranges using the <nk>let</nk> syntax:</p>
@@ -908,11 +908,11 @@ x1 == 0
             <p style="margin-top: 8px; margin-bottom: 0;">Creates an alias that can be used in tests and assignments within the expression.</p>
         </div>
 
-        <netkat example="Create an alias 'ip' for the first 32 bits and test if it equals a specific IP">let ip = &x[0..32] in ip == 192.168.1.1</netkat>
+        <netkat example="Create an alias 'ip' for the first 32 bits and test if it equals a specific IP">let ip = &x[0..32] in ip ~ 192.168.1.1</netkat>
         
         <netkat example="Multiple aliases: define source and destination IPs">let src_ip = &x[0..32] in
 let dst_ip = &x[32..64] in
-src_ip == 10.0.0.1 & dst_ip == 10.0.0.2</netkat>
+src_ip ~ 10.0.0.1 & dst_ip ~ 10.0.0.2</netkat>
 
         <netkat example="Alias with assignment: set a port number">let port = &x[64..80] in port := 8080</netkat>
 
@@ -922,7 +922,7 @@ src_ip == 10.0.0.1 & dst_ip == 10.0.0.2</netkat>
         <netkat example="Firewall rule: accept HTTP from 192.168.1.0/24" lines="4">let src_ip = &x[0..32] in
 let dst_port = &x[48..64] in
 // Accept if source is in 192.168.1.x and destination port is 80
-(src_ip == 192.168.1.1 + src_ip == 192.168.1.2 + src_ip == 192.168.1.3) & dst_port == 80</netkat>
+(src_ip ~ 192.168.1.1 + src_ip ~ 192.168.1.2 + src_ip ~ 192.168.1.3) & dst_port ~ 80</netkat>
 
         <h3>Let Bindings for Expressions</h3>
         <p>Beyond bit range aliases, <nk>let</nk> can bind any NetKAT expression to a variable for reuse:</p>
@@ -933,19 +933,19 @@ let dst_port = &x[48..64] in
             <p style="margin-top: 8px; margin-bottom: 0;">Binds <nk>expression1</nk> to <nk>var</nk>, which can be used in <nk>expression2</nk>.</p>
         </div>
 
-        <netkat example="Bind a complex test to a variable">let is_local = x[0..8] == 192 & x[8..16] == 168 in
+        <netkat example="Bind a complex test to a variable">let is_local = x[0..8] ~ 192 & x[8..16] ~ 168 in
 is_local; x[32..40] := 1</netkat>
 
         <netkat example="Reuse an assignment sequence">let setup_defaults = x[0..8] := 10; x[8..16] := 0; x[16..24] := 0; x[24..32] := 1 in
-x[32..40] == 80; setup_defaults</netkat>
+x[32..40] ~ 80; setup_defaults</netkat>
 
         <h4>Combining Features: NAT Example</h4>
         <p>Here's a more complex example that combines bit ranges, aliases, and let bindings to model a simple NAT (Network Address Translation) rule:</p>
         
         <netkat example="NAT rule: rewrite source IP for outgoing traffic" lines="6">let src_ip = &x[0..32] in
 let dst_ip = &x[32..64] in
-let is_private = src_ip == 192.168.1.1 + src_ip == 192.168.1.2 in
-let is_external = dst_ip == 8.8.8.8 + dst_ip == 1.1.1.1 in
+let is_private = src_ip ~ 192.168.1.1 + src_ip ~ 192.168.1.2 in
+let is_external = dst_ip ~ 8.8.8.8 + dst_ip ~ 1.1.1.1 in
 // If source is private and destination is external, rewrite source to public IP
 is_private & is_external; src_ip := 203.0.113.1</netkat>
 

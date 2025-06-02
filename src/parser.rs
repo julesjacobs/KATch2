@@ -1001,23 +1001,6 @@ impl<'a> Parser<'a> {
                                 let bits = number_to_bits(&value_str, (end - start) as usize)?;
                                 Ok(Expr::bit_range_assign(start, end, bits))
                             }
-                            TokenKind::Eq => {
-                                self.consume_token()?; // Consume '=='
-                                
-                                // Parse the number value
-                                let value_token = self.consume_token()?;
-                                let value_str = match value_token.kind {
-                                    TokenKind::Number(num_str) => num_str,
-                                    _ => return Err(ParseError::new(
-                                        format!("Expected number after bit range test, found {}", token_kind_to_user_string(&value_token.kind)),
-                                        value_token.span,
-                                    )),
-                                };
-                                
-                                // Convert number to bit vector
-                                let bits = number_to_bits(&value_str, (end - start) as usize)?;
-                                Ok(Expr::bit_range_test(start, end, bits))
-                            }
                             TokenKind::Tilde => {
                                 // Pattern match operator x[start..end] ~ pattern
                                 self.consume_token()?; // Consume '~'
@@ -1028,7 +1011,7 @@ impl<'a> Parser<'a> {
                                 Ok(Expr::bit_range_match(start, end, pattern))
                             }
                             _ => return Err(ParseError::new(
-                                format!("Expected ':=', '==' or '~' after bit range, found {}", token_kind_to_user_string(&op_token.kind)),
+                                format!("Expected ':=' or '~' after bit range, found {}", token_kind_to_user_string(&op_token.kind)),
                                 op_token.span,
                             )),
                         }
@@ -1105,7 +1088,7 @@ impl<'a> Parser<'a> {
                         }
                     }
                     _ => Err(ParseError::new(
-                        format!("Expected ':=', '==' or '~' after field 'x{}', found {}", index, token_kind_to_user_string(&next_token_after_field.kind)),
+                        format!("Expected ':=' or '~' after field 'x{}', found {}", index, token_kind_to_user_string(&next_token_after_field.kind)),
                         next_token_after_field.span,
                     )),
                 }
@@ -1355,26 +1338,6 @@ impl<'a> Parser<'a> {
                             let bits = literal_to_bits(&value_str, literal_type, (end - start) as usize)?;
                             Ok(Expr::bit_range_assign(start, end, bits))
                         }
-                        TokenKind::Eq => {
-                            self.consume_token()?; // Consume '=='
-                            
-                            // Parse the literal value
-                            let value_token = self.consume_token()?;
-                            let (value_str, literal_type) = match value_token.kind {
-                                TokenKind::Number(num_str) => (num_str, LiteralType::Decimal),
-                                TokenKind::BinaryLiteral(bin_str) => (bin_str, LiteralType::Binary),
-                                TokenKind::HexLiteral(hex_str) => (hex_str, LiteralType::Hexadecimal),
-                                TokenKind::IpLiteral(ip_str) => (ip_str, LiteralType::IpAddress),
-                                _ => return Err(ParseError::new(
-                                    format!("Expected number after bit range test, found {}", token_kind_to_user_string(&value_token.kind)),
-                                    value_token.span,
-                                )),
-                            };
-                            
-                            // Convert literal to bit vector
-                            let bits = literal_to_bits(&value_str, literal_type, (end - start) as usize)?;
-                            Ok(Expr::bit_range_test(start, end, bits))
-                        }
                         TokenKind::Tilde => {
                             // Pattern match operator x[start..end] ~ pattern
                             self.consume_token()?; // Consume '~'
@@ -1385,7 +1348,7 @@ impl<'a> Parser<'a> {
                             Ok(Expr::bit_range_match(start, end, pattern))
                         }
                         _ => return Err(ParseError::new(
-                            format!("Expected ':=', '==' or '~' after bit range, found {}", token_kind_to_user_string(&op_token.kind)),
+                            format!("Expected ':=' or '~' after bit range, found {}", token_kind_to_user_string(&op_token.kind)),
                             op_token.span,
                         )),
                     }
@@ -1420,28 +1383,6 @@ impl<'a> Parser<'a> {
                             let inferred_bits = infer_literal_bit_width(&value_str, literal_type)?;
                             let bits = literal_to_bits(&value_str, literal_type, inferred_bits)?;
                             Ok(Expr::var_assign(name, bits))
-                        }
-                        TokenKind::Eq => {
-                            // Variable test: var == value
-                            self.consume_token()?; // Consume '=='
-                            
-                            // Parse the value
-                            let value_token = self.consume_token()?;
-                            let (value_str, literal_type) = match value_token.kind {
-                                TokenKind::Number(num_str) => (num_str, LiteralType::Decimal),
-                                TokenKind::BinaryLiteral(bin_str) => (bin_str, LiteralType::Binary),
-                                TokenKind::HexLiteral(hex_str) => (hex_str, LiteralType::Hexadecimal),
-                                TokenKind::IpLiteral(ip_str) => (ip_str, LiteralType::IpAddress),
-                                _ => return Err(ParseError::new(
-                                    format!("Expected value after variable test, found {}", token_kind_to_user_string(&value_token.kind)),
-                                    value_token.span,
-                                )),
-                            };
-                            
-                            // For variable test, infer bit width from literal format
-                            let inferred_bits = infer_literal_bit_width(&value_str, literal_type)?;
-                            let bits = literal_to_bits(&value_str, literal_type, inferred_bits)?;
-                            Ok(Expr::var_test(name, bits))
                         }
                         TokenKind::Tilde => {
                             // Pattern match: var ~ pattern
@@ -1576,8 +1517,9 @@ impl<'a> Parser<'a> {
                         let addr_bits = ip_to_bits(&ip_str)?;
                         Ok(Pattern::Wildcard { address: addr_bits, mask: mask_bits })
                     } else {
-                        // Just an exact IP match
-                        let bits = ip_to_bits(&ip_str)?;
+                        // Just an exact IP match - convert to number then use literal_to_bits for consistency
+                        let ip_num = ip_to_number(&ip_str)?;
+                        let bits = literal_to_bits(&ip_num.to_string(), LiteralType::Decimal, 32)?;
                         Ok(Pattern::Exact(bits))
                     }
                 }
@@ -1631,11 +1573,11 @@ impl<'a> Parser<'a> {
                         _ => min_width,
                     };
                     
-                    let start_bits = u128_to_bits(start_val, width);
+                    let start_bits = literal_to_bits(&num_str, LiteralType::Decimal, width)?;
                     let end_bits = if end_str.contains('.') {
                         ip_to_bits(&end_str)?
                     } else {
-                        u128_to_bits(end_val, width)
+                        literal_to_bits(&end_str, LiteralType::Decimal, width)?
                     };
                     
                     Ok(Pattern::IpRange { start: start_bits, end: end_bits })
@@ -1658,7 +1600,7 @@ impl<'a> Parser<'a> {
                         _ => min_width,
                     };
                     
-                    let bits = u128_to_bits(val, width);
+                    let bits = literal_to_bits(&num_str, LiteralType::Decimal, width)?;
                     Ok(Pattern::Exact(bits))
                 }
             }
@@ -1680,14 +1622,6 @@ impl<'a> Parser<'a> {
     }
 }
 
-/// Convert u128 to bit vector of specified width
-fn u128_to_bits(val: u128, width: usize) -> Vec<bool> {
-    let mut bits = Vec::with_capacity(width);
-    for i in (0..width).rev() {
-        bits.push((val >> i) & 1 == 1);
-    }
-    bits
-}
 
 /// Convert bit vector to u128
 fn bits_to_u128(bits: &[bool]) -> Result<u128, ParseError> {
@@ -1708,6 +1642,27 @@ fn bits_to_u128(bits: &[bool]) -> Result<u128, ParseError> {
 }
 
 /// Helper function to convert IP address string to 32-bit vector
+fn ip_to_number(ip_str: &str) -> Result<u32, ParseError> {
+    let parts: Vec<&str> = ip_str.split('.').collect();
+    if parts.len() != 4 {
+        return Err(ParseError::new(
+            format!("Invalid IP address format: {}", ip_str),
+            Default::default(),
+        ));
+    }
+    
+    let mut ip_num = 0u32;
+    for (i, part) in parts.iter().enumerate() {
+        let octet = part.parse::<u8>().map_err(|_| ParseError::new(
+            format!("Invalid IP octet: {}", part),
+            Default::default(),
+        ))?;
+        ip_num |= (octet as u32) << (8 * (3 - i));
+    }
+    
+    Ok(ip_num)
+}
+
 fn ip_to_bits(ip_str: &str) -> Result<Vec<bool>, ParseError> {
     let parts: Vec<&str> = ip_str.split('.').collect();
     if parts.len() != 4 {
@@ -1874,7 +1829,11 @@ pub fn parse_expressions(input: &str) -> Result<Vec<Exp>, ParseErrorDetails> {
                 };
 
                 let err = ParseError::new(
-                    format!("Expected operator, but found {}", token_kind_to_user_string(&owned_kind)),
+                    if matches!(owned_kind, TokenKind::Eq) {
+                        "The '==' operator is only supported for simple field tests like 'x0 == 1'. For other comparisons, use the '~' operator instead (e.g., 'port ~ 1024')".to_string()
+                    } else {
+                        format!("Expected operator, but found {}", token_kind_to_user_string(&owned_kind))
+                    },
                     span_for_error,
                 );
                 return Err(convert_parse_error(err, input));
@@ -1963,7 +1922,7 @@ fn token_kind_to_user_string(kind: &TokenKind) -> String {
 #[cfg(test)]
 mod tests {
     use super::{parse_expressions, Exp}; // Removed Lexer, Parser, TokenKind
-    use crate::expr::Expr; 
+    use crate::expr::{Expr, Pattern}; 
 
     // Helper to parse all expressions from a string and get a Vec<Exp>
     // Maps error to String for test assertion convenience.
@@ -2375,13 +2334,13 @@ mod tests {
         assert_eq!(parse_single_unwrap("x[0..8] := 255"), 
                    Expr::bit_range_assign(0, 8, vec![true, true, true, true, true, true, true, true]));
         
-        // Test parsing bit range tests
-        assert_eq!(parse_single_unwrap("x[2..4] == 3"), 
-                   Expr::bit_range_test(2, 4, vec![true, true]));
+        // Test parsing bit range pattern matches
+        assert_eq!(parse_single_unwrap("x[2..4] ~ 3"), 
+                   Expr::bit_range_match(2, 4, Pattern::Exact(vec![true, true])));
         
         // Test with zero
-        assert_eq!(parse_single_unwrap("x[0..4] == 0"), 
-                   Expr::bit_range_test(0, 4, vec![false, false, false, false]));
+        assert_eq!(parse_single_unwrap("x[0..4] ~ 0"), 
+                   Expr::bit_range_match(0, 4, Pattern::Exact(vec![false, false, false, false])));
         
         // Test single bit range
         assert_eq!(parse_single_unwrap("x[5..6] := 1"), 
@@ -2391,18 +2350,18 @@ mod tests {
     #[test]
     fn test_bit_range_in_expression() {
         // Test bit ranges in larger expressions
-        let expr = parse_single_unwrap("x[0..4] == 5 + x[4..8] := 10");
+        let expr = parse_single_unwrap("x[0..4] ~ 5 + x[4..8] := 10");
         let expected = Expr::union(
-            Expr::bit_range_test(0, 4, vec![true, false, true, false]),
+            Expr::bit_range_match(0, 4, Pattern::Exact(vec![true, false, true, false])),
             Expr::bit_range_assign(4, 8, vec![false, true, false, true])
         );
         assert_eq!(expr, expected);
         
         // Test with sequence
-        let expr2 = parse_single_unwrap("x[0..2] := 3 ; x[2..4] == 0");
+        let expr2 = parse_single_unwrap("x[0..2] := 3 ; x[2..4] ~ 0");
         let expected2 = Expr::sequence(
             Expr::bit_range_assign(0, 2, vec![true, true]),
-            Expr::bit_range_test(2, 4, vec![false, false])
+            Expr::bit_range_match(2, 4, Pattern::Exact(vec![false, false]))
         );
         assert_eq!(expr2, expected2);
     }
@@ -2604,17 +2563,17 @@ mod tests {
         ));
         
         // Bit range alias with test
-        let expr = parse_single_unwrap("let port = &x[32..48] in port == 80");
+        let expr = parse_single_unwrap("let port = &x[32..48] in port ~ 80");
         let port_bits = vec![false, false, false, false, true, false, true]; // 80 in 7 bits (minimal)
         assert_eq!(expr, Expr::let_bit_range(
             "port".to_string(),
             32,
             48,
-            Expr::var_test("port".to_string(), port_bits)
+            Expr::var_match("port".to_string(), Pattern::Exact(port_bits))
         ));
         
         // Multiple bit range aliases
-        let expr = parse_single_unwrap("let src = &x[0..32] in let dst = &x[32..64] in src == 10.0.0.1 & dst == 10.0.0.2");
+        let expr = parse_single_unwrap("let src = &x[0..32] in let dst = &x[32..64] in src ~ 10.0.0.1 & dst ~ 10.0.0.2");
         let mut ip1_bits = vec![false; 32];
         let ip1_num = 0x0A000001u32; // 10.0.0.1 in hex
         for i in 0..32 {
@@ -2634,8 +2593,8 @@ mod tests {
                 32,
                 64,
                 Expr::intersect(
-                    Expr::var_test("src".to_string(), ip1_bits),
-                    Expr::var_test("dst".to_string(), ip2_bits)
+                    Expr::var_match("src".to_string(), Pattern::Exact(ip1_bits)),
+                    Expr::var_match("dst".to_string(), Pattern::Exact(ip2_bits))
                 )
             )
         ));
@@ -2689,7 +2648,7 @@ mod tests {
     #[test]
     fn test_alias_precedence() {
         // Alias in larger expression
-        let expr = parse_single_unwrap("0 + let ip = &x[0..32] in ip == 10.0.0.1");
+        let expr = parse_single_unwrap("0 + let ip = &x[0..32] in ip ~ 10.0.0.1");
         let mut ip_bits = vec![false; 32];
         let ip_num = 0x0A000001u32; // 10.0.0.1 in hex
         for i in 0..32 {
@@ -2701,9 +2660,118 @@ mod tests {
                 "ip".to_string(),
                 0,
                 32,
-                Expr::var_test("ip".to_string(), ip_bits)
+                Expr::var_match("ip".to_string(), Pattern::Exact(ip_bits))
             )
         ));
+    }
+
+    // ===== ERROR MESSAGE TESTS =====
+    #[test]
+    fn test_helpful_error_messages_for_disallowed_equals() {
+        // Test that we get helpful error messages when using == incorrectly
+        
+        // Variable with == should suggest ~
+        let result = parse_all("let port = &x[0..16] in port == 1024");
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert!(error.contains("The '==' operator is only supported for simple field tests"));
+        assert!(error.contains("use the '~' operator instead"));
+        assert!(error.contains("port ~ 1024"));
+        
+        // Bit range with == should suggest ~
+        let result = parse_all("x[0..8] == 255");
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert!(error.contains("Expected ':=' or '~' after bit range"));
+        
+        // IP address with variable == should suggest ~
+        let result = parse_all("let ip = &x[0..32] in ip == 192.168.1.1");
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert!(error.contains("The '==' operator is only supported for simple field tests"));
+        
+        // Multiple variables with == should suggest ~
+        let result = parse_all("let a = &x[0..8] in let b = &x[8..16] in a == 10 & b == 20");
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert!(error.contains("The '==' operator is only supported for simple field tests"));
+    }
+    
+    #[test]
+    fn test_allowed_equals_still_work() {
+        // Test that simple field tests with == still work
+        
+        // Single bit tests should still work
+        assert!(parse_all("x0 == 0").is_ok());
+        assert!(parse_all("x1 == 1").is_ok());
+        assert!(parse_all("x42 == 0").is_ok());
+        
+        // Combinations of simple field tests should work
+        assert!(parse_all("x0 == 1 & x1 == 0").is_ok());
+        assert!(parse_all("(x0 == 1; x1 := 0) + (x0 == 0; x1 := 1)").is_ok());
+        
+        // Mixed with other operations should work
+        assert!(parse_all("x0 == 1; x[8..16] ~ 255").is_ok());
+        assert!(parse_all("let port = &x[0..16] in x0 == 1 & port ~ 80").is_ok());
+    }
+    
+    #[test]
+    fn test_error_message_context() {
+        // Test error messages in different contexts
+        
+        // In sequence
+        let result = parse_all("x0 := 1; let port = &x[0..16] in port == 80");
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert!(error.contains("The '==' operator is only supported for simple field tests"));
+        
+        // In union
+        let result = parse_all("x0 == 1 + let port = &x[0..16] in port == 80");
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert!(error.contains("The '==' operator is only supported for simple field tests"));
+        
+        // In intersection  
+        let result = parse_all("x0 == 1 & let port = &x[0..16] in port == 80");
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert!(error.contains("The '==' operator is only supported for simple field tests"));
+        
+        // Nested in let
+        let result = parse_all("let outer = x0 == 1 in let port = &x[0..16] in port == 80");
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert!(error.contains("The '==' operator is only supported for simple field tests"));
+    }
+    
+    #[test]
+    fn test_specific_suggestions_in_error_messages() {
+        // Test that error messages contain specific helpful suggestions
+        
+        // Hexadecimal values
+        let result = parse_all("let byte = &x[0..8] in byte == 0xFF");
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert!(error.contains("use the '~' operator instead"));
+        
+        // Binary values
+        let result = parse_all("x[0..4] == 0b1010");
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert!(error.contains("Expected ':=' or '~' after bit range"));
+        
+        // IP addresses
+        let result = parse_all("let src = &x[0..32] in src == 10.0.0.1");
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert!(error.contains("The '==' operator is only supported for simple field tests"));
+        assert!(error.contains("x0 == 1"));
+        
+        // Large numbers
+        let result = parse_all("let port = &x[0..16] in port == 65535");
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert!(error.contains("port ~ 1024"));
     }
 }
 

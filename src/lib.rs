@@ -877,7 +877,7 @@ mod perf_tests {
         assert!(matches!(desugared.as_ref(), expr::Expr::Sequence(_, _)), "Should desugar to sequence");
         
         // Bit range test
-        let expr_str = "x[8..16] == 168";
+        let expr_str = "x[8..16] ~ 168";
         let expressions = parser::parse_expressions(expr_str).unwrap();
         let desugared = desugar::desugar(&expressions[0]).unwrap();
         assert!(matches!(desugared.as_ref(), expr::Expr::Intersect(_, _)), "Should desugar to intersection");
@@ -891,7 +891,7 @@ mod perf_tests {
         assert!(!aut.is_empty(state), "IP assignment should not be empty");
         
         // Port test
-        let expr_str = "x[32..48] == 80";
+        let expr_str = "x[32..48] ~ 80";
         let expressions = parser::parse_expressions(expr_str).unwrap();
         let desugared = desugar::desugar(&expressions[0]).unwrap();
         let mut aut = aut::Aut::new(48);
@@ -909,7 +909,7 @@ mod perf_tests {
         // Multiple aliases
         let expr_str = r#"let src = &x[0..32] in
 let dst = &x[32..64] in
-src == 192.168.1.100 & dst == 8.8.8.8"#;
+src ~ 192.168.1.100 & dst ~ 8.8.8.8"#;
         let expressions = parser::parse_expressions(expr_str).unwrap();
         let desugared = desugar::desugar(&expressions[0]).unwrap();
         let mut aut = aut::Aut::new(64);
@@ -929,7 +929,7 @@ dst_port := 443"#;
         
         // Direct bit range access (sub-ranges of aliases not supported)
         let expr_str = r#"let src_ip = &x[96..128] in
-src_ip == 10.0.0.1"#;
+src_ip ~ 10.0.0.1"#;
         let expressions = parser::parse_expressions(expr_str).unwrap();
         let desugared = desugar::desugar(&expressions[0]).unwrap();
         let mut aut = aut::Aut::new(128);

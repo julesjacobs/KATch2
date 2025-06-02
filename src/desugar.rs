@@ -1296,7 +1296,7 @@ mod tests {
         // Parse: "let ip = &x[0..32] in ip == 192.168.1.1"
         use crate::parser::parse_expressions;
         
-        let parsed = parse_expressions("let ip = &x[0..32] in ip == 192.168.1.1").unwrap();
+        let parsed = parse_expressions("let ip = &x[0..32] in ip ~ 192.168.1.1").unwrap();
         assert_eq!(parsed.len(), 1);
         let expr = &parsed[0];
         
@@ -1318,8 +1318,8 @@ mod tests {
     fn test_end_to_end_simple_byte_alias() {
         use crate::parser::parse_expressions;
         
-        // Test: "let byte = &x[0..8] in byte == 181"  // 181 = 0b10110101
-        let parsed = parse_expressions("let byte = &x[0..8] in byte == 181").unwrap();
+        // Test: "let byte = &x[0..8] in byte ~ 181"  // 181 = 0b10110101
+        let parsed = parse_expressions("let byte = &x[0..8] in byte ~ 181").unwrap();
         assert_eq!(parsed.len(), 1);
         
         let desugared = desugar(&parsed[0]).unwrap();
@@ -1352,9 +1352,9 @@ mod tests {
     fn test_end_to_end_nested_aliases() {
         use crate::parser::parse_expressions;
         
-        // Test: "let word = &x[0..16] in let high = &x[8..16] in high == 0xFF"
+        // Test: "let word = &x[0..16] in let high = &x[8..16] in high ~ 0xFF"
         let parsed = parse_expressions(
-            "let word = &x[0..16] in let high = &x[8..16] in high == 0xFF"
+            "let word = &x[0..16] in let high = &x[8..16] in high ~ 0xFF"
         ).unwrap();
         assert_eq!(parsed.len(), 1);
         
@@ -1371,9 +1371,9 @@ mod tests {
     fn test_end_to_end_mixed_operations() {
         use crate::parser::parse_expressions;
         
-        // Test: "let a = &x[0..4] in let b = &x[4..8] in (a == 0xF) & (b := 0x0)"
+        // Test: "let a = &x[0..4] in let b = &x[4..8] in (a ~ 0xF) & (b := 0x0)"
         let parsed = parse_expressions(
-            "let a = &x[0..4] in let b = &x[4..8] in (a == 0xF) & (b := 0x0)"
+            "let a = &x[0..4] in let b = &x[4..8] in (a ~ 0xF) & (b := 0x0)"
         ).unwrap();
         assert_eq!(parsed.len(), 1);
         
@@ -1394,9 +1394,9 @@ mod tests {
     fn test_end_to_end_alias_in_sequence() {
         use crate::parser::parse_expressions;
         
-        // Test: "let flag = &x[0..1] in flag == 1 ; flag := 0"
+        // Test: "let flag = &x[0..1] in flag ~ 1 ; flag := 0"
         let parsed = parse_expressions(
-            "let flag = &x[0..1] in flag == 1 ; flag := 0"
+            "let flag = &x[0..1] in flag ~ 1 ; flag := 0"
         ).unwrap();
         assert_eq!(parsed.len(), 1);
         
@@ -1415,9 +1415,9 @@ mod tests {
     fn test_end_to_end_alias_with_regular_let() {
         use crate::parser::parse_expressions;
         
-        // Test: "let y = 1 in let bits = &x[0..3] in y ; bits == 5"  // 5 = 0b101
+        // Test: "let y = 1 in let bits = &x[0..3] in y ; bits ~ 5"  // 5 = 0b101
         let parsed = parse_expressions(
-            "let y = 1 in let bits = &x[0..3] in y ; bits == 5"
+            "let y = 1 in let bits = &x[0..3] in y ; bits ~ 5"
         ).unwrap();
         assert_eq!(parsed.len(), 1);
         
@@ -1437,9 +1437,9 @@ mod tests {
     fn test_end_to_end_complex_alias_expression() {
         use crate::parser::parse_expressions;
         
-        // Test: "let ctrl = &x[0..8] in (ctrl == 0x80) + (ctrl == 0x81)"
+        // Test: "let ctrl = &x[0..8] in (ctrl ~ 0x80) + (ctrl ~ 0x81)"
         let parsed = parse_expressions(
-            "let ctrl = &x[0..8] in (ctrl == 0x80) + (ctrl == 0x81)"
+            "let ctrl = &x[0..8] in (ctrl ~ 0x80) + (ctrl ~ 0x81)"
         ).unwrap();
         assert_eq!(parsed.len(), 1);
         
@@ -1460,9 +1460,9 @@ mod tests {
     fn test_end_to_end_shadowing() {
         use crate::parser::parse_expressions;
         
-        // Test: "let v = &x[0..4] in let v = &x[4..8] in v == 0xA"
+        // Test: "let v = &x[0..4] in let v = &x[4..8] in v ~ 0xA"
         let parsed = parse_expressions(
-            "let v = &x[0..4] in let v = &x[4..8] in v == 0xA"
+            "let v = &x[0..4] in let v = &x[4..8] in v ~ 0xA"
         ).unwrap();
         assert_eq!(parsed.len(), 1);
         
@@ -1494,8 +1494,8 @@ mod tests {
     fn test_end_to_end_alias_overflow_test() {
         use crate::parser::parse_expressions;
         
-        // Test: "let byte = &x[0..8] in byte == 256"  // 256 needs 9 bits, doesn't fit in 8
-        let parsed = parse_expressions("let byte = &x[0..8] in byte == 256").unwrap();
+        // Test: "let byte = &x[0..8] in byte ~ 256"  // 256 needs 9 bits, doesn't fit in 8
+        let parsed = parse_expressions("let byte = &x[0..8] in byte ~ 256").unwrap();
         assert_eq!(parsed.len(), 1);
         
         let result = desugar(&parsed[0]);
