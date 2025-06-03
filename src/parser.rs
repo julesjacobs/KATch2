@@ -1517,9 +1517,8 @@ impl<'a> Parser<'a> {
                         let addr_bits = ip_to_bits(&ip_str)?;
                         Ok(Pattern::Wildcard { address: addr_bits, mask: mask_bits })
                     } else {
-                        // Just an exact IP match - convert to number then use literal_to_bits for consistency
-                        let ip_num = ip_to_number(&ip_str)?;
-                        let bits = literal_to_bits(&ip_num.to_string(), LiteralType::Decimal, 32)?;
+                        // Just an exact IP match - use ip_to_bits for consistent MSB-first order
+                        let bits = ip_to_bits(&ip_str)?;
                         Ok(Pattern::Exact(bits))
                     }
                 }
@@ -1641,27 +1640,6 @@ fn bits_to_u128(bits: &[bool]) -> Result<u128, ParseError> {
     Ok(val)
 }
 
-/// Helper function to convert IP address string to 32-bit vector
-fn ip_to_number(ip_str: &str) -> Result<u32, ParseError> {
-    let parts: Vec<&str> = ip_str.split('.').collect();
-    if parts.len() != 4 {
-        return Err(ParseError::new(
-            format!("Invalid IP address format: {}", ip_str),
-            Default::default(),
-        ));
-    }
-    
-    let mut ip_num = 0u32;
-    for (i, part) in parts.iter().enumerate() {
-        let octet = part.parse::<u8>().map_err(|_| ParseError::new(
-            format!("Invalid IP octet: {}", part),
-            Default::default(),
-        ))?;
-        ip_num |= (octet as u32) << (8 * (3 - i));
-    }
-    
-    Ok(ip_num)
-}
 
 fn ip_to_bits(ip_str: &str) -> Result<Vec<bool>, ParseError> {
     let parts: Vec<&str> = ip_str.split('.').collect();
@@ -1672,17 +1650,20 @@ fn ip_to_bits(ip_str: &str) -> Result<Vec<bool>, ParseError> {
         ));
     }
     
-    let mut bits = Vec::with_capacity(32);
-    for part in parts {
+    // Convert IP to 32-bit number first
+    let mut ip_num = 0u32;
+    for (i, part) in parts.iter().enumerate() {
         let octet = part.parse::<u8>().map_err(|_| ParseError::new(
             format!("Invalid IP octet: {}", part),
             Default::default(),
         ))?;
-        
-        // Add 8 bits for this octet (MSB first)
-        for i in (0..8).rev() {
-            bits.push((octet >> i) & 1 == 1);
-        }
+        ip_num |= (octet as u32) << (8 * (3 - i));
+    }
+    
+    // Generate bits in LSB-first order (consistent with literal_to_bits)
+    let mut bits = Vec::with_capacity(32);
+    for i in 0..32 {
+        bits.push((ip_num >> i) & 1 == 1);
     }
     
     Ok(bits)
@@ -2611,11 +2592,13 @@ mod tests {
         let expr = parse_single_unwrap("let src = &x[0..32] in let dst = &x[32..64] in src ~ 10.0.0.1 & dst ~ 10.0.0.2");
         let mut ip1_bits = vec![false; 32];
         let ip1_num = 0x0A000001u32; // 10.0.0.1 in hex
+        // Generate LSB-first order to match ip_to_bits
         for i in 0..32 {
             ip1_bits[i] = (ip1_num >> i) & 1 == 1;
         }
         let mut ip2_bits = vec![false; 32];
         let ip2_num = 0x0A000002u32; // 10.0.0.2 in hex
+        // Generate LSB-first order to match ip_to_bits
         for i in 0..32 {
             ip2_bits[i] = (ip2_num >> i) & 1 == 1;
         }
@@ -2686,6 +2669,7 @@ mod tests {
         let expr = parse_single_unwrap("0 + let ip = &x[0..32] in ip ~ 10.0.0.1");
         let mut ip_bits = vec![false; 32];
         let ip_num = 0x0A000001u32; // 10.0.0.1 in hex
+        // Generate LSB-first order to match ip_to_bits
         for i in 0..32 {
             ip_bits[i] = (ip_num >> i) & 1 == 1;
         }

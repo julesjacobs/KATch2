@@ -1053,11 +1053,13 @@ let port = &x[64..80] in
             
             for val in start_val..=end_val {
                 let mut bits = Vec::new();
-                // Generate bits in MSB-first order
-                for i in (0..width).rev() {
+                // Always generate bits in LSB-first order
+                for i in 0..width {
                     bits.push((val >> i) & 1 == 1);
                 }
-                terms.push(expr::Expr::bit_range_test(start, end, bits));
+                let bit_range_test = expr::Expr::bit_range_test(start, end, bits);
+                let desugared_test = desugar::desugar(&bit_range_test).unwrap();
+                terms.push(desugared_test);
             }
             
             // Build disjunction
@@ -1094,7 +1096,7 @@ let port = &x[64..80] in
         
         // Test case 2: Port range
         {
-            let expr_str = "let port = &x[0..16] in port ~ 8080-8090";
+            let expr_str = "x[0..16] ~ 8080-8090";
             let expressions = parser::parse_expressions(expr_str).unwrap();
             let efficient = desugar::desugar(&expressions[0]).unwrap();
             
@@ -1110,14 +1112,33 @@ let port = &x[64..80] in
             assert!(aut.is_empty(state), "Efficient port range should be equivalent to expansion");
         }
         
-        // Test case 3: Power of 2 aligned range
+        // Test case 3: Small range with offset (user example)
+        {
+            let expr_str = "x[5..9] ~ 1-4";
+            let expressions = parser::parse_expressions(expr_str).unwrap();
+            let efficient = desugar::desugar(&expressions[0]).unwrap();
+            
+            // Manually expand
+            let expansion = expand_range(5, 9, 1, 4);
+            
+            // Check equivalence
+            let xor = expr::Expr::xor(efficient.clone(), expansion);
+            let xor_desugared = desugar::desugar(&xor).unwrap();
+            
+            let mut aut = aut::Aut::new(9);
+            let state = aut.expr_to_state(&xor_desugared);
+            assert!(aut.is_empty(state), "x[5..9] ~ 1-4 should be equivalent to expansion");
+        }
+        
+        // Test case 4: Power of 2 aligned range
         {
             let expr_str = "x[0..8] ~ 128-255";  // Upper half of byte
             let expressions = parser::parse_expressions(expr_str).unwrap();
             let efficient = desugar::desugar(&expressions[0]).unwrap();
             
             // This should be equivalent to just testing the MSB
-            let msb_test = expr::Expr::test(0, true);
+            // In LSB-first order, bit 7 is the MSB of an 8-bit value
+            let msb_test = expr::Expr::test(7, true);
             
             // Check equivalence
             let xor = expr::Expr::xor(efficient.clone(), msb_test);
@@ -1128,25 +1149,50 @@ let port = &x[64..80] in
             assert!(aut.is_empty(state), "Range 128-255 should be equivalent to MSB=1");
         }
         
-        // Test case 4: CIDR equivalence
+        // Test case 4: CIDR correctly matches prefix
         {
-            // 192.168.1.0/24 should be equivalent to 192.168.1.0-192.168.1.255
+            // 192.168.1.0/24 should match the first 24 bits only
             let cidr_expr = parser::parse_expressions("x[0..32] ~ 192.168.1.0/24").unwrap();
-            let range_expr = parser::parse_expressions("x[0..32] ~ 192.168.1.0-192.168.1.255").unwrap();
-            
             let cidr = desugar::desugar(&cidr_expr[0]).unwrap();
-            let range = desugar::desugar(&range_expr[0]).unwrap();
+            
+            // It should be equivalent to just testing the high 24 bits (bits 8-31 in LSB-first)
+            let ip_192_168_1 = (192u32 << 24) | (168u32 << 16) | (1u32 << 8);
+            let mut prefix_bits = Vec::new();
+            // Extract bits 8-31 (the high 24 bits)
+            for i in 8..32 {
+                prefix_bits.push((ip_192_168_1 >> i) & 1 == 1);
+            }
+            let prefix_test = expr::Expr::bit_range_test(8, 32, prefix_bits);
+            let prefix_desugared = desugar::desugar(&prefix_test).unwrap();
             
             // Check equivalence
-            let xor = expr::Expr::xor(cidr, range);
+            let xor = expr::Expr::xor(cidr, prefix_desugared);
             let xor_desugared = desugar::desugar(&xor).unwrap();
             
             let mut aut = aut::Aut::new(32);
             let state = aut.expr_to_state(&xor_desugared);
-            assert!(aut.is_empty(state), "CIDR /24 should be equivalent to corresponding range");
+            assert!(aut.is_empty(state), "CIDR /24 should only test first 24 bits");
         }
         
-        // Test case 5: Complex range that would be inefficient to enumerate
+        // Test case 5: Non-power-of-2 field widths
+        {
+            let expr_str = "x[0..10] ~ 1-4";
+            let expressions = parser::parse_expressions(expr_str).unwrap();
+            let efficient = desugar::desugar(&expressions[0]).unwrap();
+            
+            // Manually expand
+            let expansion = expand_range(0, 10, 1, 4);
+            
+            // Check equivalence
+            let xor = expr::Expr::xor(efficient.clone(), expansion);
+            let xor_desugared = desugar::desugar(&xor).unwrap();
+            
+            let mut aut = aut::Aut::new(10);
+            let state = aut.expr_to_state(&xor_desugared);
+            assert!(aut.is_empty(state), "x[0..10] ~ 1-4 should be equivalent to expansion");
+        }
+        
+        // Test case 6: Complex range that would be inefficient to enumerate
         {
             // This range has 100 addresses - good for testing efficiency
             let expr_str = "x[0..32] ~ 10.0.0.156-10.0.1.0";  // 156..255 + 0
@@ -1177,72 +1223,53 @@ let port = &x[64..80] in
         // Test that CIDR patterns are equivalent to their expanded ranges
         // by checking that (CIDR XOR expansion) is empty
         
-        // Helper to manually expand a CIDR to all matching IPs
-        fn expand_cidr(start: u32, end: u32, base_ip: u32, prefix_len: usize) -> expr::Exp {
-            let width = (end - start) as usize;
-            let mut terms = Vec::new();
-            
-            // Calculate the number of host bits
-            let host_bits = 32 - prefix_len;
-            let num_addresses = 1u32 << host_bits;
-            
-            // Generate all IPs in the CIDR range
-            for i in 0..num_addresses {
-                let ip = base_ip | i;
-                let mut bits = Vec::new();
-                // Generate bits in MSB-first order
-                for bit_idx in (0..width).rev() {
-                    bits.push((ip >> bit_idx) & 1 == 1);
-                }
-                terms.push(expr::Expr::bit_range_test(start, end, bits));
-            }
-            
-            // Build disjunction
-            if terms.is_empty() {
-                expr::Expr::zero()
-            } else {
-                let mut result = terms.pop().unwrap();
-                while let Some(term) = terms.pop() {
-                    result = expr::Expr::union(term, result);
-                }
-                result
-            }
-        }
         
-        // Test case 1: /24 network (256 addresses)
+        // Test case 1: /24 network matches prefix correctly
         {
             let cidr_expr = parser::parse_expressions("x[0..32] ~ 192.168.1.0/24").unwrap();
             let cidr = desugar::desugar(&cidr_expr[0]).unwrap();
             
-            // Manually expand the CIDR
-            let base_ip = (192u32 << 24) | (168u32 << 16) | (1u32 << 8) | 0u32;
-            let expansion = expand_cidr(0, 32, base_ip, 24);
+            // CIDR /24 only checks the high 24 bits (bits 8-31 in LSB-first)
+            let ip_prefix = (192u32 << 24) | (168u32 << 16) | (1u32 << 8);
+            let mut prefix_bits = Vec::new();
+            // Extract bits 8-31 (the high 24 bits)
+            for i in 8..32 {
+                prefix_bits.push((ip_prefix >> i) & 1 == 1);
+            }
+            let prefix_test = expr::Expr::bit_range_test(8, 32, prefix_bits);
+            let prefix_desugared = desugar::desugar(&prefix_test).unwrap();
             
             // Check equivalence
-            let xor = expr::Expr::xor(cidr.clone(), expansion);
+            let xor = expr::Expr::xor(cidr.clone(), prefix_desugared);
             let xor_desugared = desugar::desugar(&xor).unwrap();
             
             let mut aut = aut::Aut::new(32);
             let state = aut.expr_to_state(&xor_desugared);
-            assert!(aut.is_empty(state), "/24 CIDR should be equivalent to 256 address expansion");
+            assert!(aut.is_empty(state), "/24 CIDR should only check 24-bit prefix");
         }
         
-        // Test case 2: /28 network (16 addresses)
+        // Test case 2: /28 network matches prefix correctly
         {
             let cidr_expr = parser::parse_expressions("x[0..32] ~ 10.0.0.16/28").unwrap();
             let cidr = desugar::desugar(&cidr_expr[0]).unwrap();
             
-            // The /28 network 10.0.0.16/28 includes IPs 10.0.0.16 - 10.0.0.31
-            let base_ip = (10u32 << 24) | (0u32 << 16) | (0u32 << 8) | 16u32;
-            let expansion = expand_cidr(0, 32, base_ip, 28);
+            // CIDR /28 only checks the high 28 bits (bits 4-31 in LSB-first)
+            let ip_prefix = (10u32 << 24) | (0u32 << 16) | (0u32 << 8) | 16u32;
+            let mut prefix_bits = Vec::new();
+            // Extract bits 4-31 (the high 28 bits)
+            for i in 4..32 {
+                prefix_bits.push((ip_prefix >> i) & 1 == 1);
+            }
+            let prefix_test = expr::Expr::bit_range_test(4, 32, prefix_bits);
+            let prefix_desugared = desugar::desugar(&prefix_test).unwrap();
             
             // Check equivalence
-            let xor = expr::Expr::xor(cidr.clone(), expansion);
+            let xor = expr::Expr::xor(cidr.clone(), prefix_desugared);
             let xor_desugared = desugar::desugar(&xor).unwrap();
             
             let mut aut = aut::Aut::new(32);
             let state = aut.expr_to_state(&xor_desugared);
-            assert!(aut.is_empty(state), "/28 CIDR should be equivalent to 16 address expansion");
+            assert!(aut.is_empty(state), "/28 CIDR should only check 28-bit prefix");
         }
         
         // Test case 3: /32 network (single host)

@@ -513,9 +513,11 @@ fn desugar_pattern_match(start: u32, end: u32, pattern: &Pattern) -> Result<Exp,
                 // Match everything
                 Ok(Expr::one())
             } else {
-                // Test only the prefix bits
-                let prefix_bits = &address[0..*prefix_len];
-                desugar_bit_range_test(start, start + *prefix_len as u32, prefix_bits)
+                // CIDR tests the most significant bits, but our bits are in LSB-first order
+                // So we need to test the bits at the high end of the range
+                let prefix_start = width - *prefix_len;
+                let prefix_bits = &address[prefix_start..width];
+                desugar_bit_range_test(start + prefix_start as u32, end, prefix_bits)
             }
         }
         
@@ -619,6 +621,7 @@ fn desugar_pattern_match(start: u32, end: u32, pattern: &Pattern) -> Result<Exp,
 }
 
 /// Convert a bit vector to u128 for range comparisons
+/// Assumes bits are in LSB-first order (bit[0] is the least significant bit)
 fn bits_to_u128(bits: &[bool]) -> Result<u128, DesugarError> {
     if bits.len() > 128 {
         return Err(DesugarError {
@@ -629,20 +632,24 @@ fn bits_to_u128(bits: &[bool]) -> Result<u128, DesugarError> {
     let mut val = 0u128;
     for (i, &bit) in bits.iter().enumerate() {
         if bit {
-            val |= 1u128 << (bits.len() - 1 - i);
+            val |= 1u128 << i;  // LSB-first: bit[i] corresponds to 2^i
         }
     }
     Ok(val)
 }
 
 
+
 /// Generate efficient test for x <= upper_bound
 /// Returns an expression that's true iff the bit range is <= upper_bound
+/// Assumes bits are in LSB-first order (bit[0] is the least significant bit)
 fn desugar_upper_bound_test(start_field: u32, upper_bound: &[bool]) -> Exp {
     let mut terms = Vec::new();
     let mut prefix_tests: Vec<Exp> = Vec::new();
     
-    for (i, &bound_bit) in upper_bound.iter().enumerate() {
+    // Process bits from MSB to LSB (reverse iteration for LSB-first array)
+    for i in (0..upper_bound.len()).rev() {
+        let bound_bit = upper_bound[i];
         let field = start_field + i as u32;
         
         if bound_bit {
@@ -693,11 +700,14 @@ fn desugar_upper_bound_test(start_field: u32, upper_bound: &[bool]) -> Exp {
 
 /// Generate efficient test for x >= lower_bound
 /// Returns an expression that's true iff the bit range is >= lower_bound
+/// Assumes bits are in LSB-first order (bit[0] is the least significant bit)
 fn desugar_lower_bound_test(start_field: u32, lower_bound: &[bool]) -> Exp {
     let mut terms = Vec::new();
     let mut prefix_tests: Vec<Exp> = Vec::new();
     
-    for (i, &bound_bit) in lower_bound.iter().enumerate() {
+    // Process bits from MSB to LSB (reverse iteration for LSB-first array)
+    for i in (0..lower_bound.len()).rev() {
+        let bound_bit = lower_bound[i];
         let field = start_field + i as u32;
         
         if !bound_bit {
@@ -745,6 +755,7 @@ fn desugar_lower_bound_test(start_field: u32, lower_bound: &[bool]) -> Exp {
         result
     }
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -1306,6 +1317,7 @@ mod tests {
         // Expected: desugared bit range test for x[0..32] == 192.168.1.1
         let mut ip_bits = vec![false; 32];
         let ip_num = 0xC0A80101u32; // 192.168.1.1 in hex
+        // Generate LSB-first order to match ip_to_bits
         for i in 0..32 {
             ip_bits[i] = (ip_num >> i) & 1 == 1;
         }
