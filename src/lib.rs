@@ -919,7 +919,7 @@ src ~ 192.168.1.100 & dst ~ 8.8.8.8"#;
         // Readable firewall rule
         let expr_str = r#"let src_ip = &x[0..32] in
 let dst_port = &x[32..48] in
-src_ip == 192.168.1.0 + src_ip == 192.168.1.1;
+src_ip ~ 192.168.1.0 + src_ip ~ 192.168.1.1;
 dst_port := 443"#;
         let expressions = parser::parse_expressions(expr_str).unwrap();
         let desugared = desugar::desugar(&expressions[0]).unwrap();
@@ -938,7 +938,7 @@ src_ip ~ 10.0.0.1"#;
         
         // Combined example
         let expr_str = r#"let setup_defaults = (x[0..32] := 192.168.1.1 ; x[32..64] := 8.8.8.8) in
-x[32..40] == 80; setup_defaults"#;
+x[32..40] ~ 80; setup_defaults"#;
         let expressions = parser::parse_expressions(expr_str).unwrap();
         let desugared = desugar::desugar(&expressions[0]).unwrap();
         // This is NOT empty - the test checks bits 32-40 for value 80, then assigns the full 32-64 range
@@ -949,8 +949,8 @@ x[32..40] == 80; setup_defaults"#;
         // NAT example
         let expr_str = r#"let src_ip = &x[0..32] in
 let dst_ip = &x[32..64] in
-let is_private = src_ip == 192.168.1.1 + src_ip == 192.168.1.2 in
-let is_external = dst_ip == 8.8.8.8 + dst_ip == 1.1.1.1 in
+let is_private = src_ip ~ 192.168.1.1 + src_ip ~ 192.168.1.2 in
+let is_external = dst_ip ~ 8.8.8.8 + dst_ip ~ 1.1.1.1 in
 is_private & is_external; src_ip := 203.0.113.1"#;
         let expressions = parser::parse_expressions(expr_str).unwrap();
         let desugared = desugar::desugar(&expressions[0]).unwrap();

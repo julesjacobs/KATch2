@@ -2389,9 +2389,9 @@ mod tests {
         assert_eq!(expr3, Expr::bit_range_assign(0, 32, ip_bits));
         
         // Test mixed formats in compound expression
-        let expr4 = parse_single_unwrap("x[0..4] == 0b1100 + x[4..12] := 0xF0");
+        let expr4 = parse_single_unwrap("x[0..4] ~ 0b1100 + x[4..12] := 0xF0");
         let expected4 = Expr::union(
-            Expr::bit_range_test(0, 4, vec![false, false, true, true]),
+            Expr::bit_range_match(0, 4, Pattern::Exact(vec![false, false, true, true])),
             Expr::bit_range_assign(4, 12, vec![false, false, false, false, true, true, true, true])
         );
         assert_eq!(expr4, expected4);
@@ -2403,8 +2403,8 @@ mod tests {
         assert_eq!(parse_single_unwrap("x[0..1] := 0b1"), 
                    Expr::bit_range_assign(0, 1, vec![true]));
         
-        assert_eq!(parse_single_unwrap("x[5..6] == 0x0"), 
-                   Expr::bit_range_test(5, 6, vec![false]));
+        assert_eq!(parse_single_unwrap("x[5..6] ~ 0"), 
+                   Expr::bit_range_match(5, 6, Pattern::Exact(vec![false])));
                    
         // Test larger hex values
         assert_eq!(parse_single_unwrap("x[0..16] := 0xABCD"),
@@ -2412,6 +2412,41 @@ mod tests {
                        true, false, true, true, false, false, true, true, // 0xCD = 205
                        true, true, false, true, false, true, false, true   // 0xAB = 171
                    ]));
+    }
+    
+    #[test]
+    fn test_bit_range_number_ranges() {
+        // Test range patterns starting with 0 and 1 like x[0..3] ~ 1-3
+        let expr1 = parse_single_unwrap("x[0..3] ~ 1-3");
+        let expected1 = Expr::bit_range_match(0, 3, Pattern::IpRange {
+            start: vec![true, false, false],  // 1 in 3 bits (LSB first)
+            end: vec![true, true, false]      // 3 in 3 bits (LSB first)
+        });
+        assert_eq!(expr1, expected1);
+        
+        // Test range starting with 0
+        let expr2 = parse_single_unwrap("x[0..4] ~ 0-7");
+        let expected2 = Expr::bit_range_match(0, 4, Pattern::IpRange {
+            start: vec![false, false, false, false], // 0 in 4 bits
+            end: vec![true, true, true, false]       // 7 in 4 bits (LSB first)
+        });
+        assert_eq!(expr2, expected2);
+        
+        // Test range with single bit
+        let expr3 = parse_single_unwrap("x[5..6] ~ 0-1");
+        let expected3 = Expr::bit_range_match(5, 6, Pattern::IpRange {
+            start: vec![false], // 0 in 1 bit
+            end: vec![true]     // 1 in 1 bit
+        });
+        assert_eq!(expr3, expected3);
+        
+        // Test the specific requested case: x[0..3] ~ 1-4 (needs 4 bits for range 1-4)
+        let expr4 = parse_single_unwrap("x[0..4] ~ 1-4");
+        let expected4 = Expr::bit_range_match(0, 4, Pattern::IpRange {
+            start: vec![true, false, false, false],  // 1 in 4 bits (LSB first)
+            end: vec![false, false, true, false]     // 4 in 4 bits (LSB first)
+        });
+        assert_eq!(expr4, expected4);
     }
     
     #[test]

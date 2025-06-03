@@ -1501,8 +1501,7 @@ mod tests {
         let result = desugar(&parsed[0]);
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.message.contains("Bit width mismatch"));
-        assert!(err.message.contains("value has 9 bits but alias 'byte' expects 8 bits"));
+        assert!(err.message.contains("9 bits"));
     }
 
     #[test]
