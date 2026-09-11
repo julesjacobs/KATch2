@@ -8,6 +8,8 @@ A next-gen version of KATch that:
 
 For now, KATch2 only supports binary fields.
 
+See [demand-directed queries](docs/queries.md) for the prepared query API, exact history semantics, cache limits and routing benchmark driver.
+
 ## Project Structure
 
 The project consists of several key components:

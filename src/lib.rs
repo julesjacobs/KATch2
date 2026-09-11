@@ -134,13 +134,14 @@ fn analyze_expressions_internal(
     // Create automaton handler with the unified field count
     let mut aut_handler = aut::Aut::new(unified_field_count);
 
-    // Convert the target expression to an automaton state
-    let state_id = aut_handler.expr_to_state(&target_expr);
-    let is_empty = aut_handler.is_empty(state_id);
+    let is_empty = aut_handler.is_empty_expr(&target_expr).map_err(|error| {
+        (Some(parser::ParseErrorDetails { message: error.to_string(), span: None }), None)
+    })?;
 
-    let traces = if is_empty {
+    let traces = if is_empty || num_traces == 0 {
         None
     } else {
+        let state_id = aut_handler.expr_to_state(&target_expr);
         let mut traces_set = std::collections::HashSet::new();
         let max_attempts = num_traces * 10; // Try up to 10x the requested number
         
@@ -238,6 +239,18 @@ pub fn analyze_difference(
 mod perf_tests {
     use super::*;
     use std::time::Instant;
+
+    #[test]
+    fn query_analysis_with_and_without_witnesses() {
+        for count in [0, 1] {
+            let (empty, traces) = analyze_expressions_internal("x0==0; (x0:=1)*; x0==1", "0", count, 5).unwrap();
+            assert!(!empty);
+            assert_eq!(traces.as_ref().map_or(0, Vec::len), count);
+            let (empty, traces) = analyze_expressions_internal("x0==0; (x0:=0)*; x0==1", "0", count, 5).unwrap();
+            assert!(empty);
+            assert!(traces.is_none());
+        }
+    }
 
     #[test]
     fn test_performance_10_bits() {

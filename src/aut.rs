@@ -1,3 +1,7 @@
+#[path = "query.rs"]
+mod query;
+pub use query::{PreparedQuery, QueryBuilder, QueryError, QueryNode, QueryOptions, QueryPacketSet, QueryProgram, QueryStats};
+
 use crate::expr::Expr;
 use crate::spp;
 use rustc_hash::FxHashMap;

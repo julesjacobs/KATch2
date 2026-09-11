@@ -111,6 +111,9 @@ impl std::hash::Hash for SPnode {
 }
 
 impl SPstore {
+    /// Number of fields in full-width packet sets belonging to this store.
+    pub fn num_vars(&self) -> u32 { self.num_vars }
+
     pub fn new(num_vars: Var) -> Self {
         // All primitive tests need quadratically many full-level prefix nodes.
         let capacity = (num_vars as usize).saturating_mul(num_vars as usize).clamp(16, 4096);
