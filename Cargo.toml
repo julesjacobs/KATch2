@@ -8,6 +8,7 @@ license = "MIT"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+rustc-hash = "2.1"
 rand = "0.9.0"
 clap = { version = "4.5.4", features = ["derive"] }
 walkdir = "2.5.0"
@@ -30,6 +31,7 @@ web-sys = { version = "0.3.69", features = [
 console_error_panic_hook = "0.1.7"
 serde-wasm-bindgen = "0.6.5"
 getrandom = { version = "0.3.2", features = ["wasm_js"] }
+hashbrown = { version = "0.17", default-features = false, features = ["inline-more"] }
 
 # Dependencies for non-WASM targets (e.g., your native binary that uses tokio)
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
@@ -40,3 +42,6 @@ tokio = { version = "1.36.0", default-features = false, features = ["macros", "r
 
 [dev-dependencies]
 katch2 = { path = ".", version = "0.1.0" }
+
+[profile.release]
+codegen-units = 1

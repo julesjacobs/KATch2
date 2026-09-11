@@ -174,10 +174,10 @@ impl Expr {
     pub fn num_fields(&self) -> u32 {
         match self {
             Expr::Zero | Expr::One | Expr::Top | Expr::Dup | Expr::End => 0,
-            Expr::Assign(field, _) | Expr::Test(field, _) => field + 1,
+            Expr::Assign(field, _) | Expr::Test(field, _) => field.checked_add(1).expect("Field count overflow"),
             Expr::VarAssign(_, _) | Expr::VarTest(_, _) | Expr::VarMatch(_, _) => 0, // Variables don't directly reference fields
             Expr::BitRangeAssign(_start, end, _) | Expr::BitRangeTest(_start, end, _) | 
-            Expr::BitRangeMatch(_start, end, _) => end + 1,
+            Expr::BitRangeMatch(_start, end, _) => *end,
             Expr::Union(e1, e2)
             | Expr::Intersect(e1, e2)
             | Expr::Xor(e1, e2)
@@ -188,7 +188,7 @@ impl Expr {
                 cond.num_fields().max(then_expr.num_fields()).max(else_expr.num_fields())
             }
             Expr::Let(_, def, body) => def.num_fields().max(body.num_fields()),
-            Expr::LetBitRange(_, _start, end, body) => (end + 1).max(body.num_fields()),
+            Expr::LetBitRange(_, _start, end, body) => (*end).max(body.num_fields()),
             Expr::Complement(e) | Expr::TestNegation(e) | Expr::Star(e) | Expr::LtlNext(e) => e.num_fields(),
             Expr::Var(_) => 0, // Variables don't directly reference fields
         }

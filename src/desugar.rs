@@ -43,11 +43,11 @@ impl DesugarEnv {
     /// Returns the actual field range in the packet
     pub fn compute_subrange(&self, alias: &str, sub_start: Field, sub_end: Field) -> Option<(Field, Field)> {
         if let Some((alias_start, alias_end)) = self.lookup_alias(alias) {
-            let actual_start = alias_start + sub_start;
-            let actual_end = alias_start + sub_end;
+            let actual_start = alias_start.checked_add(sub_start)?;
+            let actual_end = alias_start.checked_add(sub_end)?;
             
             // Bounds check
-            if actual_end <= alias_end {
+            if sub_start <= sub_end && actual_end <= alias_end {
                 Some((actual_start, actual_end))
             } else {
                 None // Sub-range exceeds alias bounds
@@ -88,7 +88,7 @@ impl std::error::Error for DesugarError {}
 
 /// Desugar an expression, eliminating TestNegation operators and bit range aliases
 /// This validates that TestNegation is only applied to test fragments
-/// and transforms it using De Morgan's laws
+/// and transforms it using Boolean identities. Neutral sequence operands are removed.
 pub fn desugar(expr: &Expr) -> Result<Exp, DesugarError> {
     let env = DesugarEnv::new();
     desugar_with_env(expr, &env)
@@ -109,7 +109,7 @@ fn desugar_with_env(expr: &Expr, env: &DesugarEnv) -> Result<Exp, DesugarError> 
         // Variable assignment/test - resolve alias from environment
         Expr::VarAssign(var, bits) => {
             if let Some((start, end)) = env.lookup_alias(var) {
-                let expected_bits = (end - start) as usize;
+                let expected_bits = bit_range_width(start, end)?;
                 
                 // Check bit width compatibility
                 if bits.len() > expected_bits {
@@ -140,7 +140,7 @@ fn desugar_with_env(expr: &Expr, env: &DesugarEnv) -> Result<Exp, DesugarError> 
         }
         Expr::VarTest(var, bits) => {
             if let Some((start, end)) = env.lookup_alias(var) {
-                let expected_bits = (end - start) as usize;
+                let expected_bits = bit_range_width(start, end)?;
                 
                 // Check bit width compatibility
                 if bits.len() > expected_bits {
@@ -210,7 +210,11 @@ fn desugar_with_env(expr: &Expr, env: &DesugarEnv) -> Result<Exp, DesugarError> 
         Expr::Sequence(e1, e2) => {
             let d1 = desugar_with_env(e1, env)?;
             let d2 = desugar_with_env(e2, env)?;
-            Ok(Expr::sequence(d1, d2))
+            Ok(match (&*d1, &*d2) {
+                (Expr::One, _) => d2,
+                (_, Expr::One) => d1,
+                _ => Expr::sequence(d1, d2),
+            })
         }
         Expr::Complement(e) => {
             let d = desugar_with_env(e, env)?;
@@ -348,20 +352,11 @@ fn desugar_test_negation(expr: &Expr) -> Result<Exp, DesugarError> {
             Ok(Expr::union(n1, n2))
         }
         
-        // !(e1 ^ e2) = (!e1 & !e2) + (e1 & e2)
-        // This is because xor is true when exactly one is true
-        // So negation is true when both are false or both are true
+        // Subtract from the identity relation: general trace complement is different.
         Expr::Xor(e1, e2) => {
-            let n1 = desugar_test_negation(e1)?;
-            let n2 = desugar_test_negation(e2)?;
-            let d1 = desugar(e1)?;
-            let d2 = desugar(e2)?;
-            Ok(Expr::union(
-                Expr::intersect(n1, n2),
-                Expr::intersect(d1, d2)
-            ))
+            Ok(Expr::difference(Expr::one(), Expr::xor(e1.clone(), e2.clone())))
         }
-        
+
         // !(e1 - e2) = !e1 + e2
         // This is because e1 - e2 means "e1 and not e2"
         // So !(e1 - e2) = !(e1 & !e2) = !e1 + e2
@@ -414,9 +409,15 @@ fn desugar_test_negation(expr: &Expr) -> Result<Exp, DesugarError> {
     }
 }
 
+fn bit_range_width(start: u32, end: u32) -> Result<usize, DesugarError> {
+    end.checked_sub(start).map(|n| n as usize).ok_or_else(|| DesugarError {
+        message: format!("Invalid bit range [{start}, {end})"),
+    })
+}
+
 /// Desugar bit range assignment to sequence of individual assignments
 fn desugar_bit_range_assign(start: u32, end: u32, bits: &[bool]) -> Result<Exp, DesugarError> {
-    if bits.len() != (end - start) as usize {
+    if bits.len() != bit_range_width(start, end)? {
         return Err(DesugarError {
             message: format!("Bit range [{}, {}) expects {} bits, but got {}", 
                            start, end, end - start, bits.len())
@@ -446,7 +447,7 @@ fn desugar_bit_range_assign(start: u32, end: u32, bits: &[bool]) -> Result<Exp, 
 
 /// Desugar bit range test to conjunction of individual tests
 fn desugar_bit_range_test(start: u32, end: u32, bits: &[bool]) -> Result<Exp, DesugarError> {
-    if bits.len() != (end - start) as usize {
+    if bits.len() != bit_range_width(start, end)? {
         return Err(DesugarError {
             message: format!("Bit range [{}, {}) expects {} bits, but got {}", 
                            start, end, end - start, bits.len())
@@ -476,15 +477,15 @@ fn desugar_bit_range_test(start: u32, end: u32, bits: &[bool]) -> Result<Exp, De
 
 /// Desugar pattern matching to disjunction of tests
 fn desugar_pattern_match(start: u32, end: u32, pattern: &Pattern) -> Result<Exp, DesugarError> {
-    let width = (end - start) as usize;
+    let width = bit_range_width(start, end)?;
     
     match pattern {
         Pattern::Exact(bits) => {
             // Exact match is just a regular bit range test
             // Pad with leading zeros if needed
             if bits.len() < width {
-                let mut padded = vec![false; width - bits.len()];
-                padded.extend_from_slice(bits);
+                let mut padded = bits.clone();
+                padded.resize(width, false);
                 desugar_bit_range_test(start, end, &padded)
             } else if bits.len() > width {
                 return Err(DesugarError {
@@ -554,37 +555,19 @@ fn desugar_pattern_match(start: u32, end: u32, pattern: &Pattern) -> Result<Exp,
         }
         
         Pattern::IpRange { start: range_start, end: range_end } => {
-            // IP range: use efficient bound tests
-            // Pad patterns if needed
-            let padded_start;
-            let padded_end;
-            let (start_bits, end_bits) = if range_start.len() < width && range_end.len() < width {
-                // Both need padding
-                padded_start = {
-                    let mut v = vec![false; width - range_start.len()];
-                    v.extend_from_slice(range_start);
-                    v
-                };
-                padded_end = {
-                    let mut v = vec![false; width - range_end.len()];
-                    v.extend_from_slice(range_end);
-                    v
-                };
-                (&padded_start[..], &padded_end[..])
-            } else if range_start.len() == width && range_end.len() == width {
-                // No padding needed
-                (range_start.as_slice(), range_end.as_slice())
-            } else {
-                // Mismatched or too large
+            if range_start.len() > width || range_end.len() > width || width > 128 {
                 return Err(DesugarError {
-                    message: format!("IP range pattern expects {} bits but got start={} bits, end={} bits",
-                                   width, range_start.len(), range_end.len())
+                    message: format!("Invalid IP range widths: field={width}, start={}, end={}", range_start.len(), range_end.len()),
                 });
-            };
-            
+            }
+            let mut start_bits = range_start.clone();
+            let mut end_bits = range_end.clone();
+            start_bits.resize(width, false);
+            end_bits.resize(width, false);
+
             // Check if range is valid
-            let start_val = bits_to_u128(start_bits)?;
-            let end_val = bits_to_u128(end_bits)?;
+            let start_val = bits_to_u128(&start_bits)?;
+            let end_val = bits_to_u128(&end_bits)?;
             
             if start_val > end_val {
                 return Err(DesugarError {
@@ -594,11 +577,11 @@ fn desugar_pattern_match(start: u32, end: u32, pattern: &Pattern) -> Result<Exp,
             
             // Special case: single value
             if start_val == end_val {
-                return desugar_bit_range_test(start, end, range_start);
+                return desugar_bit_range_test(start, end, &start_bits);
             }
             
             // Special case: full range [0, max]
-            let max_val = (1u128 << width) - 1;
+            let max_val = if width == 128 { u128::MAX } else { (1u128 << width) - 1 };
             if start_val == 0 && end_val == max_val {
                 return Ok(Expr::one());  // Always true
             }
@@ -606,14 +589,14 @@ fn desugar_pattern_match(start: u32, end: u32, pattern: &Pattern) -> Result<Exp,
             // Use efficient bound tests
             if start_val == 0 {
                 // Only upper bound test needed
-                Ok(desugar_upper_bound_test(start, end_bits))
+                Ok(desugar_upper_bound_test(start, &end_bits))
             } else if end_val == max_val {
                 // Only lower bound test needed
-                Ok(desugar_lower_bound_test(start, start_bits))
+                Ok(desugar_lower_bound_test(start, &start_bits))
             } else {
                 // Need both bounds: x >= start AND x <= end
-                let lower_test = desugar_lower_bound_test(start, start_bits);
-                let upper_test = desugar_upper_bound_test(start, end_bits);
+                let lower_test = desugar_lower_bound_test(start, &start_bits);
+                let upper_test = desugar_upper_bound_test(start, &end_bits);
                 Ok(Expr::intersect(lower_test, upper_test))
             }
         }
@@ -1435,12 +1418,8 @@ mod tests {
         
         let desugared = desugar(&parsed[0]).unwrap();
         
-        // Expected: 1 ; desugared bit range test for x[0..3] == 5 (0b101)
-        let bits = vec![true, false, true]; // LSB first
-        let expected = Expr::sequence(
-            Expr::one(),
-            desugar_bit_range_test(0, 3, &bits).unwrap()
-        );
+        let bits = vec![true, false, true];
+        let expected = desugar_bit_range_test(0, 3, &bits).unwrap();
         
         assert_eq!(desugared, expected);
     }

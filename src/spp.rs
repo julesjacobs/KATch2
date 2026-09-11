@@ -5,9 +5,10 @@
 
 use rand::seq::SliceRandom;
 
-use crate::sp::{SPnode, SPstore, SP};
+use crate::sp::{pair, SPnode, SPstore, SP};
 #[allow(non_snake_case)]
-use std::collections::HashMap;
+use rustc_hash::{FxBuildHasher, FxHashMap as HashMap};
+use std::hash::BuildHasher;
 
 /// We use indices into the SPP store to represent SPPs.
 /// The zero SPP is represented by SPP(0) and the one SPP is represented by SPP(1).
@@ -37,37 +38,50 @@ impl std::fmt::Display for SPP {
 
 pub type Var = u32;
 
+const EMPTY: u8 = 1;
+const IDENTITY: u8 = 2;
+const UNIVERSAL: u8 = 4;
+
 /// The store of SPPs. (store = arena + memo tables)
 #[derive(Debug)]
 pub struct SPPstore {
     num_vars: Var, // Idea: it's ok to pick this larger than you need. Hash consing & memoization will handle it
     nodes: Vec<SPPnode>, // the arena
-    hc: HashMap<SPPnode, SPP>,
+    hc: hashbrown::HashTable<SPP>,
     pub zero: SPP,
     pub one: SPP,
     pub top: SPP,
 
     // Memo tables for the operations
-    union_memo: HashMap<(SPP, SPP), SPP>,
-    intersect_memo: HashMap<(SPP, SPP), SPP>,
-    xor_memo: HashMap<(SPP, SPP), SPP>,
-    difference_memo: HashMap<(SPP, SPP), SPP>,
-    sequence_memo: HashMap<(SPP, SPP), SPP>,
+    union_memo: HashMap<u64, SPP>,
+    intersect_memo: HashMap<u64, SPP>,
+    xor_memo: HashMap<u64, SPP>,
+    difference_memo: HashMap<u64, SPP>,
+    sequence_memo: HashMap<u64, SPP>,
     star_memo: HashMap<SPP, SPP>,
     complement_memo: HashMap<SPP, SPP>,
     // branch_memo: HashMap<(Var, SPP, SPP, SPP, SPP), SPP>,
-    test_memo: HashMap<(Var, bool), SPP>,
-    assign_memo: HashMap<(Var, bool), SPP>,
+    test_memo: Vec<[Option<SPP>; 2]>,
+    assign_memo: Vec<[Option<SPP>; 2]>,
     flip_memo: HashMap<SPP, SPP>,
-    is_zero_memo: HashMap<SPP, bool>,
+    properties: Vec<u8>,
+    depths: Vec<u32>,
+    zeros: Vec<SPP>,
+    ones: Vec<SPP>,
+    tops: Vec<SPP>,
 
     pub sp: SPstore,
     fwd_memo: HashMap<SPP, SP>,
     ifwd_memo: HashMap<SP, SPP>,
+    bwd_memo: HashMap<SPP, SP>,
+    push_memo: HashMap<u64, SP>,
+    pull_memo: HashMap<u64, SP>,
+    has_image_memo: HashMap<u64, bool>,
+    diagonal_memo: HashMap<SP, SPP>,
 }
 
 /// A node in the SPP store. Has four children, one for each combination of the two variables.
-#[derive(Debug, Eq, Hash, PartialEq, Clone, Copy)]
+#[derive(Debug, Eq, PartialEq, Clone, Copy)]
 pub struct SPPnode {
     pub x00: SPP,
     pub x01: SPP,
@@ -75,62 +89,47 @@ pub struct SPPnode {
     pub x11: SPP,
 }
 
+impl std::hash::Hash for SPPnode {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        state.write_u64(pair(self.x00.0, self.x01.0));
+        state.write_u64(pair(self.x10.0, self.x11.0));
+    }
+}
+
 impl SPPstore {
     pub fn new(num_vars: Var) -> Self {
         let mut store = Self {
             num_vars,
             nodes: vec![],
-            hc: HashMap::new(),
+            hc: hashbrown::HashTable::new(),
             zero: SPP::new(0),
             one: SPP::new(0),
             top: SPP::new(0), // Dummy values, will be set later
-            // We prefill the memo tables with the results of the trivial cases
-            // Need to benchmark if this is actually faster than checking these cases in the operations
-            union_memo: HashMap::from([
-                ((SPP::new(0), SPP::new(0)), SPP::new(0)),
-                ((SPP::new(0), SPP::new(1)), SPP::new(1)),
-                ((SPP::new(1), SPP::new(0)), SPP::new(1)),
-                ((SPP::new(1), SPP::new(1)), SPP::new(1)),
-            ]),
-            intersect_memo: HashMap::from([
-                ((SPP::new(0), SPP::new(0)), SPP::new(0)),
-                ((SPP::new(0), SPP::new(1)), SPP::new(0)),
-                ((SPP::new(1), SPP::new(0)), SPP::new(0)),
-                ((SPP::new(1), SPP::new(1)), SPP::new(1)),
-            ]),
-            xor_memo: HashMap::from([
-                ((SPP::new(0), SPP::new(0)), SPP::new(0)),
-                ((SPP::new(0), SPP::new(1)), SPP::new(1)),
-                ((SPP::new(1), SPP::new(0)), SPP::new(1)),
-                ((SPP::new(1), SPP::new(1)), SPP::new(0)),
-            ]),
-            difference_memo: HashMap::from([
-                ((SPP::new(0), SPP::new(0)), SPP::new(0)),
-                ((SPP::new(0), SPP::new(1)), SPP::new(0)),
-                ((SPP::new(1), SPP::new(0)), SPP::new(1)),
-                ((SPP::new(1), SPP::new(1)), SPP::new(0)),
-            ]),
-            sequence_memo: HashMap::from([
-                ((SPP::new(0), SPP::new(0)), SPP::new(0)),
-                ((SPP::new(0), SPP::new(1)), SPP::new(0)),
-                ((SPP::new(1), SPP::new(0)), SPP::new(0)),
-                ((SPP::new(1), SPP::new(1)), SPP::new(1)),
-            ]),
-            star_memo: HashMap::from([(SPP::new(0), SPP::new(1)), (SPP::new(1), SPP::new(1))]),
-            complement_memo: HashMap::from([
-                (SPP::new(0), SPP::new(1)),
-                (SPP::new(1), SPP::new(0)),
-            ]),
-            // branch_memo: HashMap::new(),
-            test_memo: HashMap::new(),
-            assign_memo: HashMap::new(),
-            flip_memo: HashMap::from([(SPP::new(0), SPP::new(0)), (SPP::new(1), SPP::new(1))]),
-            is_zero_memo: HashMap::from([(SPP::new(0), true), (SPP::new(1), false)]),
+            union_memo: HashMap::default(),
+            intersect_memo: HashMap::default(),
+            xor_memo: HashMap::default(),
+            difference_memo: HashMap::default(),
+            sequence_memo: HashMap::default(),
+            star_memo: HashMap::default(),
+            complement_memo: HashMap::default(),
+            // branch_memo: HashMap::default(),
+            test_memo: vec![[None; 2]; num_vars as usize],
+            assign_memo: vec![[None; 2]; num_vars as usize],
+            flip_memo: HashMap::default(),
+            properties: vec![1, 6],
+            depths: vec![0, 0],
+            zeros: vec![SPP(0)],
+            ones: vec![SPP(1)],
+            tops: vec![SPP(1)],
             sp: SPstore::new(num_vars),
 
-            // in the memo tables, we only want the base cases for 0 and 1
-            fwd_memo: HashMap::from([(SPP::new(0), SP::new(0)), (SPP::new(1), SP::new(1))]),
-            ifwd_memo: HashMap::from([(SP::new(0), SPP::new(0)), (SP::new(1), SPP::new(1))]),
+            fwd_memo: HashMap::default(),
+            ifwd_memo: HashMap::default(),
+            has_image_memo: HashMap::default(),
+            diagonal_memo: HashMap::default(),
+            bwd_memo: HashMap::default(),
+            push_memo: HashMap::default(),
+            pull_memo: HashMap::default(),
         };
         store.zero = store.zero();
         store.one = store.one();
@@ -157,6 +156,7 @@ impl SPPstore {
 
     /// Computes the possible output packet set from applying the `SPP`
     pub fn fwd(&mut self, spp: SPP) -> SP {
+        if spp.0 < 2 { return SP(spp.0); }
         // Check the memo table to see if fwd(spp) already exists
         if let Some(&result) = self.fwd_memo.get(&spp) {
             return result;
@@ -181,13 +181,26 @@ impl SPPstore {
     /// Computes the set of packets, which when input to the `spp`,
     /// produce some non-empty set of packets as output
     pub fn bwd(&mut self, spp: SPP) -> SP {
-        let flipped_spp = self.flip(spp);
-        self.fwd(flipped_spp)
+        if spp.0 < 2 { return SP(spp.0); }
+        if let Some(&result) = self.bwd_memo.get(&spp) {
+            return result;
+        }
+        let SPPnode { x00, x01, x10, x11 } = self.get(spp);
+        let b00 = self.bwd(x00);
+        let b01 = self.bwd(x01);
+        let b10 = self.bwd(x10);
+        let b11 = self.bwd(x11);
+        let x0 = self.sp.union(b00, b01);
+        let x1 = self.sp.union(b10, b11);
+        let result = self.sp.mk(x0, x1);
+        self.bwd_memo.insert(spp, result);
+        result
     }
 
     /// Computes the SPP corresponding to the `sp` returned by `fwd`.     
     /// - `ifwd` is the right inverse of `fwd`, i.e. `fwd ∘ ifwd = id_SP`
     pub fn ifwd(&mut self, sp: SP) -> SPP {
+        if sp.0 < 2 { return SPP(sp.0); }
         // Check the memo table to see if ifwd(spp) already exists
         if let Some(&result) = self.ifwd_memo.get(&sp) {
             return result;
@@ -213,48 +226,77 @@ impl SPPstore {
     pub fn mk(&mut self, x00: SPP, x01: SPP, x10: SPP, x11: SPP) -> SPP {
         let node = SPPnode { x00, x01, x10, x11 };
 
-        // Check if the node is already in the store using the hc table
-        if let Some(spp) = self.hc.get(&node) {
-            return *spp;
-        }
-
-        // Add the node to the store
-        let spp = SPP::new(self.nodes.len() as u32 + 2);
-        self.nodes.push(node);
-        self.hc.insert(node, spp);
-        spp
+        *self.hc.entry(
+            FxBuildHasher.hash_one(node),
+            |id| self.nodes[id.as_usize() - 2] == node,
+            |id| FxBuildHasher.hash_one(self.nodes[id.as_usize() - 2]),
+        ).or_insert_with(|| {
+            let id = u32::try_from(self.nodes.len()).expect("node handle overflow").checked_add(2).expect("node handle overflow");
+            let result = SPP::new(id);
+            let child_depth = self.depths[x00.as_usize()];
+            debug_assert_eq!(child_depth, self.depths[x01.as_usize()]);
+            debug_assert_eq!(child_depth, self.depths[x10.as_usize()]);
+            debug_assert_eq!(child_depth, self.depths[x11.as_usize()]);
+            self.depths.push(child_depth.checked_add(1).expect("node depth overflow"));
+            let p00 = self.properties[x00.as_usize()];
+            let p01 = self.properties[x01.as_usize()];
+            let p10 = self.properties[x10.as_usize()];
+            let p11 = self.properties[x11.as_usize()];
+            let mut properties = (p00 & p01 & p10 & p11) & (EMPTY | UNIVERSAL);
+            if p00 & p11 & IDENTITY != 0 && p01 & p10 & EMPTY != 0 {
+                properties |= IDENTITY;
+            }
+            self.properties.push(properties);
+            self.nodes.push(node);
+            result
+        }).get()
     }
 
-    fn zero(&mut self) -> SPP {
-        // We must construct a zero SPP of the right depth
-        let mut spp = SPP::new(0);
-        for _ in 0..self.num_vars {
-            spp = self.mk(spp, spp, spp, spp);
+    pub(crate) fn depth(&self, value: SPP) -> u32 { self.depths[value.as_usize()] }
+
+    pub(crate) fn zero_at_depth(&mut self, depth: u32) -> SPP {
+        while self.zeros.len() <= depth as usize {
+            let z = *self.zeros.last().unwrap();
+            let next = self.mk(z, z, z, z);
+            self.zeros.push(next);
         }
-        spp
+        self.zeros[depth as usize]
     }
-    fn top(&mut self) -> SPP {
-        // We must construct a top SPP of the right depth
-        let mut spp = SPP::new(1);
-        for _ in 0..self.num_vars {
-            spp = self.mk(spp, spp, spp, spp);
+
+    pub(crate) fn one_at_depth(&mut self, depth: u32) -> SPP {
+        while self.ones.len() <= depth as usize {
+            let one = *self.ones.last().unwrap();
+            let zero = self.zero_at_depth(self.ones.len() as u32 - 1);
+            let next = self.mk(one, zero, zero, one);
+            self.ones.push(next);
         }
-        spp
+        self.ones[depth as usize]
     }
-    fn one(&mut self) -> SPP {
-        // We must construct a one SPP of the right depth
-        let mut spp_one = SPP::new(1);
-        let mut spp_zero = SPP::new(0);
-        for _ in 0..self.num_vars {
-            spp_one = self.mk(spp_one, spp_zero, spp_zero, spp_one);
-            spp_zero = self.mk(spp_zero, spp_zero, spp_zero, spp_zero);
+
+    fn zero(&mut self) -> SPP { self.zero_at_depth(self.num_vars) }
+    fn one(&mut self) -> SPP { self.one_at_depth(self.num_vars) }
+
+    fn top_at_depth(&mut self, depth: u32) -> SPP {
+        while self.tops.len() <= depth as usize {
+            let top = *self.tops.last().unwrap();
+            let next = self.mk(top, top, top, top);
+            self.tops.push(next);
         }
-        spp_one
+        self.tops[depth as usize]
     }
+
+    fn top(&mut self) -> SPP { self.top_at_depth(self.num_vars) }
 
     pub fn union(&mut self, a: SPP, b: SPP) -> SPP {
+        debug_assert_eq!(self.depth(a), self.depth(b));
+        if a == b { return a; }
+        let pa = self.properties[a.as_usize()];
+        let pb = self.properties[b.as_usize()];
+        if pa & EMPTY != 0 || pb & UNIVERSAL != 0 { return b; }
+        if pb & EMPTY != 0 || pa & UNIVERSAL != 0 { return a; }
+        let (a, b) = if a.0 > b.0 { (b, a) } else { (a, b) };
         // First, check the memo table
-        if let Some(&result) = self.union_memo.get(&(a, b)) {
+        if let Some(&result) = self.union_memo.get(&pair(a.0, b.0)) {
             return result;
         }
         // We now know that we've got a real node, so we don't need to handle 0 or 1 cases here
@@ -265,17 +307,22 @@ impl SPPstore {
         let x10 = self.union(a_node.x10, b_node.x10);
         let x11 = self.union(a_node.x11, b_node.x11);
         let res = self.mk(x00, x01, x10, x11);
-        self.union_memo.insert((a, b), res);
+        self.union_memo.insert(pair(a.0, b.0), res);
         res
     }
 
     pub fn intersect(&mut self, a: SPP, b: SPP) -> SPP {
+        debug_assert_eq!(self.depth(a), self.depth(b));
+        if a == b { return a; }
+        let pa = self.properties[a.as_usize()];
+        let pb = self.properties[b.as_usize()];
+        if pa & EMPTY != 0 || pb & UNIVERSAL != 0 { return a; }
+        if pb & EMPTY != 0 || pa & UNIVERSAL != 0 { return b; }
+        let (a, b) = if a.0 > b.0 { (b, a) } else { (a, b) };
         // First, check the memo table
-        if let Some(&result) = self.intersect_memo.get(&(a, b)) {
+        if let Some(&result) = self.intersect_memo.get(&pair(a.0, b.0)) {
             return result;
         }
-        // Because we prefilled the memo with base cases,
-        // we now know that we've got a real node, so we don't need to handle 0 or 1 cases here.
         let a_node = self.get(a);
         let b_node = self.get(b);
         let x00 = self.intersect(a_node.x00, b_node.x00);
@@ -283,17 +330,24 @@ impl SPPstore {
         let x10 = self.intersect(a_node.x10, b_node.x10);
         let x11 = self.intersect(a_node.x11, b_node.x11);
         let res = self.mk(x00, x01, x10, x11);
-        self.intersect_memo.insert((a, b), res);
+        self.intersect_memo.insert(pair(a.0, b.0), res);
         res
     }
 
     pub fn xor(&mut self, a: SPP, b: SPP) -> SPP {
+        if a == b { return self.zero_at_depth(self.depth(a)); }
+        debug_assert_eq!(self.depth(a), self.depth(b));
+        let pa = self.properties[a.as_usize()];
+        let pb = self.properties[b.as_usize()];
+        if pa & EMPTY != 0 { return b; }
+        if pb & EMPTY != 0 { return a; }
+        if pa & UNIVERSAL != 0 { return self.complement(b); }
+        if pb & UNIVERSAL != 0 { return self.complement(a); }
+        let (a, b) = if a.0 > b.0 { (b, a) } else { (a, b) };
         // First, check the memo table
-        if let Some(&result) = self.xor_memo.get(&(a, b)) {
+        if let Some(&result) = self.xor_memo.get(&pair(a.0, b.0)) {
             return result;
         }
-        // Because we prefilled the memo with base cases,
-        // we now know that we've got a real node, so we don't need to handle 0 or 1 cases here.
         let a_node = self.get(a);
         let b_node = self.get(b);
         let x00 = self.xor(a_node.x00, b_node.x00);
@@ -301,17 +355,21 @@ impl SPPstore {
         let x10 = self.xor(a_node.x10, b_node.x10);
         let x11 = self.xor(a_node.x11, b_node.x11);
         let res = self.mk(x00, x01, x10, x11);
-        self.xor_memo.insert((a, b), res);
+        self.xor_memo.insert(pair(a.0, b.0), res);
         res
     }
 
     pub fn difference(&mut self, a: SPP, b: SPP) -> SPP {
+        if a == b { return self.zero_at_depth(self.depth(a)); }
+        debug_assert_eq!(self.depth(a), self.depth(b));
+        let pa = self.properties[a.as_usize()];
+        let pb = self.properties[b.as_usize()];
+        if pa & EMPTY != 0 || pb & EMPTY != 0 { return a; }
+        if pa & UNIVERSAL != 0 { return self.complement(b); }
         // First, check the memo table
-        if let Some(&result) = self.difference_memo.get(&(a, b)) {
+        if let Some(&result) = self.difference_memo.get(&pair(a.0, b.0)) {
             return result;
         }
-        // Because we prefilled the memo with base cases,
-        // we now know that we've got a real node, so we don't need to handle 0 or 1 cases here.
         // Difference a - b is defined as a & !b.
         // We could implement it that way, but recursive definition is simpler here.
         let a_node = self.get(a);
@@ -321,17 +379,16 @@ impl SPPstore {
         let x10 = self.difference(a_node.x10, b_node.x10);
         let x11 = self.difference(a_node.x11, b_node.x11);
         let res = self.mk(x00, x01, x10, x11);
-        self.difference_memo.insert((a, b), res); // Insert result into memo table
+        self.difference_memo.insert(pair(a.0, b.0), res); // Insert result into memo table
         res
     }
 
     pub fn complement(&mut self, a: SPP) -> SPP {
+        if a.0 < 2 { return SPP(1 - a.0); }
         // First, check the memo table
         if let Some(&result) = self.complement_memo.get(&a) {
             return result;
         }
-        // Because we prefilled the memo with base cases,
-        // we now know that we've got a real node, so we don't need to handle 0 or 1 cases here.
         let node = self.get(a);
         let x00 = self.complement(node.x00);
         let x01 = self.complement(node.x01);
@@ -344,25 +401,17 @@ impl SPPstore {
 
     /// Checks if an SPP is zero (represents the empty relation)
     pub fn is_zero(&mut self, spp: SPP) -> bool {
-        // First, check the memo table
-        if let Some(&result) = self.is_zero_memo.get(&spp) {
-            return result;
-        }
-        // Because we prefilled the memo with base cases,
-        // we now know that we've got a real node, so we don't need to handle 0 or 1 cases here.
-        let node = self.get(spp);
-        let x00_is_zero = self.is_zero(node.x00);
-        let x01_is_zero = self.is_zero(node.x01);
-        let x10_is_zero = self.is_zero(node.x10);
-        let x11_is_zero = self.is_zero(node.x11);
-        let result = x00_is_zero && x01_is_zero && x10_is_zero && x11_is_zero;
-        self.is_zero_memo.insert(spp, result);
-        result
+        self.properties[spp.as_usize()] & EMPTY != 0
     }
 
     pub fn sequence(&mut self, a: SPP, b: SPP) -> SPP {
+        debug_assert_eq!(self.depth(a), self.depth(b));
+        let pa = self.properties[a.as_usize()];
+        let pb = self.properties[b.as_usize()];
+        if pa & EMPTY != 0 || pb & IDENTITY != 0 { return a; }
+        if pb & EMPTY != 0 || pa & IDENTITY != 0 { return b; }
         // First, check the memo table
-        if let Some(&result) = self.sequence_memo.get(&(a, b)) {
+        if let Some(&result) = self.sequence_memo.get(&pair(a.0, b.0)) {
             return result;
         }
         // We now know that we've got a real node, so we don't need to handle 0 or 1 cases here
@@ -389,7 +438,7 @@ impl SPPstore {
         let x10 = self.union(a10b00, a11b10);
         let x11 = self.union(a10b01, a11b11);
         let res = self.mk(x00, x01, x10, x11);
-        self.sequence_memo.insert((a, b), res);
+        self.sequence_memo.insert(pair(a.0, b.0), res);
         res
     }
 
@@ -397,10 +446,28 @@ impl SPPstore {
     /// The new SP contains all packets that are produced when the `spp`
     /// is applied on the `sp`.
     pub fn push(&mut self, sp: SP, spp: SPP) -> SP {
-        // Here we compute `fwd(ifwd(sp); spp)`
-        let ifwd_sp: SPP = self.ifwd(sp);
-        let seq_ifwd_sp_spp = self.sequence(ifwd_sp, spp);
-        self.fwd(seq_ifwd_sp_spp)
+        if sp.0 < 2 && spp.0 < 2 { return SP(sp.0 & spp.0); }
+        if self.sp.is_zero(sp) || self.properties[spp.as_usize()] & IDENTITY != 0 {
+            return sp;
+        }
+        if let Some(&result) = self.push_memo.get(&pair(sp.0, spp.0)) {
+            return result;
+        }
+        let result = if self.sp.is_universal(sp) {
+            self.fwd(spp)
+        } else {
+            let p = self.sp.get(sp);
+            let r = self.get(spp);
+            let a = self.push(p.x0, r.x00);
+            let b = self.push(p.x1, r.x10);
+            let c = self.push(p.x0, r.x01);
+            let d = self.push(p.x1, r.x11);
+            let x0 = self.sp.union(a, b);
+            let x1 = self.sp.union(c, d);
+            self.sp.mk(x0, x1)
+        };
+        self.push_memo.insert(pair(sp.0, spp.0), result);
+        result
     }
 
     /// A concrete packet `α ∈ pull(spp, sp)` iff running `spp` on `α`
@@ -408,13 +475,61 @@ impl SPPstore {
     /// In other words, `pull` simulates the backward transition of an SP
     /// over the SP (i.e. `pull` simulates the effect of an SPP in reverse).
     pub fn pull(&mut self, spp: SPP, sp: SP) -> SP {
-        // Here we compute `bwd(spp; ibwd(sp))`
-        let ibwd_sp: SPP = self.ibwd(sp);
-        let seq_spp_ibwd_sp = self.sequence(spp, ibwd_sp);
-        self.bwd(seq_spp_ibwd_sp)
+        if sp.0 < 2 && spp.0 < 2 { return SP(sp.0 & spp.0); }
+        if self.sp.is_zero(sp) || self.properties[spp.as_usize()] & IDENTITY != 0 {
+            return sp;
+        }
+        if let Some(&result) = self.pull_memo.get(&pair(spp.0, sp.0)) {
+            return result;
+        }
+        let result = if self.sp.is_universal(sp) {
+            self.bwd(spp)
+        } else {
+            let p = self.sp.get(sp);
+            let r = self.get(spp);
+            let a = self.pull(r.x00, p.x0);
+            let b = self.pull(r.x10, p.x0);
+            let c = self.pull(r.x01, p.x1);
+            let d = self.pull(r.x11, p.x1);
+            let x0 = self.sp.union(a, c);
+            let x1 = self.sp.union(b, d);
+            self.sp.mk(x0, x1)
+        };
+        self.pull_memo.insert(pair(spp.0, sp.0), result);
+        result
+    }
+
+    /// The filter relation {(packet, packet) | packet is in predicate}.
+    pub fn diagonal(&mut self, predicate: SP) -> SPP {
+        if predicate.0 < 2 { return SPP(predicate.0); }
+        if let Some(&result) = self.diagonal_memo.get(&predicate) { return result; }
+        let p = self.sp.get(predicate);
+        let x0 = self.diagonal(p.x0);
+        let x1 = self.diagonal(p.x1);
+        let zero = self.zero_at_depth(self.sp.depth(predicate) - 1);
+        let result = self.mk(x0, zero, zero, x1);
+        self.diagonal_memo.insert(predicate, result);
+        result
+    }
+
+    pub fn has_image(&mut self, input: SP, relation: SPP) -> bool {
+        if self.sp.is_zero(input) || self.is_zero(relation) { return false; }
+        if self.sp.is_universal(input) || self.properties[relation.as_usize()] & (IDENTITY | UNIVERSAL) != 0 {
+            return true;
+        }
+        if let Some(&result) = self.has_image_memo.get(&pair(input.0, relation.0)) { return result; }
+        let p = self.sp.get(input);
+        let r = self.get(relation);
+        let result = self.has_image(p.x0, r.x00) || self.has_image(p.x0, r.x01)
+            || self.has_image(p.x1, r.x10) || self.has_image(p.x1, r.x11);
+        self.has_image_memo.insert(pair(input.0, relation.0), result);
+        result
     }
 
     pub fn star(&mut self, x: SPP) -> SPP {
+        let properties = self.properties[x.as_usize()];
+        if properties & EMPTY != 0 { return self.one_at_depth(self.depth(x)); }
+        if properties & (IDENTITY | UNIVERSAL) != 0 { return x; }
         // First, check the memo table
         if let Some(&result) = self.star_memo.get(&x) {
             return result;
@@ -443,7 +558,8 @@ impl SPPstore {
     }
 
     pub fn test(&mut self, var: Var, value: bool) -> SPP {
-        if let Some(&result) = self.test_memo.get(&(var, value)) {
+        assert!(var < self.num_vars);
+        if let Some(result) = self.test_memo[var as usize][value as usize] {
             return result;
         }
         let mut res = SPP::new(1);
@@ -460,12 +576,13 @@ impl SPPstore {
             }
             zero = self.mk(zero, zero, zero, zero);
         }
-        self.test_memo.insert((var, value), res);
+        self.test_memo[var as usize][value as usize] = Some(res);
         res
     }
 
     pub fn assign(&mut self, var: Var, value: bool) -> SPP {
-        if let Some(&result) = self.assign_memo.get(&(var, value)) {
+        assert!(var < self.num_vars);
+        if let Some(result) = self.assign_memo[var as usize][value as usize] {
             return result;
         }
         let mut res = SPP::new(1);
@@ -482,7 +599,7 @@ impl SPPstore {
             }
             zero = self.mk(zero, zero, zero, zero);
         }
-        self.assign_memo.insert((var, value), res);
+        self.assign_memo[var as usize][value as usize] = Some(res);
         res
     }
 
@@ -490,16 +607,19 @@ impl SPPstore {
     /// We give the answer as an SPP instead of an SP for convenience.
     /// **Note**: this method has been deprecated in favor of `fwd`
     pub fn naive_forward(&mut self, spp: SPP) -> SPP {
-        self.sequence(self.top, spp)
+        let top = self.top_at_depth(self.depth(spp));
+        self.sequence(top, spp)
     }
 
     /// Computes all packets that can be input to this SPP.
     pub fn backward(&mut self, spp: SPP) -> SPP {
-        self.sequence(spp, self.top)
+        let top = self.top_at_depth(self.depth(spp));
+        self.sequence(spp, top)
     }
 
     /// Flips the relation represented by this SPP.
     pub fn flip(&mut self, spp: SPP) -> SPP {
+        if spp.0 < 2 { return SPP(spp.0); }
         if let Some(&result) = self.flip_memo.get(&spp) {
             return result;
         }
@@ -847,5 +967,26 @@ mod tests {
             // An SPP is zero if it equals the zero SPP
             assert_eq!(is_zero_result, spp == s.zero);
         }
+    }
+}
+
+#[cfg(test)]
+mod image_allocation_tests {
+    use super::*;
+
+    #[test]
+    fn images_and_projections_create_no_relation_nodes() {
+        let mut m = SPPstore::new(12);
+        let assign = m.assign(3, true);
+        let test = m.test(7, false);
+        let relation = m.union(assign, test);
+        let input = m.sp.test(0, true);
+        let before = m.nodes.len();
+        m.push(input, relation);
+        m.pull(relation, input);
+        m.fwd(relation);
+        m.bwd(relation);
+        m.has_image(input, relation);
+        assert_eq!(m.nodes.len(), before);
     }
 }

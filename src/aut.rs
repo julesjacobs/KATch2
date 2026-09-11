@@ -1,5 +1,6 @@
 use crate::expr::Expr;
 use crate::spp;
+use rustc_hash::FxHashMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
@@ -49,28 +50,45 @@ impl ST {
     }
 }
 
+#[derive(Clone, Copy)]
+enum Compiled {
+    Predicate(crate::sp::SP),
+    Relation(spp::SPP),
+    Trace(State),
+}
+
 pub struct Aut {
     aexprs: Vec<AExpr>,
-    aexpr_map: HashMap<AExpr, State>,
-    delta_map: HashMap<State, ST>,
-    epsilon_map: HashMap<State, spp::SPP>,
-    eliminate_dup_cache: HashMap<State, spp::SPP>,
+    aexpr_map: FxHashMap<AExpr, State>,
+    spp_states: FxHashMap<spp::SPP, State>,
+    delta_map: FxHashMap<State, ST>,
+    epsilon_map: FxHashMap<State, spp::SPP>,
+    eliminate_dup_cache: FxHashMap<State, spp::SPP>,
     spp: spp::SPPstore,
     // num_vars: u32,
-    num_calls: u32,
+    live_cache: FxHashMap<State, crate::sp::SP>,
+    seen: Vec<(u64, crate::sp::SP)>,
+    query_epoch: u64,
+    root_scratch: Vec<u64>,
+    root_snapshots: Vec<(u64, Box<[u64]>, State)>,
 }
 
 impl Aut {
     pub fn new(num_vars: u32) -> Self {
         let aut = Aut {
             aexprs: vec![],
-            aexpr_map: HashMap::new(),
-            delta_map: HashMap::new(),
-            epsilon_map: HashMap::new(),
-            eliminate_dup_cache: HashMap::new(),
+            aexpr_map: FxHashMap::default(),
+            spp_states: FxHashMap::default(),
+            delta_map: FxHashMap::default(),
+            epsilon_map: FxHashMap::default(),
+            eliminate_dup_cache: FxHashMap::default(),
             spp: spp::SPPstore::new(num_vars),
             // num_vars,
-            num_calls: 0,
+            live_cache: FxHashMap::default(),
+            seen: Vec::new(),
+            query_epoch: 0,
+            root_scratch: Vec::new(),
+            root_snapshots: Vec::new(),
         };
         aut
     }
@@ -91,18 +109,20 @@ impl Aut {
     // Smart Constructors with Simplifications
 
     fn mk_spp(&mut self, spp: spp::SPP) -> State {
-        // TODO: Add simplification for SPP constants (0, 1) if not handled by SPPstore itself
-        self.intern(AExpr::SPP(spp))
+        *self.spp_states.entry(spp).or_insert_with(|| {
+            let state = self.aexprs.len();
+            self.aexprs.push(AExpr::SPP(spp));
+            state
+        })
     }
 
     fn mk_union_n(&mut self, states: Vec<State>) -> State {
+        if states.len() == 1 { return states[0]; }
         let mut states2 = vec![];
         for state in states {
             match self.get_expr(state) {
                 AExpr::Union(nested) => {
-                    for nested_state in nested.clone() {
-                        states2.push(nested_state);
-                    }
+                    states2.extend_from_slice(nested);
                 }
                 AExpr::Top => {
                     return self.mk_top();
@@ -112,7 +132,7 @@ impl Aut {
         }
         let mut spp = self.spp.zero;
         let mut new_states = vec![];
-        for state in states2.clone() {
+        for state in states2 {
             match self.get_expr(state) {
                 AExpr::SPP(s) => spp = self.spp.union(spp, *s),
                 _ => new_states.push(state),
@@ -137,17 +157,21 @@ impl Aut {
     }
 
     fn mk_union(&mut self, e1: State, e2: State) -> State {
+        if e1 == e2 { return e1; }
+        if let (AExpr::SPP(a), AExpr::SPP(b)) = (self.get_expr(e1), self.get_expr(e2)) {
+            let result = self.spp.union(*a, *b);
+            return self.mk_spp(result);
+        }
         self.mk_union_n(vec![e1, e2])
     }
 
     fn mk_intersect_n(&mut self, states: Vec<State>) -> State {
+        if states.len() == 1 { return states[0]; }
         let mut new_states = vec![];
         for state in states {
             match self.get_expr(state) {
                 AExpr::Intersect(nested) => {
-                    for nested_state in nested.clone() {
-                        new_states.push(nested_state);
-                    }
+                    new_states.extend_from_slice(nested);
                 }
                 _ => new_states.push(state),
             }
@@ -159,7 +183,7 @@ impl Aut {
             match self.get_expr(state) {
                 AExpr::Union(nested) => {
                     let mut new_distributed_states = vec![];
-                    for nested_state in nested.clone() {
+                    for &nested_state in nested {
                         for i in 0..distributed_states.len() {
                             let mut new_distributed_state = distributed_states[i].clone();
                             new_distributed_state.push(nested_state);
@@ -191,16 +215,14 @@ impl Aut {
         for state in states {
             match self.get_expr(state) {
                 AExpr::Intersect(nested) => {
-                    for nested_state in nested.clone() {
-                        new_states.push(nested_state);
-                    }
+                    new_states.extend_from_slice(nested);
                 }
                 _ => new_states.push(state),
             }
         }
         states = new_states;
         // Remove Top
-        states.retain(|&state| state != self.mk_top());
+        states.retain(|&state| !matches!(self.get_expr(state), AExpr::Top));
         // Intersect the SPPs, collecting the rest
         let mut spp = None;
         let mut rest = vec![];
@@ -229,6 +251,11 @@ impl Aut {
     }
 
     fn mk_intersect(&mut self, e1: State, e2: State) -> State {
+        if e1 == e2 { return e1; }
+        if let (AExpr::SPP(a), AExpr::SPP(b)) = (self.get_expr(e1), self.get_expr(e2)) {
+            let result = self.spp.intersect(*a, *b);
+            return self.mk_spp(result);
+        }
         self.mk_intersect_n(vec![e1, e2])
     }
 
@@ -389,64 +416,152 @@ impl Aut {
         &self.aexprs[id]
     }
 
-    // Function to convert an external Expr to an internal AExp index
     pub fn expr_to_state(&mut self, expr: &Expr) -> State {
+        use std::hash::Hasher;
+        self.root_scratch.clear();
+        let cacheable = Self::encode_core(expr, &mut self.root_scratch);
+        let mut hash = rustc_hash::FxHasher::default();
+        for &word in &self.root_scratch { hash.write_u64(word); }
+        let hash = hash.finish();
+        if cacheable {
+            for (key, syntax, state) in &self.root_snapshots {
+                if *key == hash && syntax.as_ref() == self.root_scratch.as_slice() { return *state; }
+            }
+        }
+        let state = self.compile_to_state(expr);
+        if cacheable && self.root_scratch.len() <= 65536 {
+            while !self.root_snapshots.is_empty()
+                && (self.root_snapshots.len() >= 16 || self.root_snapshots.iter().map(|x| x.1.len()).sum::<usize>() + self.root_scratch.len() > 524288)
+            {
+                self.root_snapshots.remove(0);
+            }
+            self.root_snapshots.push((hash, self.root_scratch.clone().into_boxed_slice(), state));
+        }
+        state
+    }
+
+    // Prefix tags have fixed arities; field and value bits cannot overlap tags.
+    // Admission uses exact equality because hashes alone cannot identify syntax.
+    fn encode_core(expr: &Expr, words: &mut Vec<u64>) -> bool {
+        use Expr::*;
+        if words.len() >= 65536 { return false; }
+        let tag = match expr {
+            Zero => 0, One => 1, Top => 2, End => 3, Dup => 4,
+            Test(field, value) => 5 | (u64::from(*value) << 7) | (u64::from(*field) << 8),
+            Assign(field, value) => 6 | (u64::from(*value) << 7) | (u64::from(*field) << 8),
+            Union(_,_) => 7, Intersect(_,_) => 8, Xor(_,_) => 9, Difference(_,_) => 10,
+            Sequence(_,_) => 11, Star(_) => 12, Complement(_) => 13, TestNegation(_) => 14,
+            LtlNext(_) => 15, LtlUntil(_,_) => 16,
+            _ => return false,
+        };
+        words.push(tag);
         match expr {
-            Expr::Zero => self.mk_spp(self.spp.zero),
-            Expr::One => self.mk_spp(self.spp.one),
-            Expr::Top => self.mk_top(),
-            Expr::Assign(field, value) => {
-                let spp = self.spp.assign(*field, *value);
-                self.mk_spp(spp)
+            Union(a,b) | Intersect(a,b) | Xor(a,b) | Difference(a,b) | Sequence(a,b) | LtlUntil(a,b) => Self::encode_core(a,words) && Self::encode_core(b,words),
+            Star(x) | Complement(x) | TestNegation(x) | LtlNext(x) => Self::encode_core(x,words),
+            _ => true,
+        }
+    }
+
+    fn compile_to_state(&mut self, expr: &Expr) -> State {
+        let result = self.compile_expr(expr);
+        self.compiled_to_state(result)
+    }
+
+    fn compiled_to_state(&mut self, result: Compiled) -> State {
+        match result {
+            Compiled::Predicate(predicate) => {
+                let relation = self.spp.diagonal(predicate);
+                self.mk_spp(relation)
             }
-            Expr::Test(field, value) => {
-                let spp = self.spp.test(*field, *value);
-                self.mk_spp(spp)
+            Compiled::Relation(relation) => self.mk_spp(relation),
+            Compiled::Trace(state) => state,
+        }
+    }
+
+    fn compiled_to_relation(&mut self, result: Compiled) -> spp::SPP {
+        match result {
+            Compiled::Predicate(predicate) => self.spp.diagonal(predicate),
+            Compiled::Relation(relation) => relation,
+            Compiled::Trace(_) => unreachable!(),
+        }
+    }
+
+    fn compiled_state(&self, state: State) -> Compiled {
+        match self.get_expr(state) {
+            AExpr::SPP(relation) => Compiled::Relation(*relation),
+            _ => Compiled::Trace(state),
+        }
+    }
+
+    fn compile_expr(&mut self, expr: &Expr) -> Compiled {
+        match expr {
+            Expr::Zero => Compiled::Predicate(self.spp.sp.zero),
+            Expr::One => Compiled::Predicate(self.spp.sp.one),
+            Expr::End => Compiled::Relation(self.spp.top),
+            Expr::Test(field, value) => Compiled::Predicate(self.spp.sp.test(*field, *value)),
+            Expr::Assign(field, value) => Compiled::Relation(self.spp.assign(*field, *value)),
+            Expr::Union(left, right) | Expr::Intersect(left, right) | Expr::Xor(left, right)
+            | Expr::Difference(left, right) | Expr::Sequence(left, right) => {
+                let left = self.compile_expr(left);
+                let right = self.compile_expr(right);
+                if let (Compiled::Predicate(a), Compiled::Predicate(b)) = (left, right) {
+                    let result = match expr {
+                        Expr::Union(_, _) => self.spp.sp.union(a, b),
+                        Expr::Xor(_, _) => self.spp.sp.xor(a, b),
+                        Expr::Difference(_, _) => self.spp.sp.difference(a, b),
+                        _ => self.spp.sp.intersect(a, b),
+                    };
+                    Compiled::Predicate(result)
+                } else if !matches!(left, Compiled::Trace(_)) && !matches!(right, Compiled::Trace(_)) {
+                    let a = self.compiled_to_relation(left);
+                    let b = self.compiled_to_relation(right);
+                    let result = match expr {
+                        Expr::Union(_, _) => self.spp.union(a, b),
+                        Expr::Intersect(_, _) => self.spp.intersect(a, b),
+                        Expr::Xor(_, _) => self.spp.xor(a, b),
+                        Expr::Difference(_, _) => self.spp.difference(a, b),
+                        Expr::Sequence(_, _) => self.spp.sequence(a, b),
+                        _ => unreachable!(),
+                    };
+                    Compiled::Relation(result)
+                } else {
+                    let a = self.compiled_to_state(left);
+                    let b = self.compiled_to_state(right);
+                    let state = match expr {
+                        Expr::Union(_, _) => self.mk_union(a, b),
+                        Expr::Intersect(_, _) => self.mk_intersect(a, b),
+                        Expr::Xor(_, _) => self.mk_xor(a, b),
+                        Expr::Difference(_, _) => self.mk_difference(a, b),
+                        Expr::Sequence(_, _) => self.mk_sequence(a, b),
+                        _ => unreachable!(),
+                    };
+                    self.compiled_state(state)
+                }
             }
-            Expr::Union(e1, e2) => {
-                let aexp1 = self.expr_to_state(e1); // e1 is Box<Expr>, dereferences automatically
-                let aexp2 = self.expr_to_state(e2);
-                self.mk_union(aexp1, aexp2)
+            Expr::Star(inner) => match self.compile_expr(inner) {
+                Compiled::Predicate(_) => Compiled::Predicate(self.spp.sp.one),
+                Compiled::Relation(relation) => Compiled::Relation(self.spp.star(relation)),
+                Compiled::Trace(state) => {
+                    let state = self.mk_star(state);
+                    self.compiled_state(state)
+                }
+            },
+            Expr::Complement(inner) => {
+                let state = self.compile_to_state(inner);
+                let state = self.mk_complement(state);
+                self.compiled_state(state)
             }
-            Expr::Intersect(e1, e2) => {
-                let aexp1 = self.expr_to_state(e1);
-                let aexp2 = self.expr_to_state(e2);
-                self.mk_intersect(aexp1, aexp2)
+            Expr::Top => Compiled::Trace(self.mk_top()),
+            Expr::Dup => Compiled::Trace(self.mk_dup()),
+            Expr::LtlNext(inner) => {
+                let state = self.compile_to_state(inner);
+                Compiled::Trace(self.intern(AExpr::LtlNext(state)))
             }
-            Expr::Xor(e1, e2) => {
-                let aexp1 = self.expr_to_state(e1);
-                let aexp2 = self.expr_to_state(e2);
-                self.mk_xor(aexp1, aexp2)
+            Expr::LtlUntil(left, right) => {
+                let a = self.compile_to_state(left);
+                let b = self.compile_to_state(right);
+                Compiled::Trace(self.intern(AExpr::LtlUntil(a, b)))
             }
-            Expr::Difference(e1, e2) => {
-                let aexp1 = self.expr_to_state(e1);
-                let aexp2 = self.expr_to_state(e2);
-                self.mk_difference(aexp1, aexp2)
-            }
-            Expr::Complement(e) => {
-                let aexp = self.expr_to_state(e);
-                self.mk_complement(aexp)
-            }
-            Expr::Sequence(e1, e2) => {
-                let aexp1 = self.expr_to_state(e1);
-                let aexp2 = self.expr_to_state(e2);
-                self.mk_sequence(aexp1, aexp2)
-            }
-            Expr::Star(e) => {
-                let aexp = self.expr_to_state(e);
-                self.mk_star(aexp)
-            }
-            Expr::Dup => self.mk_dup(),
-            Expr::LtlNext(e) => {
-                let aexp = self.expr_to_state(e);
-                self.intern(AExpr::LtlNext(aexp))
-            }
-            Expr::LtlUntil(e1, e2) => {
-                let aexp1 = self.expr_to_state(e1);
-                let aexp2 = self.expr_to_state(e2);
-                self.intern(AExpr::LtlUntil(aexp1, aexp2))
-            }
-            Expr::End => self.mk_spp(self.spp.top),
             Expr::TestNegation(_) => panic!("TestNegation should have been eliminated during desugaring"),
             Expr::IfThenElse(_, _, _) => panic!("IfThenElse should have been eliminated during desugaring"),
             Expr::Var(_) => panic!("Variables should have been eliminated during desugaring"),
@@ -528,7 +643,7 @@ impl Aut {
 
         let mut result = ST::empty();
         let mut total_instersect = self.spp.zero;
-        for (state2, spp2) in st.transitions.clone() {
+        for (&state2, &spp2) in &st.transitions {
             let intersect_spp = self.spp.intersect(spp, spp2);
             let union_state = self.mk_union(state, state2);
             self.st_insert_helper(&mut result, union_state, intersect_spp);
@@ -645,21 +760,6 @@ impl Aut {
     // --- Automaton construction: delta, epsilon ---
 
     pub fn delta(&mut self, state: State) -> ST {
-        self.num_calls += 1;
-        if self.num_calls > 100000 {
-            panic!(
-                "Delta called {} times, artificial limit reached for state {}",
-                self.num_calls,
-                self.state_to_string(state)
-            );
-        }
-        if self.state_to_string(state).len() > 1000000 {
-            panic!(
-                "Delta called with state length = {}: {}",
-                self.state_to_string(state).len(),
-                self.state_to_string(state)
-            );
-        }
         if let Some(st) = self.delta_map.get(&state) {
             return st.clone();
         }
@@ -753,6 +853,7 @@ impl Aut {
     }
 
     pub fn epsilon(&mut self, state: State) -> spp::SPP {
+        if let AExpr::SPP(spp) = self.get_expr(state) { return *spp; }
         // Check if we've already calculated this
         if let Some(&spp) = self.epsilon_map.get(&state) {
             return spp;
@@ -838,34 +939,24 @@ impl Aut {
 
     /// Checks if the given state is empty
     pub fn is_empty(&mut self, state: State) -> bool {
-        // Todo: list of states to visit
-        // Note: One = Top for SPs
-        let mut todo = vec![(state, self.spp.sp.one)];
-        // Hashmap of SPs for each state reachable from the given state
-        let mut sp_map = HashMap::new();
-        while !todo.is_empty() {
-            let (state, sp) = todo.pop().unwrap();
-            // Union the SPP into the map
-            let original_sp = sp_map.entry(state).or_insert(self.spp.sp.zero);
-            let to_add = self.spp.sp.difference(sp, *original_sp);
-            if to_add != self.spp.sp.zero {
-                *original_sp = self.spp.sp.union(*original_sp, to_add);
-                // iterate over all transitions from the state
-                for (state2, spp2) in self.delta(state).transitions {
-                    // NB: `push(to_add, spp2)   naive_forward(to_add; spp2)`,
-                    // where `;` is sequential composition
-                    let seq_forward = self.spp.push(to_add, spp2);
-                    todo.push((state2, seq_forward));
-                }
-            }
+        self.query_epoch = self.query_epoch.wrapping_add(1);
+        if self.query_epoch == 0 {
+            self.seen.fill((0, self.spp.sp.zero));
+            self.query_epoch = 1;
         }
-
-        // Check if the SPPs in the map when composed with the epsilon of the given state are empty
-        for (state, sp) in sp_map {
-            let epsilon_spp: spp::SPP = self.epsilon(state);
-            let sp_composed = self.spp.push(sp, epsilon_spp);
-            if sp_composed != self.spp.sp.zero {
-                return false;
+        let epoch = self.query_epoch;
+        let mut todo = vec![(state, self.spp.sp.one)];
+        while let Some((state, incoming)) = todo.pop() {
+            if self.seen.len() <= state { self.seen.resize(state + 1, (0, self.spp.sp.zero)); }
+            let previous = if self.seen[state].0 == epoch { self.seen[state].1 } else { self.spp.sp.zero };
+            let fresh = self.spp.sp.difference(incoming, previous);
+            if self.spp.sp.is_zero(fresh) { continue; }
+            self.seen[state] = (epoch, self.spp.sp.union(previous, fresh));
+            let epsilon = self.epsilon(state);
+            if self.spp.has_image(fresh, epsilon) { return false; }
+            for (target, label) in self.delta(state).transitions {
+                let next = self.spp.push(fresh, label);
+                if !self.spp.sp.is_zero(next) { todo.push((target, next)); }
             }
         }
         true
@@ -977,26 +1068,54 @@ impl Aut {
         result_spp
     }
 
-    pub fn delta_pruned(&mut self, state: State) -> ST {
-        let original_st = self.delta(state); // Memoized
-        let eliminate_dup_spp = self.eliminate_dup(state); // Memoized
-        let possible_input_packets = self.spp.bwd(eliminate_dup_spp);
-        let pruning_spp = self.spp.ibwd(possible_input_packets);
-
-        let mut new_transitions = HashMap::new();
-        for (&target_state, &original_edge_spp) in original_st.get_transitions() {
-            // Intersect the original edge SPP with the pruning SPP derived from eliminate_dup.
-            let intersected_spp = self.spp.intersect(original_edge_spp, pruning_spp);
-
-            if intersected_spp != self.spp.zero {
-                // Avoid adding transitions to a "zero" state if such a concept is distinctly represented.
-                // self.mk_spp(self.spp.zero) gives the state representing the zero SPP.
-                if target_state != self.mk_spp(self.spp.zero) { 
-                    new_transitions.insert(target_state, intersected_spp);
+    fn live_packets(&mut self, initial: State) -> crate::sp::SP {
+        if let Some(&live) = self.live_cache.get(&initial) { return live; }
+        let mut states = vec![initial];
+        let mut live = FxHashMap::default();
+        live.insert(initial, self.spp.sp.zero);
+        let mut predecessors: FxHashMap<State, Vec<(State, spp::SPP)>> = FxHashMap::default();
+        let mut head = 0;
+        while head < states.len() {
+            let state = states[head];
+            head += 1;
+            let epsilon = self.epsilon(state);
+            live.insert(state, self.spp.bwd(epsilon));
+            for (target, label) in self.delta(state).transitions {
+                predecessors.entry(target).or_default().push((state, label));
+                if let std::collections::hash_map::Entry::Vacant(entry) = live.entry(target) {
+                    entry.insert(self.spp.sp.zero);
+                    states.push(target);
                 }
             }
         }
-        ST::new(new_transitions)
+        let mut todo = states;
+        while let Some(target) = todo.pop() {
+            if let Some(incoming) = predecessors.get(&target) {
+                for &(source, label) in incoming {
+                    let accepted = self.spp.pull(label, live[&target]);
+                    let combined = self.spp.sp.union(live[&source], accepted);
+                    if combined != live[&source] {
+                        live.insert(source, combined);
+                        todo.push(source);
+                    }
+                }
+            }
+        }
+        let result = live[&initial];
+        self.live_cache.extend(live);
+        result
+    }
+
+    pub fn delta_pruned(&mut self, state: State) -> ST {
+        self.live_packets(state);
+        let original = self.delta(state);
+        let mut transitions = HashMap::new();
+        for (target, label) in original.transitions {
+            let allowed_outputs = self.spp.ifwd(self.live_cache[&target]);
+            let viable = self.spp.intersect(label, allowed_outputs);
+            if viable != self.spp.zero { transitions.insert(target, viable); }
+        }
+        ST::new(transitions)
     }
 
     pub fn random_packet_pair(&mut self, state: State) -> Option<(Vec<bool>, Vec<bool>)> {
@@ -1014,11 +1133,8 @@ impl Aut {
 
     pub fn random_trace(&mut self, state: State, max_length: usize) -> Option<(Vec<Vec<bool>>, Option<Vec<bool>>)> {
         let mut trace = vec![];
-        let dup_spp = self.eliminate_dup(state);
-        if dup_spp == self.spp.zero {
-            return None;
-        }
-        let mut current_packet = self.spp.random_input_packet(dup_spp)?;
+        let live = self.live_packets(state);
+        let mut current_packet = self.spp.sp.random_packet(live)?;
         let mut current_state = state;
         while trace.len() < max_length {
             trace.push(current_packet.clone());
@@ -1026,29 +1142,23 @@ impl Aut {
             let epsilon = self.epsilon(current_state);
             // Or transitioned from the current state
             let deltas = self.delta_pruned(current_state);
-            let deltas_vec = deltas.get_transitions().into_iter().collect::<Vec<_>>();
-            loop {
-                // Pick randomly among outputting the current packet or taking one of the transitions
-                // i.e. a random number between 0 and 1 + the number of transitions
-                let choice = rand::random_range(0..deltas_vec.len() + 1);
-                if choice < deltas_vec.len() {
-                    // Try to take transition `choice`
-                    let (target_state, spp) = deltas_vec[choice];
-                    if let Some(next_packet) = self.spp.random_output_packet_from_input(*spp, current_packet.clone()) {
-                        current_state = *target_state;
-                        current_packet = next_packet;
-                        break;
-                    } else {
-                        continue; // Try again
-                    }
-                } else {
-                    // Try and output the current packet
-                    if let Some(out_packet) = self.spp.random_output_packet_from_input(epsilon, current_packet.clone()) {
-                        return Some((trace, Some(out_packet)));
-                    } else {
-                        continue; // Try again
-                    }
+            let mut choices = Vec::new();
+            if let Some(packet) = self.spp.random_output_packet_from_input(epsilon, current_packet.clone()) {
+                choices.push((None, packet));
+            }
+            for (&target, &label) in deltas.get_transitions() {
+                if let Some(packet) = self.spp.random_output_packet_from_input(label, current_packet.clone()) {
+                    choices.push((Some(target), packet));
                 }
+            }
+            assert!(!choices.is_empty(), "live residual has no accepting continuation");
+            let choice = rand::random_range(0..choices.len());
+            let (target, packet) = choices.swap_remove(choice);
+            if let Some(target) = target {
+                current_state = target;
+                current_packet = packet;
+            } else {
+                return Some((trace, Some(packet)));
             }
         }
         // If we get here, we have a trace that is too long
@@ -1125,5 +1235,166 @@ impl Aut {
             }
             AExpr::Dup | AExpr::Top => {}
         }
+    }
+}
+#[cfg(test)]
+mod constructor_tests {
+    use super::*;
+
+    fn relation(aut: &mut Aut, bits: u32, mask: u64) -> State {
+        let m = &mut aut.spp;
+        let size = 1usize << bits;
+        let mut result = m.zero;
+        for input in 0..size {
+            for output in 0..size {
+                if mask & (1 << (input * size + output)) == 0 { continue; }
+                let mut atom = m.one;
+                for bit in 0..bits {
+                    let test = m.test(bit, input & (1 << bit) != 0);
+                    atom = m.sequence(atom, test);
+                }
+                for bit in 0..bits {
+                    let assign = m.assign(bit, output & (1 << bit) != 0);
+                    atom = m.sequence(atom, assign);
+                }
+                result = m.union(result, atom);
+            }
+        }
+        aut.mk_spp(result)
+    }
+
+    #[test]
+    fn relation_constructors_match_general_paths_and_finite_relations() {
+        for bits in 0..=2 {
+            let mut aut = Aut::new(bits);
+            let masks: Vec<u64> = if bits < 2 {
+                (0..(1 << (1 << (2 * bits)))).collect()
+            } else {
+                (0..64).map(|i| (i * 104729 + 8191) & 65535).collect()
+            };
+            for &a in &masks {
+                for &b in &masks {
+                    let x = relation(&mut aut, bits, a);
+                    let y = relation(&mut aut, bits, b);
+                    let union = aut.mk_union(x, y);
+                    assert_eq!(union, aut.mk_union_n(vec![x, y]));
+                    assert_eq!(union, relation(&mut aut, bits, a | b));
+                    let intersect = aut.mk_intersect(x, y);
+                    assert_eq!(intersect, aut.mk_intersect_n(vec![x, y]));
+                    assert_eq!(intersect, relation(&mut aut, bits, a & b));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn boolean_operations_preserve_histories() {
+        let both = Expr::union(Expr::dup(), Expr::one());
+        let cases = [
+            (Expr::intersect(both.clone(), Expr::dup()), Expr::dup()),
+            (Expr::difference(both.clone(), Expr::dup()), Expr::one()),
+            (Expr::xor(both, Expr::dup()), Expr::one()),
+            (Expr::intersect(Expr::complement(Expr::zero()), Expr::dup()), Expr::dup()),
+            (Expr::intersect(Box::new(Expr::End), Expr::dup()), Expr::zero()),
+        ];
+        for (left, right) in cases {
+            let mut aut = Aut::new(2);
+            let difference = aut.expr_to_state(&Expr::xor(left, right));
+            assert!(aut.is_empty(difference));
+        }
+    }
+}
+
+#[cfg(test)]
+mod query_tests {
+    use super::*;
+
+    #[test]
+    fn epoch_wrap_clears_seen_packets() {
+        let mut aut = Aut::new(1);
+        let state = aut.expr_to_state(&Expr::one());
+        assert!(!aut.is_empty(state));
+        aut.query_epoch = u64::MAX;
+        assert!(!aut.is_empty(state));
+    }
+}
+
+#[cfg(test)]
+mod viability_tests {
+    use super::*;
+
+    #[test]
+    fn backward_viability_matches_relation_elimination() {
+        let expressions = [
+            Expr::zero(),
+            Expr::complement(Expr::dup()),
+            Expr::union(Expr::one(), Expr::sequence(Expr::dup(), Expr::test(0, false))),
+            Expr::sequence(
+                Expr::star(Expr::sequence(Expr::assign(0, true), Expr::dup())),
+                Expr::test(1, false),
+            ),
+            Expr::intersect(
+                Expr::sequence(Expr::dup(), Expr::test(0, false)),
+                Expr::sequence(Expr::dup(), Expr::test(1, true)),
+            ),
+        ];
+        for expression in expressions {
+            let mut aut = Aut::new(2);
+            let state = aut.expr_to_state(&expression);
+            let live = aut.live_packets(state);
+            let relation = aut.eliminate_dup(state);
+            assert_eq!(live, aut.spp.bwd(relation));
+        }
+    }
+}
+
+#[cfg(test)]
+mod root_cache_tests {
+    use super::*;
+
+    #[test]
+    fn snapshots_compare_contents_and_observe_deep_mutation() {
+        let mut aut = Aut::new(2);
+        let mut expr = Expr::sequence(Expr::dup(), Expr::test(0, false));
+        let first = aut.expr_to_state(&expr);
+        assert_eq!(first, aut.expr_to_state(&expr.clone()));
+        assert_eq!(aut.root_snapshots.len(), 1);
+        if let Expr::Sequence(_, child) = expr.as_mut() { **child = Expr::Test(0, true); }
+        let second = aut.expr_to_state(&expr);
+        assert_ne!(first, second);
+        assert_eq!(second, aut.compile_to_state(&expr));
+        let mut other = Aut::new(2);
+        let state = other.expr_to_state(&expr);
+        assert_eq!(state, other.compile_to_state(&expr));
+        assert_eq!(other.root_snapshots.len(), 1);
+    }
+
+    #[test]
+    fn snapshots_preserve_history_and_eviction_only_recompiles() {
+        let mut aut = Aut::new(2);
+        let first = aut.expr_to_state(&Expr::One);
+        let dup = aut.expr_to_state(&Expr::Dup);
+        assert_ne!(first, dup);
+        let mut expr = Expr::dup();
+        for _ in 0..20 {
+            expr = Expr::sequence(expr, Expr::dup());
+            let cached = aut.expr_to_state(&expr);
+            assert_eq!(cached, aut.compile_to_state(&expr));
+        }
+        assert_eq!(aut.root_snapshots.len(), 16);
+        assert_eq!(first, aut.expr_to_state(&Expr::One));
+    }
+
+    #[test]
+    fn encoding_is_bounded_and_invalid_branches_are_not_cached() {
+        let mut words = vec![0; 65536];
+        assert!(!Aut::encode_core(&Expr::One, &mut words));
+        assert_eq!(words.len(), 65536);
+        let mut aut = Aut::new(1);
+        aut.expr_to_state(&Expr::One);
+        let invalid = Expr::union(Expr::one(), Box::new(Expr::Var("missing".into())));
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| aut.expr_to_state(&invalid)));
+        assert!(result.is_err());
+        assert_eq!(aut.root_snapshots.len(), 1);
     }
 }
