@@ -378,3 +378,157 @@ fn sequence_and_union_planning_preserve_dag_sharing() {
     assert!(query.is_empty(0).unwrap());
     assert!(query.stats().image_evaluations < 1000);
 }
+
+#[test]
+fn invariant_input_sharing_preserves_all_endpoints_and_cache_options() {
+    let mut b = QueryBuilder::new();
+    let fixed = b.test(1, true);
+    let assignment = b.assign(0, true);
+    let step = b.sequence(fixed, assignment);
+    let reach = b.star(step);
+    let mut roots = Vec::new();
+    for input in 0..4 {
+        let input = point(&mut b, 2, input);
+        let prefix = b.sequence(input, reach);
+        for output in 0..4 {
+            let output = point(&mut b, 2, output);
+            roots.push(b.sequence(prefix, output));
+        }
+    }
+    let program = b.finish(&roots);
+    for cached_views in [0, 1, 2, 64] {
+        let mut aut = Aut::new(2);
+        let mut query = program
+            .prepare_with_options(
+                &mut aut,
+                QueryOptions {
+                    cached_views,
+                    max_star_expansions: None,
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            query.stats().shared_input_groups,
+            usize::from(cached_views >= 2)
+        );
+        for input in 0..4 {
+            for output in 0..4 {
+                let reachable = input == output || input == 2 && output == 3;
+                assert_eq!(!query.is_empty(4 * input + output).unwrap(), reachable);
+            }
+        }
+        query.clear_views();
+        for root in (0..16).rev() {
+            let (input, output) = (root / 4, root % 4);
+            assert_eq!(
+                !query.is_empty(root).unwrap(),
+                input == output || input == 2 && output == 3
+            );
+        }
+    }
+}
+
+#[test]
+fn correlated_input_predicates_are_not_factored() {
+    let mut b = QueryBuilder::new();
+    let a = point(&mut b, 2, 0);
+    let z = point(&mut b, 2, 3);
+    let input = b.union(a, z);
+    let step = b.assign(0, false);
+    let star = b.star(step);
+    let prefix = b.sequence(input, star);
+    let mut roots = Vec::new();
+    for output in 0..4 {
+        let output = point(&mut b, 2, output);
+        roots.push(b.sequence(prefix, output));
+    }
+    let program = b.finish(&roots);
+    let mut aut = Aut::new(2);
+    let mut query = program.prepare(&mut aut).unwrap();
+    assert_eq!(query.stats().shared_input_groups, 0);
+    for output in 0..4 {
+        assert_eq!(!query.is_empty(output).unwrap(), output != 1);
+    }
+}
+
+#[test]
+fn balanced_union_retains_shared_roots_and_exact_history_semantics() {
+    let mut b = QueryBuilder::new();
+    let mut alternatives = b.zero();
+    let mut roots = Vec::new();
+    for input in 0..16 {
+        let edge = edge(&mut b, 4, input, (input + 1) % 16);
+        alternatives = b.union(alternatives, edge);
+        roots.push(alternatives);
+    }
+    let step = b.dup();
+    let trace = b.sequence(alternatives, step);
+    let both = b.union(trace, alternatives);
+    let disjoint = b.intersect(trace, alternatives);
+    roots.extend([both, disjoint]);
+    let program = b.finish(&roots);
+    let mut aut = Aut::new(4);
+    let mut query = program.prepare(&mut aut).unwrap();
+    for root in 0..17 {
+        assert!(!query.is_empty(root).unwrap());
+    }
+    assert!(query.is_empty(17).unwrap());
+}
+
+#[test]
+fn small_reused_stars_select_closure_unless_expansion_budget_is_set() {
+    let mut b = QueryBuilder::new();
+    let step = b.assign(0, true);
+    let star = b.star(step);
+    let mut roots = Vec::new();
+    for input in 0..64 {
+        let p = point(&mut b, 6, input);
+        let prefix = b.sequence(p, star);
+        for output in [input, input ^ 1, input ^ 2] {
+            let q = point(&mut b, 6, output);
+            roots.push(b.sequence(prefix, q));
+        }
+    }
+    let program = b.finish(&roots);
+    for budget in [None, Some(100)] {
+        let mut aut = Aut::new(6);
+        let mut query = program
+            .prepare_with_options(
+                &mut aut,
+                QueryOptions {
+                    cached_views: 64,
+                    max_star_expansions: budget,
+                },
+            )
+            .unwrap();
+        assert_eq!(query.stats().canonical_stars, usize::from(budget.is_none()));
+        for input in 0..64 {
+            assert!(!query.is_empty(3 * input).unwrap());
+            assert_eq!(!query.is_empty(3 * input + 1).unwrap(), input & 1 == 0);
+            assert!(query.is_empty(3 * input + 2).unwrap());
+        }
+    }
+}
+
+#[test]
+fn successive_union_roots_preserve_linear_syntax_compilation() {
+    let mut b = QueryBuilder::new();
+    let mut prefix = b.zero();
+    let mut roots = Vec::new();
+    for value in 0..512 {
+        let p = point(&mut b, 9, value);
+        prefix = b.union(prefix, p);
+        roots.push(prefix);
+    }
+    let program = b.finish(&roots);
+    let mut aut = Aut::new(9);
+    let mut query = program.prepare(&mut aut).unwrap();
+    assert!(
+        query.stats().compilation_visits < 16 * 512,
+        "{:?}",
+        query.stats()
+    );
+    for root in 0..512 {
+        assert!(!query.is_empty(root).unwrap());
+    }
+}

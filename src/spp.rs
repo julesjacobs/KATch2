@@ -77,6 +77,7 @@ pub struct SPPstore {
     push_memo: HashMap<u64, SP>,
     pull_memo: HashMap<u64, SP>,
     has_image_memo: HashMap<u64, bool>,
+    has_path_memo: HashMap<(u64, u32), bool>,
     diagonal_memo: HashMap<SP, SPP>,
 }
 
@@ -126,6 +127,7 @@ impl SPPstore {
             fwd_memo: HashMap::default(),
             ifwd_memo: HashMap::default(),
             has_image_memo: HashMap::default(),
+            has_path_memo: HashMap::default(),
             diagonal_memo: HashMap::default(),
             bwd_memo: HashMap::default(),
             push_memo: HashMap::default(),
@@ -450,6 +452,12 @@ impl SPPstore {
         if self.sp.is_zero(sp) || self.properties[spp.as_usize()] & IDENTITY != 0 {
             return sp;
         }
+        if self.properties[spp.as_usize()] & EMPTY != 0 {
+            return self.sp.zero_at_depth(self.depth(spp));
+        }
+        if self.properties[spp.as_usize()] & UNIVERSAL != 0 {
+            return self.sp.one_at_depth(self.depth(spp));
+        }
         if let Some(&result) = self.push_memo.get(&pair(sp.0, spp.0)) {
             return result;
         }
@@ -478,6 +486,12 @@ impl SPPstore {
         if sp.0 < 2 && spp.0 < 2 { return SP(sp.0 & spp.0); }
         if self.sp.is_zero(sp) || self.properties[spp.as_usize()] & IDENTITY != 0 {
             return sp;
+        }
+        if self.properties[spp.as_usize()] & EMPTY != 0 {
+            return self.sp.zero_at_depth(self.depth(spp));
+        }
+        if self.properties[spp.as_usize()] & UNIVERSAL != 0 {
+            return self.sp.one_at_depth(self.depth(spp));
         }
         if let Some(&result) = self.pull_memo.get(&pair(spp.0, sp.0)) {
             return result;
@@ -523,6 +537,24 @@ impl SPPstore {
         let result = self.has_image(p.x0, r.x00) || self.has_image(p.x0, r.x01)
             || self.has_image(p.x1, r.x10) || self.has_image(p.x1, r.x11);
         self.has_image_memo.insert(pair(input.0, relation.0), result);
+        result
+    }
+
+    /// Whether the relation connects an input packet to an output packet.
+    pub fn has_path(&mut self, input: SP, relation: SPP, output: SP) -> bool {
+        if self.sp.is_zero(input) || self.sp.is_zero(output) || self.is_zero(relation) { return false; }
+        let properties = self.properties[relation.as_usize()];
+        if properties & UNIVERSAL != 0 { return true; }
+        if properties & IDENTITY != 0 { return self.sp.intersects(input,output); }
+        if self.sp.is_universal(output) { return self.has_image(input,relation); }
+        let key = (pair(input.0,output.0),relation.0);
+        if let Some(&result) = self.has_path_memo.get(&key) { return result; }
+        let p = self.sp.get(input);
+        let q = self.sp.get(output);
+        let r = self.get(relation);
+        let result = self.has_path(p.x0,r.x00,q.x0) || self.has_path(p.x0,r.x01,q.x1)
+            || self.has_path(p.x1,r.x10,q.x0) || self.has_path(p.x1,r.x11,q.x1);
+        self.has_path_memo.insert(key,result);
         result
     }
 

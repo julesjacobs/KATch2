@@ -88,6 +88,7 @@ pub struct SPstore {
     // Memo tables for the operations
     union_memo: UnionCache,
     xor_memo: HashMap<u64, SP>,
+    overlap_memo: HashMap<u64, bool>,
     ifelse_memo: HashMap<(Var, SP, SP), SP>,
     properties: Vec<u8>,
     depths: Vec<u32>,
@@ -126,6 +127,7 @@ impl SPstore {
             union_memo: UnionCache::default(),
             ifelse_memo: HashMap::default(),
             xor_memo: HashMap::default(),
+            overlap_memo: HashMap::default(),
             test_memo: vec![[None; 2]; num_vars as usize],
             properties: { let mut v=Vec::with_capacity(capacity+1);v.push(1);v },
             depths: { let mut v=Vec::with_capacity(capacity+1);v.push(0);v },
@@ -259,6 +261,24 @@ impl SPstore {
         let res = self.mk(x0, x1);
         self.union_memo.insert(pair(a.0, b.0), res);
         res
+    }
+
+    /// Whether two equal-depth packet sets share a packet, without constructing their intersection.
+    pub fn intersects(&mut self, a: SP, b: SP) -> bool {
+        debug_assert_eq!(self.depth(a), self.depth(b));
+        if a.0 == (b.0 ^ 1) { return false; }
+        let pa = self.properties(a);
+        let pb = self.properties(b);
+        if pa & EMPTY != 0 || pb & EMPTY != 0 { return false; }
+        if a == b || pa & UNIVERSAL != 0 || pb & UNIVERSAL != 0 { return true; }
+        let (a,b) = if a.0 > b.0 { (b,a) } else { (a,b) };
+        let key = pair(a.0,b.0);
+        if let Some(&result) = self.overlap_memo.get(&key) { return result; }
+        let x = self.get(a);
+        let y = self.get(b);
+        let result = self.intersects(x.x0,y.x0) || self.intersects(x.x1,y.x1);
+        self.overlap_memo.insert(key,result);
+        result
     }
 
     pub fn intersect(&mut self, a: SP, b: SP) -> SP {

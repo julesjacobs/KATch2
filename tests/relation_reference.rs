@@ -75,6 +75,9 @@ fn packet_images_match_finite_relations() {
                 assert_eq!(m.has_image(set, rel), forward != 0, "depth={n}");
                 assert_eq!(m.push(set, rel), expected_forward, "depth={n}");
                 assert_eq!(m.pull(rel, set), expected_backward, "depth={n}");
+                let target = packet_set(&mut m, &points, random(&mut seed));
+                let overlap = m.sp.intersect(expected_forward,target);
+                assert_eq!(m.has_path(set,rel,target), !m.sp.is_zero(overlap), "depth={n}");
             }
         }
     }
@@ -234,4 +237,20 @@ fn relation_projection_wrappers_preserve_operand_depth() {
     let universal = m.mk(m.top, m.top, m.top, m.top);
     assert_eq!(m.backward(identity), universal);
     assert_eq!(m.naive_forward(identity), universal);
+}
+
+#[test]
+fn boolean_overlap_matches_materialized_intersections() {
+    let mut seed = 793;
+    for fields in 0..=4 {
+        let mut m = SPPstore::new(fields);
+        let points: Vec<_> = (0..1<<fields).map(|i| packet(&mut m,fields,i)).collect();
+        for _ in 0..256 {
+            let a = packet_set(&mut m,&points,random(&mut seed));
+            let b = packet_set(&mut m,&points,random(&mut seed));
+            let intersection = m.sp.intersect(a,b);
+            assert_eq!(m.sp.intersects(a,b), !m.sp.is_zero(intersection));
+            assert_eq!(m.sp.intersects(b,a), !m.sp.is_zero(intersection));
+        }
+    }
 }

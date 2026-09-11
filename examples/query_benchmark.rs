@@ -36,7 +36,7 @@ fn main() {
         let start = Instant::now();
         let (checks, positives, stats, construction, preparation, execution);
         {
-            let mut builder = QueryBuilder::new();
+            let mut builder = QueryBuilder::with_capacity(ops.len());
             let mut nodes = Vec::new();
             let mut roots = Vec::new();
             let mut expected = Vec::new();

@@ -40,7 +40,7 @@ enum Unary {
     Complement,
     Next,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Node {
     Zero,
     One,
@@ -51,6 +51,25 @@ enum Node {
     Assign(u32, bool),
     Binary(Binary, usize, usize),
     Unary(Unary, usize),
+}
+impl std::hash::Hash for Node {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        let (tag, a, b) = match *self {
+            Node::Zero => (0, 0, None),
+            Node::One => (1, 0, None),
+            Node::Top => (2, 0, None),
+            Node::End => (3, 0, None),
+            Node::Dup => (4, 0, None),
+            Node::Test(f, v) => (5, (u64::from(f) << 1) | u64::from(v), None),
+            Node::Assign(f, v) => (6, (u64::from(f) << 1) | u64::from(v), None),
+            Node::Unary(op, a) => (7 + op as u64, a as u64, None),
+            Node::Binary(op, a, b) => (10 + op as u64, a as u64, Some(b)),
+        };
+        state.write_u64(a ^ (tag << 56));
+        if let Some(b) = b {
+            state.write_usize(b);
+        }
+    }
 }
 impl Node {
     fn children(self) -> impl Iterator<Item = usize> {
@@ -78,12 +97,16 @@ impl Default for QueryBuilder {
 }
 impl QueryBuilder {
     pub fn new() -> Self {
+        Self::with_capacity(0)
+    }
+    /// Reserve syntax storage for a known batch size. All allocation remains owned by the builder.
+    pub fn with_capacity(capacity: usize) -> Self {
         Self {
             owner: NEXT_BUILDER
                 .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
                 .expect("query builder identifiers exhausted"),
-            nodes: Vec::new(),
-            intern: FxHashMap::default(),
+            nodes: Vec::with_capacity(capacity),
+            intern: FxHashMap::with_capacity_and_hasher(capacity, Default::default()),
             max_field: None,
         }
     }
@@ -109,7 +132,17 @@ impl QueryBuilder {
         node.index
     }
     fn binary(&mut self, op: Binary, a: QueryNode, b: QueryNode) -> QueryNode {
-        self.insert(Node::Binary(op, self.index(a), self.index(b)))
+        let x = self.index(a);
+        let y = self.index(b);
+        match (op, self.nodes[x], self.nodes[y]) {
+            (Binary::Sequence, Node::One, _) | (Binary::Union | Binary::Xor, Node::Zero, _) => {
+                return b;
+            }
+            (Binary::Sequence, _, Node::One)
+            | (Binary::Union | Binary::Xor | Binary::Difference, _, Node::Zero) => return a,
+            _ => (),
+        }
+        self.insert(Node::Binary(op, x, y))
     }
     fn unary(&mut self, op: Unary, a: QueryNode) -> QueryNode {
         self.insert(Node::Unary(op, self.index(a)))
@@ -308,8 +341,16 @@ impl QueryProgram {
                 references[child] += 1;
             }
         }
+        for &root in &self.0.roots {
+            references[root] += 1;
+        }
         let mut query = PreparedQuery {
             references,
+            demands: if self.0.roots.len() > 1 {
+                vec![None; count]
+            } else {
+                Vec::new()
+            },
             aut,
             program: self.clone(),
             options,
@@ -321,6 +362,8 @@ impl QueryProgram {
             stats: QueryStats::default(),
         };
         query.compile();
+        query.compose_small_steps();
+        query.prepare_demands();
         Ok(query)
     }
 }
@@ -352,7 +395,10 @@ type ViewKey = (usize, SP, Direction);
 pub struct QueryStats {
     pub star_expansions: usize,
     pub image_evaluations: usize,
+    pub compilation_visits: usize,
     pub reused_views: usize,
+    pub shared_input_groups: usize,
+    pub composed_steps: usize,
     pub history_barriers: usize,
     pub canonical_stars: usize,
 }
@@ -365,6 +411,7 @@ pub struct PreparedQuery<'a> {
     options: QueryOptions,
     actions: Vec<Action>,
     references: Vec<usize>,
+    demands: Vec<Option<(usize, SP, SP)>>,
     exact: Vec<Option<Compiled>>,
     predicates: Vec<bool>,
     views: FxHashMap<ViewKey, View>,
@@ -399,7 +446,28 @@ impl PreparedQuery<'_> {
             .roots
             .get(root)
             .ok_or(QueryError::UnknownRoot(root))?;
+        match self.actions[node] {
+            Action::Filter(p) => return Ok(self.aut.spp.sp.is_zero(p)),
+            Action::Relation(r) => return Ok(self.aut.spp.is_zero(r)),
+            _ => (),
+        }
         let mut remaining = self.options.max_star_expansions;
+        if let Some((pivot, input, output)) = self.demands.get(node).copied().flatten() {
+            if self.aut.spp.sp.is_zero(input) || self.aut.spp.sp.is_zero(output) {
+                return Ok(true);
+            }
+            if let Action::Relation(relation) = self.actions[pivot] {
+                return Ok(!self.aut.spp.has_path(input, relation, output));
+            }
+            let reached = self.evaluate(
+                pivot,
+                input,
+                Direction::Forward,
+                Some(output),
+                &mut remaining,
+            )?;
+            return Ok(!self.aut.spp.sp.intersects(reached, output));
+        }
         let one = self.aut.spp.sp.one;
         Ok(!self.decide(node, one, one, &mut remaining)?)
     }
@@ -515,16 +583,255 @@ impl PreparedQuery<'_> {
             };
         }
     }
+    fn compose_small_steps(&mut self) {
+        if self.program.0.roots.len() < 2 {
+            return;
+        }
+        let mut done = rustc_hash::FxHashSet::default();
+        for id in 0..self.actions.len() {
+            let Action::Star(body) = self.actions[id] else {
+                continue;
+            };
+            let Action::Sequence(a, b) = self.actions[body] else {
+                continue;
+            };
+            if !done.insert(body) {
+                continue;
+            }
+            let (Some(a), Some(b)) = (self.leaf_relation(a), self.leaf_relation(b)) else {
+                continue;
+            };
+            if !self.small_relations([a, b]) {
+                continue;
+            }
+            self.actions[body] = Action::Relation(self.aut.spp.sequence(a, b));
+            self.stats.composed_steps += 1;
+        }
+    }
+    fn leaf_relation(&mut self, node: usize) -> Option<SPP> {
+        match self.actions[node] {
+            Action::Relation(r) => Some(r),
+            Action::Filter(p) => Some(self.aut.spp.diagonal(p)),
+            _ => None,
+        }
+    }
+    fn prepare_demands(&mut self) {
+        if self.demands.is_empty() {
+            return;
+        }
+        let one = self.aut.spp.sp.one;
+        for id in 0..self.actions.len() {
+            self.demands[id] = match self.actions[id] {
+                Action::Star(_) | Action::Relation(_) => Some((id, one, one)),
+                Action::Alias(a) => self.demands[a],
+                Action::Sequence(a, b) => match (
+                    self.actions[a],
+                    self.actions[b],
+                    self.demands[a],
+                    self.demands[b],
+                ) {
+                    (Action::Filter(p), _, _, Some((star, input, output))) => {
+                        Some((star, self.aut.spp.sp.intersect(p, input), output))
+                    }
+                    (_, Action::Filter(p), Some((star, input, output)), _) => {
+                        Some((star, input, self.aut.spp.sp.intersect(p, output)))
+                    }
+                    _ => None,
+                },
+                _ => None,
+            };
+        }
+        self.share_invariant_inputs();
+    }
+    fn project(
+        &mut self,
+        input: SP,
+        keep: &[bool],
+        field: usize,
+        memo: &mut FxHashMap<SP, SP>,
+    ) -> SP {
+        if input.0 < 2 {
+            return input;
+        }
+        if let Some(&result) = memo.get(&input) {
+            return result;
+        }
+        let p = self.aut.spp.sp.get(input);
+        let x0 = self.project(p.x0, keep, field + 1, memo);
+        let x1 = self.project(p.x1, keep, field + 1, memo);
+        let result = if keep[field] {
+            self.aut.spp.sp.mk(x0, x1)
+        } else {
+            let union = self.aut.spp.sp.union(x0, x1);
+            self.aut.spp.sp.mk(union, union)
+        };
+        memo.insert(input, result);
+        result
+    }
+    fn small_relations(&self, relations: impl IntoIterator<Item = SPP>) -> bool {
+        let mut seen = rustc_hash::FxHashSet::default();
+        let mut pending: Vec<_> = relations.into_iter().collect();
+        while let Some(r) = pending.pop() {
+            if r.0 < 2 || !seen.insert(r) {
+                continue;
+            }
+            if seen.len() > 256 {
+                return false;
+            }
+            let r = self.aut.spp.get(r);
+            pending.extend([r.x00, r.x01, r.x10, r.x11]);
+        }
+        true
+    }
+    fn share_invariant_inputs(&mut self) {
+        let mut groups = FxHashMap::<usize, Vec<usize>>::default();
+        for &root in &self.program.0.roots {
+            if let Some((star, _, _)) = self.demands[root]
+                && matches!(self.actions[star], Action::Star(_))
+            {
+                groups.entry(star).or_default().push(root);
+            }
+        }
+        for (star, roots) in groups {
+            if roots.len() < 2 {
+                continue;
+            }
+            let Action::Star(body) = self.actions[star] else {
+                continue;
+            };
+            if roots.len() >= 64 && self.options.max_star_expansions.is_none() {
+                let inputs: rustc_hash::FxHashSet<_> = roots
+                    .iter()
+                    .map(|&root| self.demands[root].unwrap().1)
+                    .collect();
+                if inputs.len() >= 16
+                    && let Action::Relation(relation) = self.actions[body]
+                    && self.small_relations([relation])
+                {
+                    self.actions[star] = Action::Relation(self.aut.spp.star(relation));
+                    self.stats.canonical_stars += 1;
+                    continue;
+                }
+            }
+            let mut writes = vec![false; self.aut.spp.sp.num_vars() as usize];
+            let mut visited = rustc_hash::FxHashSet::default();
+            let mut pending = vec![body];
+            let mut known = true;
+            while let Some(id) = pending.pop() {
+                if !visited.insert(id) {
+                    continue;
+                }
+                match self.program.0.nodes[id] {
+                    Node::Assign(field, _) => writes[field as usize] = true,
+                    Node::Top
+                    | Node::End
+                    | Node::Unary(Unary::Complement | Unary::Next, _)
+                    | Node::Binary(Binary::Until, _, _) => {
+                        known = false;
+                        break;
+                    }
+                    node => pending.extend(node.children()),
+                }
+            }
+            if !known || writes.iter().all(|&x| x) || writes.iter().all(|&x| !x) {
+                continue;
+            }
+            let keep: Vec<_> = writes.iter().map(|&x| !x).collect();
+            let mut moving = FxHashMap::default();
+            let mut fixed = FxHashMap::default();
+            let mut pairs = rustc_hash::FxHashSet::default();
+            let mut dynamic_sets = rustc_hash::FxHashSet::default();
+            let mut stable_sets = rustc_hash::FxHashSet::default();
+            let mut factored = Vec::new();
+            for &root in &roots {
+                let (_, input, output) = self.demands[root].unwrap();
+                let dynamic = self.project(input, &writes, 0, &mut moving);
+                let stable = self.project(input, &keep, 0, &mut fixed);
+                if self.aut.spp.sp.intersect(dynamic, stable) != input {
+                    known = false;
+                    break;
+                }
+                pairs.insert((dynamic, stable));
+                dynamic_sets.insert(dynamic);
+                stable_sets.insert(stable);
+                factored.push((root, dynamic, stable, output));
+            }
+            if !known
+                || dynamic_sets.len() > self.options.cached_views
+                || stable_sets.len() < 2
+                || pairs.len() != dynamic_sets.len().saturating_mul(stable_sets.len())
+            {
+                continue;
+            }
+            self.stats.shared_input_groups += 1;
+            let mut domain = self.aut.spp.sp.zero;
+            for stable in stable_sets {
+                domain = self.aut.spp.sp.union(domain, stable);
+            }
+            for (root, dynamic, stable, output) in factored {
+                let input = self.aut.spp.sp.intersect(dynamic, domain);
+                let output = self.aut.spp.sp.intersect(stable, output);
+                self.demands[root] = Some((star, input, output));
+            }
+        }
+    }
     fn exact(&mut self, initial: usize) -> Compiled {
+        if let Some(value) = self.exact[initial] {
+            return value;
+        }
         let mut todo = vec![(initial, false)];
+        let mut unions = FxHashMap::<usize, Vec<usize>>::default();
         while let Some((id, ready)) = todo.pop() {
+            self.stats.compilation_visits += 1;
             if self.exact[id].is_some() {
                 continue;
             }
             let node = self.program.0.nodes[id];
             if !ready {
                 todo.push((id, true));
-                todo.extend(node.children().map(|child| (child, false)));
+                if let Node::Binary(Binary::Union, a, b) = node
+                    && [a, b].into_iter().any(|child| {
+                        self.references[child] <= 1
+                            && matches!(
+                                self.program.0.nodes[child],
+                                Node::Binary(Binary::Union, _, _)
+                            )
+                    })
+                {
+                    let mut pending = vec![b, a];
+                    let mut leaves = Vec::new();
+                    while let Some(child) = pending.pop() {
+                        if let Node::Binary(Binary::Union, x, y) = self.program.0.nodes[child]
+                            && self.references[child] <= 1
+                            && self.exact[child].is_none()
+                        {
+                            pending.extend([y, x]);
+                        } else {
+                            leaves.push(child);
+                        }
+                    }
+                    todo.extend(leaves.iter().map(|&child| (child, false)));
+                    unions.insert(id, leaves);
+                } else {
+                    todo.extend(node.children().map(|child| (child, false)));
+                }
+                continue;
+            }
+            if let Some(leaves) = unions.remove(&id) {
+                let mut values: Vec<_> =
+                    leaves.into_iter().map(|i| self.exact[i].unwrap()).collect();
+                while values.len() > 1 {
+                    let len = values.len();
+                    for i in (0..len).step_by(2) {
+                        values[i / 2] = if i + 1 == len {
+                            values[i]
+                        } else {
+                            self.union_values(values[i], values[i + 1])
+                        };
+                    }
+                    values.truncate(len.div_ceil(2));
+                }
+                self.exact[id] = Some(values[0]);
                 continue;
             }
             let value = match node {
@@ -597,6 +904,20 @@ impl PreparedQuery<'_> {
         }
         self.exact[initial].unwrap()
     }
+    fn union_values(&mut self, a: Compiled, b: Compiled) -> Compiled {
+        if let (Compiled::Predicate(x), Compiled::Predicate(y)) = (a, b) {
+            return Compiled::Predicate(self.aut.spp.sp.union(x, y));
+        }
+        if !matches!(a, Compiled::Trace(_)) && !matches!(b, Compiled::Trace(_)) {
+            let x = self.aut.compiled_to_relation(a);
+            let y = self.aut.compiled_to_relation(b);
+            return Compiled::Relation(self.aut.spp.union(x, y));
+        }
+        let x = self.aut.compiled_to_state(a);
+        let y = self.aut.compiled_to_state(b);
+        let state = self.aut.mk_union(x, y);
+        self.aut.compiled_state(state)
+    }
     fn remember(&mut self, key: ViewKey, view: View) {
         if self.options.cached_views == 0 {
             return;
@@ -643,7 +964,10 @@ impl PreparedQuery<'_> {
                     images.insert((node, input), *values.last().unwrap());
                 }
                 Work::Eval(node, input, goal) => {
-                    if goal.is_none() && self.references[node] > 1 {
+                    if goal.is_none()
+                        && self.references[node] > 1
+                        && !matches!(self.actions[node], Action::Filter(_) | Action::Relation(_))
+                    {
                         if let Some(&result) = images.get(&(node, input)) {
                             values.push(result);
                             continue;
@@ -698,8 +1022,9 @@ impl PreparedQuery<'_> {
                 }
                 Work::Then(node) => todo.push(Work::Eval(node, values.pop().unwrap(), None)),
                 Work::Star(key, body, view, goal) => {
-                    let hit = goal.map(|p| self.aut.spp.sp.intersect(view.seen, p));
-                    if view.complete || hit.is_some_and(|p| !self.aut.spp.sp.is_zero(p)) {
+                    if view.complete
+                        || goal.is_some_and(|p| self.aut.spp.sp.intersects(view.seen, p))
+                    {
                         values.push(view.seen);
                         continue;
                     }
@@ -749,6 +1074,11 @@ impl PreparedQuery<'_> {
                 continue;
             }
             match self.actions[node] {
+                Action::Relation(relation) => {
+                    if self.aut.spp.has_path(input, relation, output) {
+                        return Ok(true);
+                    }
+                }
                 Action::Alias(a) => todo.push((a, input, output)),
                 Action::Union(a, b) => todo.extend([(b, input, output), (a, input, output)]),
                 Action::Sequence(_, _) => {
@@ -783,8 +1113,7 @@ impl PreparedQuery<'_> {
                     let goal = matches!(self.actions[node], Action::Star(_)).then_some(output);
                     let reachable =
                         self.evaluate(node, input, Direction::Forward, goal, remaining)?;
-                    let hit = self.aut.spp.sp.intersect(reachable, output);
-                    if !self.aut.spp.sp.is_zero(hit) {
+                    if self.aut.spp.sp.intersects(reachable, output) {
                         return Ok(true);
                     }
                 }
